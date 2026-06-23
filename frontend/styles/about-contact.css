@@ -1,0 +1,193 @@
+/* ==========================================================================
+   About + Contact Page Styles
+   Reuses header/nav/footer/layout tokens from main.css for site-wide
+   consistency, and layers in the official gold brand accent
+   (frontend/styles/brand-colors.css) for CTAs and highlights only.
+   Owner: Florence — Day 2 backlog
+   ========================================================================== */
+
+/* --- Page hero --- */
+.page-hero {
+    text-align: center;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 3rem;
+}
+
+.page-hero h1 {
+    font-size: 2.25rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+}
+
+.page-hero p {
+    color: var(--text-secondary);
+    max-width: 640px;
+    margin: 0 auto;
+}
+
+/* --- Content sections (About page) --- */
+.content-section {
+    margin-bottom: 3rem;
+}
+
+.content-section h2 {
+    font-size: 1.4rem;
+    margin-bottom: 0.75rem;
+    color: var(--ews-gold, #DBAC18);
+}
+
+.content-section p {
+    color: var(--text-secondary);
+    max-width: 760px;
+}
+
+/* --- Differentiator / value cards --- */
+.value-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.value-card {
+    background-color: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 3px solid var(--ews-gold, #DBAC18);
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.value-card h3 {
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.value-card p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+/* --- Gold CTA buttons (brand-accurate, used sparingly per brand guide) --- */
+.btn-gold {
+    display: inline-block;
+    background-color: var(--ews-gold, #DBAC18);
+    color: #0A0A0A;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0.85rem 1.75rem;
+    border-radius: 8px;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.btn-gold:hover {
+    background-color: var(--ews-gold-light, #F4C73E);
+    transform: translateY(-1px);
+}
+
+/* --- Contact page layout --- */
+.contact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 2rem;
+}
+
+@media (max-width: 768px) {
+    .contact-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.contact-info {
+    background-color: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 1.75rem;
+}
+
+.contact-info h3 {
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.contact-info .info-row {
+    margin-bottom: 1.25rem;
+}
+
+.contact-info .info-row strong {
+    display: block;
+    color: var(--text-primary);
+    margin-bottom: 0.2rem;
+}
+
+.contact-info .info-row a {
+    color: var(--ews-gold, #DBAC18);
+    text-decoration: none;
+    word-break: break-word;
+}
+
+.contact-info .info-row a:hover {
+    color: var(--ews-gold-light, #F4C73E);
+}
+
+/* --- Mock contact form (UI only — no backend, per Phase 1 scope) --- */
+.contact-form {
+    background-color: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 1.75rem;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    background-color: var(--bg-main);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0.7rem 0.9rem;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--ews-gold, #DBAC18);
+}
+
+.form-note {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 1rem;
+}
+
+.form-success {
+    display: none;
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(219, 172, 24, 0.3);
+    background-color: rgba(219, 172, 24, 0.08);
+    color: var(--ews-gold, #DBAC18);
+    font-size: 0.9rem;
+}
+
+.form-success.visible {
+    display: block;
+}
