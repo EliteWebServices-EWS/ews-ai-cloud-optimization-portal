@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EWS Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-8">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-extrabold text-white tracking-tight">Admin Client Directory</h1>
+                <p class="text-slate-400 text-sm mt-1">EWS-Lite global active accounts overview shell.</p>
+            </div>
+            <span class="bg-blue-900 text-blue-300 text-xs font-semibold px-3 py-1 rounded-full border border-blue-800">Admin Mode</span>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-900/50 border-b border-slate-700 text-xs font-bold uppercase tracking-wider text-slate-400">
+                        <th class="p-4">Company Name</th>
+                        <th class="p-4">AWS Account ID</th>
+                        <th class="p-4">Contact Email</th>
+                        <th class="p-4">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/60 text-sm">
+                    <tr class="hover:bg-slate-700/30 transition">
+                        <td class="p-4 font-semibold text-white">Acme Corporation</td>
+                        <td class="p-4 font-mono text-xs text-slate-400">123456789012</td>
+                        <td class="p-4 text-slate-300">admin@acme.com</td>
+                        <td class="p-4"><span class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Active Connected</span></td>
+                    </tr>
+                    <tr class="hover:bg-slate-700/30 transition">
+                        <td class="p-4 font-semibold text-white">Stark Industries</td>
+                        <td class="p-4 font-mono text-xs text-slate-400">987654321098</td>
+                        <td class="p-4 text-slate-300">cloud@stark.com</td>
+                        <td class="p-4"><span class="bg-amber-950 text-amber-400 border border-amber-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Pending Review</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

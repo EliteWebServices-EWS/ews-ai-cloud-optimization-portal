@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EWS-Lite Client Onboarding</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex items-center justify-center p-6 relative">
+
+    <div id="successToast" class="fixed top-5 right-5 bg-emerald-600 border border-emerald-500 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center space-x-3 transform translate-x-80 opacity-0 transition-all duration-300 z-50">
+        <span>✅</span>
+        <div>
+            <p class="font-bold">Onboarding Saved Successfully!</p>
+            <p class="text-xs text-emerald-100">Configuration shell recorded.</p>
+        </div>
+    </div>
+
+    <div class="max-w-5xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-800 border border-slate-700 p-8 rounded-2xl shadow-xl">
+        <div>
+            <div class="mb-6">
+                <h2 class="text-2xl font-extrabold text-white tracking-tight">Connect AWS Environment</h2>
+                <p class="text-slate-400 text-sm mt-1">Setup secure onboarding into the EWS-Lite ecosystem.</p>
+            </div>
+
+            <form onsubmit="event.preventDefault(); document.getElementById('successToast').classList.remove('translate-x-80', 'opacity-0'); setTimeout(() => { document.getElementById('successToast').classList.add('translate-x-80', 'opacity-0'); }, 3500);" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Company Name</label>
+                    <input type="text" required placeholder="e.g. Acme Corp" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">AWS Account ID</label>
+                    <input type="text" required pattern="\d{12}" placeholder="12-digit ID" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Role ARN</label>
+                    <input type="text" required placeholder="arn:aws:iam::...:role/EWS-Lite-Access" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">External ID</label>
+                    <input type="text" required placeholder="Security validation string" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Contact Email</label>
+                    <input type="email" required value="Elitewebservicesllc@gmail.com" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-300 focus:outline-none focus:border-blue-500">
+                </div>
+
+                <div class="bg-blue-950/40 border border-blue-900/60 p-3.5 rounded-lg flex items-start space-x-3">
+                    <p class="text-xs text-blue-300">🛡️ “EWS uses secure cross‑account access. No credentials are stored.”</p>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-lg transition shadow">Save Configuration</button>
+            </form>
+        </div>
+
+        <div class="flex flex-col justify-center items-center bg-slate-900/60 border-2 border-dashed border-slate-700 rounded-xl p-8 text-center">
+            <span class="text-4xl mb-3">🌐</span>
+            <h3 class="text-white font-bold mb-1">Onboarding Architecture Layout</h3>
+            <p class="text-slate-400 text-xs max-w-xs mb-6">Cross-account identity validation framework mapping visualization placeholder.</p>
+            <div class="w-full space-y-2 opacity-60 text-left font-mono text-[10px] text-slate-400">
+                <div class="bg-slate-800 border border-slate-700 p-2.5 rounded flex justify-between items-center">
+                    <span>EWS Portal</span>
+                    <span>── AssumeRole ──&gt;</span>
+                    <span>Client AWS Account</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
