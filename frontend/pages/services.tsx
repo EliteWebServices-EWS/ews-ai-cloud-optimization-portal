@@ -163,7 +163,16 @@ const ServicesPage: React.FC = () => {
 
       {/* Footer */}
       <footer style={styles.footer}>
-        <p>&copy; 2026 Elite Web Services. All rights reserved.</p>
+        <div style={styles.footerContent}>
+          <div style={styles.footerLinks}>
+            <a href="terms.html" style={styles.footerLink}>Terms</a>
+            <span style={styles.footerDivider}>•</span>
+            <a href="privacy.html" style={styles.footerLink}>Privacy</a>
+            <span style={styles.footerDivider}>•</span>
+            <a href="security.html" style={styles.footerLink}>Security</a>
+          </div>
+          <p style={styles.footerCopy}>&copy; 2026 Elite Web Services. All rights reserved.</p>
+        </div>
       </footer>
     </div>
   );
@@ -466,11 +475,36 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   footer: {
     borderTop: '1px solid var(--ews-gray-700)',
+    backgroundColor: 'var(--ews-black)',
     padding: '2rem',
+    marginTop: '3rem',
+  },
+  footerContent: {
+    maxWidth: '1200px',
+    margin: '0 auto',
     textAlign: 'center',
+  },
+  footerLinks: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '1rem',
+    marginBottom: '1rem',
+  },
+  footerLink: {
+    color: 'var(--ews-gray-300)',
+    textDecoration: 'none',
+    fontSize: '0.9rem',
+    transition: 'color 0.2s ease',
+    cursor: 'pointer',
+  },
+  footerDivider: {
+    color: 'var(--ews-gray-500)',
+  },
+  footerCopy: {
     color: 'var(--ews-gray-300)',
     fontSize: '0.85rem',
-    marginTop: '3rem',
+    margin: 0,
   },
 };
 
