@@ -44,12 +44,12 @@
                     </div>
                 </div>
                 <nav class="hidden lg:flex space-x-8 text-xs font-bold uppercase tracking-widest text-zinc-400">
-                    <a href="/frontend/index.html" class="text-white border-b border-awsOrange-500 pb-1">Home</a>
-                    <a href="/frontend/pages/services.html" class="hover:text-white transition">Services Matrix</a>
-                    <a href="/frontend/pages/about.html" class="hover:text-white transition">Corporate Profile</a>
-                    <a href="/frontend/pages/security.html" class="hover:text-white transition">Security</a>
+                    <a href="index.html" class="text-white border-b border-awsOrange-500 pb-1">Home</a>
+                    <a href="pages/services.html" class="hover:text-white transition">Services Matrix</a>
+                    <a href="pages/about.html" class="hover:text-white transition">Corporate Profile</a>
+                    <a href="pages/security.html" class="hover:text-white transition">Security</a>
                 </nav>
-                <a href="/Portal/dashboard/index.html" class="bg-awsOrange-500 hover:bg-awsOrange-600 text-black text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded transition font-bold shadow-lg shadow-awsOrange-500/15">Console Login</a>
+                <a href="../Portal/dashboard/index.html" class="bg-awsOrange-500 hover:bg-awsOrange-600 text-black text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded transition font-bold shadow-lg shadow-awsOrange-500/15">Console Login</a>
             `;
         }
 
@@ -61,9 +61,9 @@
                 <p class="font-medium text-zinc-400">&copy; 2026 Elite Web Services LLC. All rights reserved. AWS Cloud Strategy | Innovation | Transformation.</p>
                 <p>HQ: Houston, TX | Desk: <a href="mailto:elitewebservicesllc@gmail.com" class="text-awsOrange-500 hover:underline">elitewebservicesllc@gmail.com</a></p>
                 <div class="flex justify-center space-x-6 pt-2 text-[11px]">
-                    <a href="/frontend/pages/privacy.html" class="hover:text-zinc-300 transition">Privacy Policy</a>
-                    <a href="/frontend/pages/terms.html" class="hover:text-zinc-300 transition">Terms of Service</a>
-                    <a href="/frontend/pages/security.html" class="hover:text-zinc-300 transition">Security Posture</a>
+                    <a href="pages/privacy.html" class="hover:text-zinc-300 transition">Privacy Policy</a>
+                    <a href="pages/terms.html" class="hover:text-zinc-300 transition">Terms of Service</a>
+                    <a href="pages/security.html" class="hover:text-zinc-300 transition">Security Posture</a>
                 </div>
             `;
         }

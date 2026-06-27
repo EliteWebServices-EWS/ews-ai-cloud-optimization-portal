@@ -1,1 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security &amp; Trust | EWS AI Cloud Optimization Portal</title>
+    <link rel="icon" href="../assets/logo/favicon.ico">
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/about-contact.css">
+</head>
+<body>
 
+    <header>
+        <nav>
+            <div class="logo">EWS FinOps</div>
+            <ul>
+                <li><a href="../index.html">Home</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="dashboard.html">Dashboard Demo</a></li>
+                <li><a href="assessment.html">AWS Assessment</a></li>
+                <li><a href="security.html" class="active">Security</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="contact.html">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="page-hero">
+            <h1>Security &amp; Trust</h1>
+            <p>How Elite Web Services protects your AWS environment during assessments and advisory engagements.</p>
+        </section>
+
+        <section class="content-section">
+            <h2>Read-Only Cross-Account Access</h2>
+            <p>Our portal uses AWS STS AssumeRole with a cross-account IAM role. We request read-only permissions only — no write access, no access keys stored, and no persistent credentials on our servers.</p>
+        </section>
+
+        <section class="content-section">
+            <h2>External ID Protection</h2>
+            <p>Every customer connection uses a unique External ID to prevent the confused deputy problem. Your IAM trust policy must include this ID before we can assume your role.</p>
+        </section>
+
+        <section class="content-section">
+            <h2>What We Access</h2>
+            <div class="value-grid">
+                <div class="value-card">
+                    <h3>Cost &amp; Usage</h3>
+                    <p>AWS Cost Explorer and billing data to identify optimization opportunities.</p>
+                </div>
+                <div class="value-card">
+                    <h3>Resource Inventory</h3>
+                    <p>EC2, RDS, S3, and other service metadata — configuration only, never your data payloads.</p>
+                </div>
+                <div class="value-card">
+                    <h3>Security Posture</h3>
+                    <p>Security Hub and Config findings to surface misconfigurations and compliance gaps.</p>
+                </div>
+                <div class="value-card">
+                    <h3>Well-Architected</h3>
+                    <p>Framework-aligned reviews across operational excellence, security, reliability, performance, and cost.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="content-section">
+            <h2>What We Never Access</h2>
+            <ul>
+                <li>Application data stored in databases, S3 objects, or EBS volumes</li>
+                <li>Secrets Manager or Parameter Store values</li>
+                <li>IAM user passwords or long-lived access keys</li>
+                <li>Ability to create, modify, or delete resources in your account</li>
+            </ul>
+        </section>
+
+        <section class="content-section">
+            <h2>AI Insights</h2>
+            <p>Claude AI is used for generating cost and architecture insights only. Aggregated, non-sensitive metadata is sent for analysis — never raw credentials, secrets, or customer data payloads.</p>
+        </section>
+
+        <section class="content-section">
+            <h2>Questions?</h2>
+            <p>For security inquiries or to review our IAM trust template, contact <a href="mailto:elitewebservicesllc@gmail.com" style="color: var(--ews-gold, #DBAC18); font-weight: 600;">elitewebservicesllc@gmail.com</a>.</p>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 Elite Web Services. All rights reserved. <a href="security.html">Security &amp; Trust</a> · <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a></p>
+    </footer>
+
+    <script src="../js/app.js"></script>
+</body>
+</html>
