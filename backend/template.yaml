@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: EWS Portal API - Lambda, API Gateway, DynamoDB, Cognito, EventBridge
+
+# ── PARAMETERS ───────────────────────────────────────────────────────────────
+Parameters:
+  CorsOrigin:
+    Type: String
+    Default: "https://elitewebservices-ews.github.io"
+    Description: Allowed CORS origin for API Gateway
+
+  EnableAwsSync:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Set to true to enable live AWS sync via STS AssumeRole
+
+# ── GLOBALS ───────────────────────────────────────────────────────────────────
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        TENANTS_TABLE:   !Ref TenantsTable
+        CORS_ORIGIN:     !Ref CorsOrigin
+        ENABLE_AWS_SYNC: !Ref EnableAwsSync
+        USER_POOL_ID:    !Ref EWSUserPool
+
+# ── RESOURCES ─────────────────────────────────────────────────────────────────
+Resources:
+
+  # ── 1. DYNAMODB TABLE ────────────────────────────────────────────────────────
+  TenantsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ews-portal-tenants
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  # ── 2. COGNITO USER POOL ─────────────────────────────────────────────────────
+  EWSUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ews-portal-users
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: allowed_clients
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+
+  EWSUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ews-portal-client
+      UserPoolId: !Ref EWSUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 8
+      IdTokenValidity: 8
+      RefreshTokenValidity: 30
+
+  # ── 3. API GATEWAY ───────────────────────────────────────────────────────────
+  EWSPortalApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Description: EWS Portal REST API
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: !Sub "'${CorsOrigin}'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt EWSUserPool.Arn
+            Identity:
+              Header: Authorization
+
+  # ── 4. LAMBDA FUNCTION ───────────────────────────────────────────────────────
+  EWSPortalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ews-portal-api
+      Handler: src/handler.handler
+      CodeUri: .
+      Description: EWS Portal main Lambda handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TenantsTable
+        - Statement:
+            Effect: Allow
+            Action:
+              - sts:AssumeRole
+              - cognito-idp:AdminGetUser
+              - cognito-idp:ListUsers
+            Resource: "*"
+      Events:
+        # Public health check - no auth required
+        HealthCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/health
+            Method: GET
+            Auth:
+              Authorizer: NONE
+
+        # List all clients
+        ListClients:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/clients
+            Method: GET
+
+        # Get one client dashboard
+        GetDashboard:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/dashboard/{clientId}
+            Method: GET
+
+        # Trigger live AWS sync for one client
+        SyncClient:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/clients/{clientId}/sync
+            Method: POST
+
+        # Get current logged-in user info
+        AuthMe:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/auth/me
+            Method: GET
+
+        # CORS preflight OPTIONS routes
+        OptionsClients:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/clients
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+        OptionsDashboard:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/dashboard/{clientId}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+        OptionsSync:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EWSPortalApi
+            Path: /v1/clients/{clientId}/sync
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+  # ── 5. EVENTBRIDGE SCHEDULED SYNC ────────────────────────────────────────────
+  SyncScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ews-portal-sync-schedule
+      Description: Auto-sync all active client dashboards every 6 hours
+      ScheduleExpression: "rate(6 hours)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt EWSPortalFunction.Arn
+          Id: ScheduledSync
+          Input: '{"source":"eventbridge","action":"syncAll"}'
+
+  SyncSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EWSPortalFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SyncScheduleRule.Arn
+
+# ── OUTPUTS ───────────────────────────────────────────────────────────────────
+Outputs:
+  ApiUrl:
+    Description: Live API base URL
+    Value: !Sub "https://${EWSPortalApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref EWSUserPool
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref EWSUserPoolClient
+
+  TenantsTableName:
+    Description: DynamoDB table name
+    Value: !Ref TenantsTable
