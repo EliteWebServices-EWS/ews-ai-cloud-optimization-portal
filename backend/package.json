@@ -1,0 +1,14 @@
+{
+  "name": "ews-portal-api",
+  "version": "1.0.0",
+  "description": "EWS Portal API Backend",
+  "main": "src/handler.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@aws-sdk/client-sts": "^3.0.0",
+    "@aws-sdk/client-cost-explorer": "^3.0.0",
+    "@aws-sdk/client-ec2": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0"
+  }
+}
