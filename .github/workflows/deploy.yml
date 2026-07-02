@@ -2,7 +2,7 @@ name: Deploy Frontend to Pages
 
 on:
   push:
-    branches: ["main", "feature/security-page"]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -25,12 +25,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
-      - name: Upload Artifact
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # This line tells GitHub to only deploy the frontend folder
           path: './frontend'
 
       - name: Deploy to GitHub Pages
