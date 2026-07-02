@@ -33,3 +33,140 @@
   --color-accent-active: var(--ews-gold-dark);
   --color-border: var(--ews-gray-700);
 }
+
+/* ==========================================================
+   Dashboard state styles — Florence, Week 1 Day 2
+   Loading, empty, and error states for every data-driven
+   component. Used by frontend/js/dashboard.js
+   ========================================================== */
+
+.ews-state {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1.25rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: var(--ews-gray-300, #D4D4D4);
+}
+
+.ews-state--loading {
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed var(--ews-gray-700, #3A3A3A);
+}
+
+.ews-state--empty {
+    background: rgba(219,172,24,0.05);
+    border: 1px dashed rgba(219,172,24,0.25);
+    color: #aaa;
+}
+
+.ews-state--error {
+    background: rgba(239,68,68,0.07);
+    border: 1px dashed rgba(239,68,68,0.3);
+    color: #fca5a5;
+}
+
+/* Spinner */
+.ews-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.15);
+    border-top-color: var(--ews-gold, #DBAC18);
+    border-radius: 50%;
+    animation: ews-spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes ews-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Card grid used in cost + resources sections */
+.ews-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.ews-card {
+    background: var(--ews-gray-900, #1A1A1A);
+    border: 1px solid var(--ews-gray-700, #3A3A3A);
+    border-radius: 10px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.ews-card h4 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ews-gray-300, #D4D4D4);
+    margin: 0;
+}
+
+.ews-card-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #fff;
+    margin: 0;
+    line-height: 1.1;
+}
+
+/* Alert rows */
+.ews-alert-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ews-alert-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.9rem;
+    background: var(--ews-gray-900, #1A1A1A);
+    border-radius: 8px;
+    border: 1px solid var(--ews-gray-700, #3A3A3A);
+}
+
+.ews-alert-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.ews-alert-dot--critical { background: #ef4444; }
+.ews-alert-dot--high     { background: #f97316; }
+.ews-alert-dot--low      { background: #3b82f6; }
+
+.ews-alert-msg {
+    flex: 1;
+    font-size: 0.875rem;
+    color: #e5e5e5;
+}
+
+/* Recommendations */
+.ews-rec-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ews-rec-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.65rem 0.9rem;
+    background: var(--ews-gray-900, #1A1A1A);
+    border-radius: 8px;
+    border: 1px solid var(--ews-gray-700, #3A3A3A);
+    flex-wrap: wrap;
+}
+
+.ews-rec-title  { flex: 1; font-size: 0.875rem; color: #e5e5e5; }
+.ews-rec-impact { font-size: 0.75rem; color: #aaa; }
+.ews-rec-saving { font-size: 0.75rem; color: var(--ews-gold, #DBAC18); font-weight: 600; }
