@@ -23,16 +23,12 @@ async function syncFromAws(tenant) {
       region: tenant.primaryRegion || "us-east-1"
     };
   } catch (err) {
-    // Fail-fast: If STS fails we cannot proceed with downstream AWS requests.
-    // Log first so CloudWatch captures the full AWS error, then rethrow
-    // so the EventBridge sync loop skips this tenant without crashing others.
+    // Fail-fast: If STS fails, we cannot proceed with downstream AWS requests.
     console.error(`STS AssumeRole failed for tenant ${tenant.id}: ${err.message}`);
-    throw err;
+    throw err; 
   }
 
   // ── STEP 2: Pull month-to-date spend from Cost Explorer ─────────────────
-  // end date is advanced +1 day so the range is inclusive of today AND
-  // prevents start === end ValidationException crash on the 1st of the month
   let monthlySpend = 0;
   let breakdown    = [];
   try {
@@ -40,6 +36,7 @@ async function syncFromAws(tenant) {
     const start    = new Date(now.getFullYear(), now.getMonth(), 1)
                        .toISOString().split("T")[0];
 
+    // FIX: Advance end date by 1 day to make the range inclusive of today and handle day 1 safely
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
     const end      = tomorrow.toISOString().split("T")[0];
