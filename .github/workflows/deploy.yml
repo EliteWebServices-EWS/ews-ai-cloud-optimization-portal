@@ -2,7 +2,7 @@ name: Deploy Frontend to Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "feature/security-page"]
   workflow_dispatch:
 
 permissions:
