@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  EWS Portal API — API Gateway HTTP API, Lambda, and DynamoDB for the
+  multi-tenant customer dashboard backend.
+
+Parameters:
+  CorsOrigin:
+    Type: String
+    Default: https://elitewebservices-ews.github.io
+    Description: GitHub Pages origin for CORS (no trailing slash or path)
+
+  EnableAwsSync:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      false = mock mode (handler returns embedded demo data).
+      true = live mode (DynamoDB + STS cross-account sync).
+
+  UserPoolId:
+    Type: String
+    Default: ""
+    Description: >
+      Optional Cognito User Pool ID for custom:allowed_clients lookups.
+      Leave empty for the initial public-API deploy (guide Step 4).
+
+Conditions:
+  AwsSyncEnabled: !Equals [!Ref EnableAwsSync, "true"]
+  HasUserPool: !Not [!Equals [!Ref UserPoolId, ""]]
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    MemorySize: 256
+    Architectures:
+      - x86_64
+  HttpApi:
+    CorsConfiguration:
+      AllowOrigins:
+        - !Ref CorsOrigin
+      AllowHeaders:
+        - Content-Type
+        - Authorization
+      AllowMethods:
+        - GET
+        - POST
+        - OPTIONS
+
+Resources:
+  PortalHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      Description: EWS Portal API (v1 routes)
+
+  TenantsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ews-portal-tenants
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  PortalApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ews-portal-api
+      Description: Routes /v1/* requests and optional scheduled tenant sync
+      CodeUri: .
+      Handler: src/handler.handler
+      Environment:
+        Variables:
+          TENANTS_TABLE: !Ref TenantsTable
+          ENABLE_AWS_SYNC: !Ref EnableAwsSync
+          CORS_ORIGIN: !Ref CorsOrigin
+          USER_POOL_ID: !Ref UserPoolId
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TenantsTable
+        - Statement:
+            - Sid: AssumeCustomerRoles
+              Effect: Allow
+              Action: sts:AssumeRole
+              Resource: "*"
+        - !If
+          - HasUserPool
+          - Statement:
+              - Sid: CognitoReadUserAttributes
+                Effect: Allow
+                Action: cognito-idp:AdminGetUser
+                Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}
+          - !Ref AWS::NoValue
+      Events:
+        # Catch-all — handler.js performs its own path routing
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PortalHttpApi
+            Path: /{proxy+}
+            Method: ANY
+        ScheduledSync:
+          Type: Schedule
+          Properties:
+            Schedule: rate(6 hours)
+            Description: Sync all active tenants (Phase 3 scheduled sync)
+            Enabled: !If [AwsSyncEnabled, true, false]
+            Input: '{"source":"eventbridge","action":"syncAll"}'
+
+Outputs:
+  ApiUrl:
+    Description: API base URL — use with /v1/health, /v1/clients, etc.
+    Value: !GetAtt PortalHttpApi.ApiEndpoint
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiUrl
+
+  TenantsTableName:
+    Description: DynamoDB tenant registry and dashboard cache table
+    Value: !Ref TenantsTable
+    Export:
+      Name: !Sub ${AWS::StackName}-TenantsTable
+
+  PortalApiFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt PortalApiFunction.Arn
