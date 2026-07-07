@@ -1,14 +1,26 @@
 {
-  "name": "ews-portal-api",
+  "name": "sisum-backend",
   "version": "1.0.0",
-  "description": "EWS Portal API Backend",
-  "main": "src/handler.js",
+  "description": "SISU'M Cloud Optimization Decision Platform — Backend",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch index.ts"
+  },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
-    "@aws-sdk/client-sts": "^3.0.0",
     "@aws-sdk/client-cost-explorer": "^3.0.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/client-ec2": "^3.0.0",
-    "@aws-sdk/lib-dynamodb": "^3.0.0"
+    "@aws-sdk/client-sts": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }
