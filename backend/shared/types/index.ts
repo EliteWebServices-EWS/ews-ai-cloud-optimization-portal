@@ -151,11 +151,12 @@ export interface EngineError {
 export interface EvidenceRequest {
   context: OptimizationContext;
   candidate: Candidate;
+  providerData: ProviderEvidenceBundle;
 }
 
 /** Evidence engine output. */
 export interface EvidenceResult {
-  evidence: Evidence;
+  package: EvidencePackage;
   status: EvidenceStatus;
 }
 
@@ -220,12 +221,22 @@ export interface ProviderVolume {
 }
 
 /** Provider-normalized metrics response. */
+export interface UtilizationHistoryPoint {
+  timestamp: string;
+  cpuUtilization: number;
+  memoryUtilization: number;
+  networkUtilization?: number;
+}
+
+/** Provider-normalized metrics response. */
 export interface ProviderMetrics {
   resourceId: string;
   cpuUtilization: number[];
   memoryUtilization: number[];
+  networkUtilization?: number[];
   period: string;
   datapoints: number;
+  utilizationHistory?: UtilizationHistoryPoint[];
 }
 
 /** Provider-normalized pricing response. */
@@ -244,4 +255,79 @@ export interface ProviderRecommendation {
   action: string;
   target: string;
   reason: string;
+  source?: string;
+  finding?: string;
+  estimatedMonthlySavings?: number;
+}
+
+/** Raw provider data assembled by a plugin before evidence normalization. */
+export interface ProviderEvidenceBundle {
+  instance: ProviderInstance;
+  metrics: ProviderMetrics;
+  pricing: ProviderPricing;
+  recommendations: ProviderRecommendation[];
+  tags: Record<string, string>;
+}
+
+/** Aggregated telemetry summary derived from metrics. */
+export interface EvidenceTelemetry {
+  cpuUtilization: number;
+  memoryUtilization: number;
+  networkUtilization?: number;
+  observationWindowDays: number;
+}
+
+/** Normalized metrics block within standardized evidence. */
+export interface EvidenceMetricsBlock {
+  cpuUtilization: number[];
+  memoryUtilization: number[];
+  networkUtilization?: number[];
+  period: string;
+  datapoints: number;
+  utilizationHistory: UtilizationHistoryPoint[];
+}
+
+/** Normalized pricing block within standardized evidence. */
+export interface EvidencePricingBlock {
+  instanceType: string;
+  region: string;
+  hourlyRate: number;
+  monthlyRate: number;
+  currency: string;
+}
+
+/** Normalized instance metadata within standardized evidence. */
+export interface EvidenceInstanceBlock {
+  instanceId: string;
+  instanceType: string;
+  state: string;
+  region: string;
+  launchTime: string;
+}
+
+/** Sprint 2 standardized evidence object returned by the Evidence Engine. */
+export interface StandardizedEvidence {
+  telemetry: EvidenceTelemetry;
+  metrics: EvidenceMetricsBlock;
+  pricing: EvidencePricingBlock;
+  recommendations: ProviderRecommendation[];
+  tags: Record<string, string>;
+  instance: EvidenceInstanceBlock;
+  collectedAt: string;
+}
+
+/** Validation outcome from the Evidence Engine. */
+export interface EvidenceValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/** Complete evidence package returned by the evidence collection workflow. */
+export interface EvidencePackage {
+  workflowId: string;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  status: EvidenceStatus;
+  validation: EvidenceValidationResult;
 }

@@ -12,8 +12,10 @@ import {
   MOCK_METRICS,
   MOCK_PRICING,
   MOCK_RECOMMENDATIONS,
+  MOCK_TAGS,
   MOCK_VOLUMES,
-} from './mock-data';
+} from './data';
+import { AppError } from '../../shared/utils';
 
 /**
  * Mock Provider — returns deterministic AWS-like data for Demo Mode.
@@ -33,13 +35,11 @@ export class MockProvider implements ProviderInterface {
   async getMetrics(resourceId: string, _region = DEFAULT_REGION): Promise<ProviderMetrics> {
     const metrics = MOCK_METRICS[resourceId];
     if (!metrics) {
-      return {
-        resourceId,
-        cpuUtilization: [0],
-        memoryUtilization: [0],
-        period: '1h',
-        datapoints: 1,
-      };
+      throw new AppError(
+        'INVALID_METRICS',
+        `No metrics found for resource ${resourceId}`,
+        404
+      );
     }
     return metrics;
   }
@@ -47,15 +47,13 @@ export class MockProvider implements ProviderInterface {
   async getPricing(instanceType: string, region = DEFAULT_REGION): Promise<ProviderPricing> {
     const pricing = MOCK_PRICING[instanceType];
     if (!pricing) {
-      return {
-        instanceType,
-        region,
-        hourlyRate: 0.05,
-        monthlyRate: 36.5,
-        currency: 'USD',
-      };
+      throw new AppError(
+        'MALFORMED_PROVIDER_RESPONSE',
+        `No pricing found for instance type ${instanceType}`,
+        404
+      );
     }
-    return pricing;
+    return { ...pricing, region };
   }
 
   async getRecommendations(
@@ -63,6 +61,18 @@ export class MockProvider implements ProviderInterface {
     _region = DEFAULT_REGION
   ): Promise<ProviderRecommendation[]> {
     return MOCK_RECOMMENDATIONS.filter((rec) => rec.resourceType === resourceType);
+  }
+
+  async getTags(resourceId: string, _region = DEFAULT_REGION): Promise<Record<string, string>> {
+    const tags = MOCK_TAGS[resourceId];
+    if (!tags) {
+      throw new AppError(
+        'MALFORMED_PROVIDER_RESPONSE',
+        `No tags found for resource ${resourceId}`,
+        404
+      );
+    }
+    return tags;
   }
 }
 

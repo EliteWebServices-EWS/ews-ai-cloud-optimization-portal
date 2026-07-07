@@ -21,7 +21,7 @@ export function createApp(): express.Application {
   const pluginRegistry = createPluginRegistry(provider);
 
   const orchestrator = createWorkflowOrchestrator({
-    evidenceEngine: createEvidenceEngine(provider),
+    evidenceEngine: createEvidenceEngine(),
     governanceEngine: createGovernanceEngine(),
     financialEngine: createFinancialEngine(),
     verificationEngine: createVerificationEngine(),
@@ -34,6 +34,7 @@ export function createApp(): express.Application {
   app.use('/api/v1', createApiRoutes({
     orchestrator,
     pluginRegistry,
+    provider,
     activeProvider: PROVIDER_NAMES.MOCK,
   }));
 

@@ -5,6 +5,7 @@ import type {
   ExecutionResult,
   FinancialImpact,
   PluginMetadata,
+  ProviderEvidenceBundle,
   QualificationResult,
   ReadinessResult,
   Recommendation,
@@ -21,7 +22,10 @@ export interface OptimizationPlugin {
   /** Discover resources eligible for optimization. */
   collectCandidates(): Promise<Candidate[]>;
 
-  /** Gather plugin-specific evidence for a candidate. */
+  /** Gather raw provider data for evidence normalization by the Evidence Engine. */
+  collectProviderEvidence(candidate: Candidate): Promise<ProviderEvidenceBundle>;
+
+  /** @deprecated Sprint 2+ uses collectProviderEvidence + Evidence Engine. */
   collectEvidence(candidate: Candidate): Promise<Evidence>;
 
   /** Determine if a candidate is valid for analysis. */
