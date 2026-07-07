@@ -4,5 +4,6 @@ export {
   MOCK_METRICS,
   MOCK_PRICING,
   MOCK_RECOMMENDATIONS,
+  MOCK_TAGS,
   MOCK_VOLUMES,
-} from './mock-data';
+} from './data';

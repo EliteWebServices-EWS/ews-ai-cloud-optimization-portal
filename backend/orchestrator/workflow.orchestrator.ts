@@ -1,11 +1,14 @@
 import type { OptimizationPlugin } from '../shared/interfaces';
 import type {
   EvidenceEngineInterface,
-  FinancialEngineInterface,
-  GovernanceEngineInterface,
-  VerificationEngineInterface,
 } from '../shared/interfaces';
-import type { OptimizationContext, WorkflowResult } from '../shared/types';
+import type {
+  Evidence,
+  EvidencePackage,
+  OptimizationContext,
+  StandardizedEvidence,
+  WorkflowResult,
+} from '../shared/types';
 import {
   PLATFORM_MODE,
   PROVIDER_NAMES,
@@ -19,48 +22,75 @@ const logger = createLogger('WorkflowOrchestrator');
 
 export interface WorkflowOrchestratorDependencies {
   evidenceEngine: EvidenceEngineInterface;
-  governanceEngine: GovernanceEngineInterface;
-  financialEngine: FinancialEngineInterface;
-  verificationEngine: VerificationEngineInterface;
+  governanceEngine: import('../shared/interfaces').GovernanceEngineInterface;
+  financialEngine: import('../shared/interfaces').FinancialEngineInterface;
+  verificationEngine: import('../shared/interfaces').VerificationEngineInterface;
   getPlugin: (name: PluginName) => OptimizationPlugin;
 }
 
 export interface RunWorkflowRequest {
   plugin: PluginName;
   resourceId?: string;
+  region?: string;
+}
+
+export interface RunEvidenceWorkflowRequest extends RunWorkflowRequest {}
+
+function toLegacyEvidence(
+  evidencePackage: EvidencePackage,
+  standardized: StandardizedEvidence
+): Evidence {
+  return {
+    resourceId: evidencePackage.candidate.resourceId,
+    resourceType: evidencePackage.candidate.resourceType,
+    region: evidencePackage.candidate.region,
+    status: evidencePackage.status,
+    cpuUtilization: standardized.telemetry.cpuUtilization,
+    memoryUtilization: standardized.telemetry.memoryUtilization,
+    networkUtilization: standardized.telemetry.networkUtilization,
+    monthlyCost: standardized.pricing.monthlyRate,
+    instanceType: standardized.instance.instanceType,
+    recommendedInstanceType: standardized.recommendations[0]?.target,
+    tags: standardized.tags,
+    metrics: {
+      cpuUtilization: standardized.metrics.cpuUtilization,
+      memoryUtilization: standardized.metrics.memoryUtilization,
+    },
+    collectedAt: standardized.collectedAt,
+  };
 }
 
 /**
  * Workflow Orchestrator — coordinates engines and plugins through the optimization lifecycle.
- * Contains no optimization logic. Does not execute AWS actions.
+ * Sprint 2: evidence collection workflow implemented. Later stages remain placeholders.
  */
 export class WorkflowOrchestrator {
   constructor(private readonly deps: WorkflowOrchestratorDependencies) {}
 
-  async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
+  async runEvidenceWorkflow(request: RunEvidenceWorkflowRequest): Promise<EvidencePackage> {
     const workflowId = generateWorkflowId();
     const start = Date.now();
+    const region = request.region ?? 'us-east-1';
 
     const context: OptimizationContext = {
       workflowId,
       plugin: request.plugin,
       provider: PROVIDER_NAMES.MOCK,
-      region: 'us-east-1',
+      region,
       mode: PLATFORM_MODE.DEMO,
       startedAt: new Date().toISOString(),
     };
 
-    logger.info('Starting workflow', {
+    logger.info('Starting evidence workflow', {
       workflowId,
       plugin: request.plugin,
-      operation: 'runDemoWorkflow',
+      operation: 'runEvidenceWorkflow',
     });
 
     const plugin = this.deps.getPlugin(request.plugin);
-
     const candidates = await plugin.collectCandidates();
     const candidate =
-      candidates.find((c) => c.resourceId === request.resourceId) ?? candidates[0];
+      candidates.find((item) => item.resourceId === request.resourceId) ?? candidates[0];
 
     if (!candidate) {
       throw new Error('No optimization candidates found');
@@ -68,20 +98,50 @@ export class WorkflowOrchestrator {
 
     context.candidate = candidate;
 
-    const evidenceResult = await this.deps.evidenceEngine.execute({ context, candidate });
+    const providerData = await plugin.collectProviderEvidence(candidate);
+    const evidenceResult = await this.deps.evidenceEngine.execute({
+      context,
+      candidate,
+      providerData,
+    });
+
     if (!evidenceResult.success || !evidenceResult.data) {
       throw new Error(evidenceResult.error?.reason ?? 'Evidence collection failed');
     }
 
-    const pluginEvidence = await plugin.collectEvidence(candidate);
-    const qualification = await plugin.qualify(pluginEvidence);
-    const readiness = await plugin.scoreReadiness(pluginEvidence);
-    const confidence = await plugin.scoreConfidence(pluginEvidence);
-    const recommendation = await plugin.recommend(pluginEvidence);
+    logger.info('Evidence workflow completed', {
+      workflowId,
+      plugin: request.plugin,
+      durationMs: Date.now() - start,
+      status: evidenceResult.data.status,
+    });
+
+    return evidenceResult.data.package;
+  }
+
+  async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
+    const evidencePackage = await this.runEvidenceWorkflow(request);
+    const legacyEvidence = toLegacyEvidence(evidencePackage, evidencePackage.evidence);
+    const plugin = this.deps.getPlugin(request.plugin);
+
+    const qualification = await plugin.qualify(legacyEvidence);
+    const readiness = await plugin.scoreReadiness(legacyEvidence);
+    const confidence = await plugin.scoreConfidence(legacyEvidence);
+    const recommendation = await plugin.recommend(legacyEvidence);
+
+    const context = {
+      workflowId: evidencePackage.workflowId,
+      plugin: request.plugin,
+      provider: PROVIDER_NAMES.MOCK,
+      region: evidencePackage.candidate.region,
+      mode: PLATFORM_MODE.DEMO,
+      startedAt: new Date().toISOString(),
+      candidate: evidencePackage.candidate,
+    };
 
     const governanceResult = await this.deps.governanceEngine.execute({
       context,
-      evidence: evidenceResult.data.evidence,
+      evidence: legacyEvidence,
       recommendation,
     });
     if (!governanceResult.success || !governanceResult.data) {
@@ -90,7 +150,7 @@ export class WorkflowOrchestrator {
 
     const financialResult = await this.deps.financialEngine.execute({
       context,
-      evidence: evidenceResult.data.evidence,
+      evidence: legacyEvidence,
       recommendation,
     });
     if (!financialResult.success || !financialResult.data) {
@@ -98,7 +158,6 @@ export class WorkflowOrchestrator {
     }
 
     const pluginFinancial = await plugin.estimateFinancialImpact(recommendation);
-
     const verificationResult = await this.deps.verificationEngine.execute({
       context,
       recommendation,
@@ -108,13 +167,13 @@ export class WorkflowOrchestrator {
       throw new Error(verificationResult.error?.reason ?? 'Verification failed');
     }
 
-    const result: WorkflowResult = {
-      workflowId,
+    return {
+      workflowId: evidencePackage.workflowId,
       status: WORKFLOW_STATES.COMPLETED,
       currentStage: WORKFLOW_STAGES.VERIFICATION,
       context,
-      candidate,
-      evidence: pluginEvidence,
+      candidate: evidencePackage.candidate,
+      evidence: legacyEvidence,
       qualification,
       readiness,
       confidence,
@@ -124,15 +183,6 @@ export class WorkflowOrchestrator {
       verification: verificationResult.data,
       completedAt: new Date().toISOString(),
     };
-
-    logger.info('Workflow completed', {
-      workflowId,
-      plugin: request.plugin,
-      durationMs: Date.now() - start,
-      status: WORKFLOW_STATES.COMPLETED,
-    });
-
-    return result;
   }
 }
 

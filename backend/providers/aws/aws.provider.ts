@@ -43,6 +43,10 @@ export class AwsProvider implements ProviderInterface {
   ): Promise<ProviderRecommendation[]> {
     this.notImplemented('getRecommendations');
   }
+
+  async getTags(_resourceId: string, _region = DEFAULT_REGION): Promise<Record<string, string>> {
+    this.notImplemented('getTags');
+  }
 }
 
 export function createAwsProvider(): AwsProvider {

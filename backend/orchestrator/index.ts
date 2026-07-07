@@ -5,4 +5,5 @@ export {
 export type {
   WorkflowOrchestratorDependencies,
   RunWorkflowRequest,
+  RunEvidenceWorkflowRequest,
 } from './workflow.orchestrator';

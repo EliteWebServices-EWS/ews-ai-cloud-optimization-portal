@@ -27,4 +27,7 @@ export interface ProviderInterface {
 
   /** Retrieve external optimization hints (e.g. Compute Optimizer). */
   getRecommendations(resourceType: string, region?: string): Promise<ProviderRecommendation[]>;
+
+  /** Retrieve resource tags. */
+  getTags(resourceId: string, region?: string): Promise<Record<string, string>>;
 }

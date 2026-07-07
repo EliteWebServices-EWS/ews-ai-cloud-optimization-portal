@@ -6,22 +6,25 @@ import type {
   ExecutionResult,
   FinancialImpact,
   PluginMetadata,
+  ProviderEvidenceBundle,
   QualificationResult,
   ReadinessResult,
   Recommendation,
   VerificationResult,
 } from '../../shared/types';
 import { EVIDENCE_STATUS, PLUGIN_NAMES, VERIFICATION_STATUS } from '../../shared/constants';
-import { MOCK_PRICING } from '../../providers/mock/mock-data';
+import { AppError, createLogger } from '../../shared/utils';
+
+const logger = createLogger('Ec2Plugin');
 
 /**
  * EC2 Optimization Plugin — Plugin #1 reference implementation.
- * Returns placeholder values only. No real optimization logic in Sprint 1.
+ * Sprint 2: collects provider data for the Evidence Engine. No optimization decisions.
  */
 export class Ec2Plugin implements OptimizationPlugin {
   readonly metadata: PluginMetadata = {
     name: PLUGIN_NAMES.EC2,
-    version: '1.0.0',
+    version: '1.1.0',
     description: 'EC2 compute optimization plugin',
     resourceTypes: ['ec2'],
   };
@@ -29,6 +32,7 @@ export class Ec2Plugin implements OptimizationPlugin {
   constructor(private readonly provider: ProviderInterface) {}
 
   async collectCandidates(): Promise<Candidate[]> {
+    logger.info('Collecting EC2 candidates', { plugin: this.metadata.name, operation: 'collectCandidates' });
     const instances = await this.provider.getInstances();
     return instances.map((instance) => ({
       resourceId: instance.instanceId,
@@ -42,16 +46,53 @@ export class Ec2Plugin implements OptimizationPlugin {
     }));
   }
 
-  async collectEvidence(candidate: Candidate): Promise<Evidence> {
-    const metrics = await this.provider.getMetrics(candidate.resourceId, candidate.region);
-    const instanceType = String(candidate.metadata?.instanceType ?? 't3.medium');
-    const pricing = await this.provider.getPricing(instanceType, candidate.region);
+  async collectProviderEvidence(candidate: Candidate): Promise<ProviderEvidenceBundle> {
+    logger.info('Collecting provider evidence', {
+      plugin: this.metadata.name,
+      operation: 'collectProviderEvidence',
+    });
 
+    const instances = await this.provider.getInstances(candidate.region);
+    const instance = instances.find((item) => item.instanceId === candidate.resourceId);
+    if (!instance) {
+      throw new AppError(
+        'PROVIDER_UNAVAILABLE',
+        `Instance ${candidate.resourceId} not found in provider inventory`,
+        404
+      );
+    }
+
+    logger.info('Metrics retrieval started', {
+      plugin: this.metadata.name,
+      operation: 'getMetrics',
+    });
+    const metrics = await this.provider.getMetrics(candidate.resourceId, candidate.region);
+
+    logger.info('Provider request completed', {
+      plugin: this.metadata.name,
+      operation: 'getPricing',
+    });
+    const pricing = await this.provider.getPricing(instance.instanceType, candidate.region);
+    const recommendations = await this.provider.getRecommendations('ec2', candidate.region);
+    const tags = await this.provider.getTags(candidate.resourceId, candidate.region);
+
+    return {
+      instance,
+      metrics,
+      pricing,
+      recommendations,
+      tags,
+    };
+  }
+
+  async collectEvidence(candidate: Candidate): Promise<Evidence> {
+    const bundle = await this.collectProviderEvidence(candidate);
     const avgCpu =
-      metrics.cpuUtilization.reduce((sum, v) => sum + v, 0) / metrics.cpuUtilization.length;
+      bundle.metrics.cpuUtilization.reduce((sum, value) => sum + value, 0) /
+      bundle.metrics.cpuUtilization.length;
     const avgMemory =
-      metrics.memoryUtilization.reduce((sum, v) => sum + v, 0) /
-      metrics.memoryUtilization.length;
+      bundle.metrics.memoryUtilization.reduce((sum, value) => sum + value, 0) /
+      bundle.metrics.memoryUtilization.length;
 
     return {
       resourceId: candidate.resourceId,
@@ -60,13 +101,9 @@ export class Ec2Plugin implements OptimizationPlugin {
       status: EVIDENCE_STATUS.COMPLETE,
       cpuUtilization: Math.round(avgCpu * 100) / 100,
       memoryUtilization: Math.round(avgMemory * 100) / 100,
-      monthlyCost: pricing.monthlyRate,
-      instanceType,
-      tags: candidate.tags,
-      metrics: {
-        cpuUtilization: metrics.cpuUtilization,
-        memoryUtilization: metrics.memoryUtilization,
-      },
+      monthlyCost: bundle.pricing.monthlyRate,
+      instanceType: bundle.instance.instanceType,
+      tags: bundle.tags,
       collectedAt: new Date().toISOString(),
     };
   }
@@ -82,38 +119,19 @@ export class Ec2Plugin implements OptimizationPlugin {
     };
   }
 
-  async scoreReadiness(evidence: Evidence): Promise<ReadinessResult> {
-    const factors: string[] = [];
-    let score = 0;
-
-    if (evidence.status === EVIDENCE_STATUS.COMPLETE) {
-      score += 0.4;
-      factors.push('Evidence collection complete');
-    }
-    if (evidence.monthlyCost !== undefined) {
-      score += 0.3;
-      factors.push('Pricing data available');
-    }
-    if (evidence.metrics && Object.keys(evidence.metrics).length > 0) {
-      score += 0.3;
-      factors.push('Telemetry data present');
-    }
-
+  async scoreReadiness(_evidence: Evidence): Promise<ReadinessResult> {
     return {
-      score: Math.min(score, 1),
-      status: score >= 0.7 ? 'ready' : score >= 0.4 ? 'partial' : 'not_ready',
-      factors,
+      score: 0,
+      status: 'not_ready',
+      factors: ['Readiness scoring deferred to Sprint 3+'],
     };
   }
 
-  async scoreConfidence(evidence: Evidence): Promise<ConfidenceResult> {
-    const cpu = evidence.cpuUtilization ?? 50;
-    const stabilityFactor = cpu < 30 ? 0.85 : cpu < 50 ? 0.7 : 0.5;
-
+  async scoreConfidence(_evidence: Evidence): Promise<ConfidenceResult> {
     return {
-      score: stabilityFactor,
-      level: stabilityFactor >= 0.8 ? 'high' : stabilityFactor >= 0.6 ? 'medium' : 'low',
-      factors: ['Deterministic placeholder scoring — Sprint 1'],
+      score: 0,
+      level: 'low',
+      factors: ['Confidence scoring deferred to Sprint 3+'],
     };
   }
 
@@ -127,29 +145,18 @@ export class Ec2Plugin implements OptimizationPlugin {
       resourceType: evidence.resourceType,
       from: evidence.instanceType,
       to: match?.target ?? 't3.medium',
-      reason: match?.reason ?? 'Placeholder recommendation — Sprint 1',
+      reason: match?.reason ?? 'Recommendation deferred to Sprint 3+',
       region: evidence.region,
     };
   }
 
-  async estimateFinancialImpact(recommendation: Recommendation): Promise<FinancialImpact> {
-    const fromType = recommendation.from ?? 't3.large';
-    const toType = recommendation.to ?? 't3.medium';
-    const currentPricing = MOCK_PRICING[fromType];
-    const recommendedPricing = MOCK_PRICING[toType];
-
-    const currentCost = currentPricing?.monthlyRate ?? 85.2;
-    const recommendedCost = recommendedPricing?.monthlyRate ?? 58.6;
-    const monthlySavings = Math.round((currentCost - recommendedCost) * 100) / 100;
-    const annualSavings = Math.round(monthlySavings * 12 * 100) / 100;
-    const roi = currentCost > 0 ? Math.round((monthlySavings / currentCost) * 1000) / 10 : 0;
-
+  async estimateFinancialImpact(_recommendation: Recommendation): Promise<FinancialImpact> {
     return {
-      currentCost,
-      recommendedCost,
-      monthlySavings,
-      annualSavings,
-      roi,
+      currentCost: 0,
+      recommendedCost: 0,
+      monthlySavings: 0,
+      annualSavings: 0,
+      roi: 0,
       currency: 'USD',
     };
   }
@@ -159,11 +166,10 @@ export class Ec2Plugin implements OptimizationPlugin {
       status: executionResult.success
         ? VERIFICATION_STATUS.VERIFIED
         : VERIFICATION_STATUS.PENDING,
-      expectedSavings: 26.6,
-      actualSavings: executionResult.success ? 25.9 : 0,
-      variance: executionResult.success ? -0.7 : 0,
-      confidenceScore: 0.91,
-      message: 'Placeholder verification — Sprint 1',
+      expectedSavings: 0,
+      actualSavings: 0,
+      variance: 0,
+      message: 'Verification deferred to Sprint 3+',
     };
   }
 }
