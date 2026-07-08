@@ -16,12 +16,18 @@ import type {
 import { EVIDENCE_STATUS, PLUGIN_NAMES, VERIFICATION_STATUS } from '../../shared/constants';
 import { AppError, createLogger } from '../../shared/utils';
 import { calculateReadiness, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
+import {
+  calculateFinancialImpact,
+  DEFAULT_FINANCIAL_CONFIG,
+  resolvePricing,
+  resolveProjectedInstanceType,
+} from '../../engines/financial';
 
 const logger = createLogger('Ec2Plugin');
 
 /**
  * EC2 Optimization Plugin — Plugin #1 reference implementation.
- * Sprint 3: delegates readiness scoring to the Governance Engine readiness module.
+ * Sprint 4: delegates financial estimation to the Financial Engine calculator module.
  */
 export class Ec2Plugin implements OptimizationPlugin {
   readonly metadata: PluginMetadata = {
@@ -152,15 +158,72 @@ export class Ec2Plugin implements OptimizationPlugin {
     };
   }
 
-  async estimateFinancialImpact(_recommendation: Recommendation): Promise<FinancialImpact> {
-    return {
-      currentCost: 0,
-      recommendedCost: 0,
-      monthlySavings: 0,
-      annualSavings: 0,
-      roi: 0,
-      currency: 'USD',
+  async estimateFinancialImpact(recommendation: Recommendation): Promise<FinancialImpact> {
+    const standardized: StandardizedEvidence = {
+      telemetry: {
+        cpuUtilization: 0,
+        memoryUtilization: 0,
+        observationWindowDays: 14,
+      },
+      metrics: {
+        cpuUtilization: [],
+        memoryUtilization: [],
+        period: '1h',
+        datapoints: 0,
+        utilizationHistory: [],
+      },
+      pricing: {
+        instanceType: recommendation.from ?? 'unknown',
+        region: recommendation.region,
+        hourlyRate: 0,
+        monthlyRate: 0,
+        currency: 'USD',
+      },
+      recommendations: [
+        {
+          resourceId: recommendation.resourceId,
+          resourceType: recommendation.resourceType,
+          action: recommendation.action,
+          target: recommendation.to ?? recommendation.from ?? 'unknown',
+          reason: recommendation.reason,
+        },
+      ],
+      tags: {},
+      instance: {
+        instanceId: recommendation.resourceId,
+        instanceType: recommendation.from ?? 'unknown',
+        state: 'running',
+        region: recommendation.region,
+        launchTime: new Date().toISOString(),
+      },
+      collectedAt: new Date().toISOString(),
     };
+
+    const currentPricing = await this.provider.getPricing(
+      recommendation.from ?? 'unknown',
+      recommendation.region
+    );
+    standardized.pricing = {
+      instanceType: currentPricing.instanceType,
+      region: currentPricing.region,
+      hourlyRate: currentPricing.hourlyRate,
+      monthlyRate: currentPricing.monthlyRate,
+      currency: currentPricing.currency,
+    };
+
+    const projectedType = resolveProjectedInstanceType(standardized, recommendation.resourceId);
+    const pricing = await resolvePricing({
+      evidence: standardized,
+      region: recommendation.region,
+      provider: this.provider,
+      config: DEFAULT_FINANCIAL_CONFIG,
+    });
+
+    return calculateFinancialImpact(
+      pricing,
+      DEFAULT_FINANCIAL_CONFIG,
+      projectedType !== undefined && projectedType.length > 0
+    );
   }
 
   async verify(executionResult: ExecutionResult): Promise<VerificationResult> {

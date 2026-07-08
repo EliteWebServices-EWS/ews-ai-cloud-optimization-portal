@@ -30,7 +30,7 @@ export interface GovernanceEngineInterface {
 
 /**
  * Financial Engine contract.
- * Calculates financial impact of recommendations.
+ * Calculates financial impact from evidence and provider pricing.
  */
 export interface FinancialEngineInterface {
   readonly name: string;

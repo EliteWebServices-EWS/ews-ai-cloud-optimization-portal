@@ -23,7 +23,7 @@ export function createApp(): express.Application {
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
     governanceEngine: createGovernanceEngine(),
-    financialEngine: createFinancialEngine(),
+    financialEngine: createFinancialEngine({ provider }),
     verificationEngine: createVerificationEngine(),
     getPlugin: (name: import('./shared/constants').PluginName) => pluginRegistry.get(name),
   });

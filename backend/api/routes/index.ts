@@ -4,6 +4,8 @@ import type { PluginRegistry } from '../../plugins';
 import type { ProviderInterface } from '../../shared/interfaces';
 import { DEFAULT_REGION, PLUGIN_NAMES, PROVIDER_NAMES } from '../../shared/constants';
 import { GOVERNANCE_POLICY_CATALOG, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
+import { DEFAULT_FINANCIAL_CONFIG, generateFinancialReport } from '../../engines/financial';
+import { MOCK_PRICING } from '../../providers/mock/data';
 import {
   AppError,
   buildErrorResponse,
@@ -59,6 +61,39 @@ function formatGovernanceResponse(
       policies: result.governance.policies,
     },
     readiness: result.readiness,
+  };
+}
+
+function formatFinancialResponse(
+  result: Awaited<ReturnType<WorkflowOrchestrator['runFinancialWorkflow']>>
+) {
+  return {
+    candidate: result.candidate,
+    evidence: {
+      telemetry: result.evidence.telemetry,
+      metrics: result.evidence.metrics,
+      pricing: result.evidence.pricing,
+      recommendations: result.evidence.recommendations,
+      tags: result.evidence.tags,
+      instance: result.evidence.instance,
+    },
+    governance: {
+      status: result.governance.status,
+      decision: result.governance.decision,
+      readinessScore: result.governance.readinessScore,
+      reason: result.governance.reason,
+      approver: result.governance.approver,
+      policies: result.governance.policies,
+    },
+    financialImpact: {
+      currentMonthlyCost: result.financialImpact.currentMonthlyCost,
+      projectedMonthlyCost: result.financialImpact.projectedMonthlyCost,
+      monthlySavings: result.financialImpact.monthlySavings,
+      annualSavings: result.financialImpact.annualSavings,
+      percentageReduction: result.financialImpact.percentageReduction,
+      status: result.financialImpact.status,
+      currency: result.financialImpact.currency,
+    },
   };
 }
 
@@ -153,6 +188,24 @@ export function createPluginRoutes(deps: Pick<ApiDependencies, 'pluginRegistry' 
       );
     } catch (error) {
       handleRouteError(res, error, requestId, 'governance');
+    }
+  });
+
+  router.get('/plugins/ec2/financial', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runFinancialWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatFinancialResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'financial');
     }
   });
 
@@ -272,6 +325,24 @@ export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>
     }
   });
 
+  router.get('/workflow/financial', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runFinancialWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatFinancialResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'financial');
+    }
+  });
+
   router.get('/workflow/demo', async (_req: Request, res: Response) => {
     const requestId = generateRequestId();
 
@@ -283,6 +354,75 @@ export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>
       res.json(buildSuccessResponse(result, requestId));
     } catch (error) {
       handleRouteError(res, error, requestId, 'orchestrator');
+    }
+  });
+
+  return router;
+}
+
+/** Financial information routes. */
+export function createFinancialRoutes(
+  deps: Pick<ApiDependencies, 'provider' | 'orchestrator'>
+): Router {
+  const router = Router();
+
+  router.get('/financial/pricing', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const instanceType = typeof req.query.instanceType === 'string' ? req.query.instanceType : undefined;
+      const region = typeof req.query.region === 'string' ? req.query.region : DEFAULT_REGION;
+
+      if (instanceType) {
+        const pricing = await deps.provider.getPricing(instanceType, region);
+        res.json(buildSuccessResponse({ pricing }, requestId));
+        return;
+      }
+
+      res.json(
+        buildSuccessResponse(
+          {
+            pricing: Object.values(MOCK_PRICING),
+            region,
+            source: deps.provider.name,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'financial');
+    }
+  });
+
+  router.get('/financial/summary', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runFinancialWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      const report = generateFinancialReport(result.financialImpact, DEFAULT_FINANCIAL_CONFIG);
+
+      res.json(
+        buildSuccessResponse(
+          {
+            report,
+            configuration: DEFAULT_FINANCIAL_CONFIG,
+            methodology: {
+              description: 'Savings estimated from provider pricing for current and projected instance types',
+              formula: 'monthlySavings = currentMonthlyCost - projectedMonthlyCost',
+              annualFormula: 'annualSavings = monthlySavings × monthsPerYear',
+              percentageFormula: 'percentageReduction = (monthlySavings / currentMonthlyCost) × 100',
+            },
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'financial');
     }
   });
 
@@ -319,6 +459,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createProviderRoutes(deps));
   router.use(createWorkflowRoutes(deps));
   router.use(createGovernanceRoutes());
+  router.use(createFinancialRoutes(deps));
 
   return router;
 }
