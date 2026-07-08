@@ -105,3 +105,21 @@ export const FINANCIAL_STATUS = {
 } as const;
 
 export type FinancialStatus = (typeof FINANCIAL_STATUS)[keyof typeof FINANCIAL_STATUS];
+
+export const CONFIDENCE_STATUS = {
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+  LOW: 'LOW',
+} as const;
+
+export type ConfidenceStatus = (typeof CONFIDENCE_STATUS)[keyof typeof CONFIDENCE_STATUS];
+
+export const RECOMMENDATION_STATUS = {
+  RECOMMENDED: 'RECOMMENDED',
+  NOT_RECOMMENDED: 'NOT_RECOMMENDED',
+  DEFERRED: 'DEFERRED',
+  INSUFFICIENT_DATA: 'INSUFFICIENT_DATA',
+} as const;
+
+export type RecommendationStatus =
+  (typeof RECOMMENDATION_STATUS)[keyof typeof RECOMMENDATION_STATUS];

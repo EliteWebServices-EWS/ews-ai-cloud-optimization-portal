@@ -4,6 +4,8 @@ import {
   createEvidenceEngine,
   createFinancialEngine,
   createGovernanceEngine,
+  createConfidenceEngine,
+  createRecommendationEngine,
   createVerificationEngine,
 } from './engines';
 import { createWorkflowOrchestrator } from './orchestrator';
@@ -24,6 +26,8 @@ export function createApp(): express.Application {
     evidenceEngine: createEvidenceEngine(),
     governanceEngine: createGovernanceEngine(),
     financialEngine: createFinancialEngine({ provider }),
+    confidenceEngine: createConfidenceEngine(),
+    recommendationEngine: createRecommendationEngine(),
     verificationEngine: createVerificationEngine(),
     getPlugin: (name: import('./shared/constants').PluginName) => pluginRegistry.get(name),
   });

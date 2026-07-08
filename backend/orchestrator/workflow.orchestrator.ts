@@ -1,11 +1,10 @@
 import type { OptimizationPlugin, EvidenceEngineInterface } from '../shared/interfaces';
 import type {
-  Evidence,
   EvidencePackage,
   FinancialWorkflowResult,
   GovernanceWorkflowResult,
   OptimizationContext,
-  StandardizedEvidence,
+  RecommendationWorkflowResult,
   WorkflowResult,
 } from '../shared/types';
 import {
@@ -23,6 +22,8 @@ export interface WorkflowOrchestratorDependencies {
   evidenceEngine: EvidenceEngineInterface;
   governanceEngine: import('../shared/interfaces').GovernanceEngineInterface;
   financialEngine: import('../shared/interfaces').FinancialEngineInterface;
+  confidenceEngine: import('../shared/interfaces').ConfidenceEngineInterface;
+  recommendationEngine: import('../shared/interfaces').RecommendationEngineInterface;
   verificationEngine: import('../shared/interfaces').VerificationEngineInterface;
   getPlugin: (name: PluginName) => OptimizationPlugin;
 }
@@ -35,37 +36,15 @@ export interface RunWorkflowRequest {
 
 export interface RunEvidenceWorkflowRequest extends RunWorkflowRequest {}
 
-function toLegacyEvidence(
-  evidencePackage: EvidencePackage,
-  standardized: StandardizedEvidence
-): Evidence {
-  return {
-    resourceId: evidencePackage.candidate.resourceId,
-    resourceType: evidencePackage.candidate.resourceType,
-    region: evidencePackage.candidate.region,
-    status: evidencePackage.status,
-    cpuUtilization: standardized.telemetry.cpuUtilization,
-    memoryUtilization: standardized.telemetry.memoryUtilization,
-    networkUtilization: standardized.telemetry.networkUtilization,
-    monthlyCost: standardized.pricing.monthlyRate,
-    instanceType: standardized.instance.instanceType,
-    recommendedInstanceType: standardized.recommendations[0]?.target,
-    tags: standardized.tags,
-    metrics: {
-      cpuUtilization: standardized.metrics.cpuUtilization,
-      memoryUtilization: standardized.metrics.memoryUtilization,
-    },
-    collectedAt: standardized.collectedAt,
-  };
-}
-
 export interface RunGovernanceWorkflowRequest extends RunWorkflowRequest {}
 
 export interface RunFinancialWorkflowRequest extends RunWorkflowRequest {}
 
+export interface RunRecommendationWorkflowRequest extends RunWorkflowRequest {}
+
 /**
  * Workflow Orchestrator — coordinates engines and plugins through the optimization lifecycle.
- * Sprint 4: financial impact workflow implemented. Later stages remain placeholders.
+ * Sprint 5: confidence and recommendation workflow implemented. Verification remains placeholder.
  */
 export class WorkflowOrchestrator {
   constructor(private readonly deps: WorkflowOrchestratorDependencies) {}
@@ -219,6 +198,8 @@ export class WorkflowOrchestrator {
       workflowId: governanceResult.workflowId,
       candidate: governanceResult.candidate,
       evidence: governanceResult.evidence,
+      evidenceStatus: governanceResult.evidenceStatus,
+      validation: governanceResult.validation,
       governance: governanceResult.governance,
       readiness: governanceResult.readiness,
       financialImpact: financialResult.data,
@@ -226,69 +207,133 @@ export class WorkflowOrchestrator {
     };
   }
 
+  async runRecommendationWorkflow(
+    request: RunRecommendationWorkflowRequest
+  ): Promise<RecommendationWorkflowResult> {
+    const start = Date.now();
+    const financialResult = await this.runFinancialWorkflow(request);
+
+    const context: OptimizationContext = {
+      workflowId: financialResult.workflowId,
+      plugin: request.plugin,
+      provider: PROVIDER_NAMES.MOCK,
+      region: financialResult.candidate.region,
+      mode: PLATFORM_MODE.DEMO,
+      startedAt: new Date().toISOString(),
+      candidate: financialResult.candidate,
+    };
+
+    logger.info('Starting recommendation workflow', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      operation: 'runRecommendationWorkflow',
+    });
+
+    const confidenceResult = await this.deps.confidenceEngine.execute({
+      context,
+      candidate: financialResult.candidate,
+      evidence: financialResult.evidence,
+      evidenceStatus: financialResult.evidenceStatus,
+      validation: financialResult.validation,
+      governance: financialResult.governance,
+      financialImpact: financialResult.financialImpact,
+    });
+
+    if (!confidenceResult.success || !confidenceResult.data) {
+      throw new Error(confidenceResult.error?.reason ?? 'Confidence calculation failed');
+    }
+
+    const recommendationResult = await this.deps.recommendationEngine.execute({
+      context,
+      candidate: financialResult.candidate,
+      evidence: financialResult.evidence,
+      governance: financialResult.governance,
+      financialImpact: financialResult.financialImpact,
+      confidence: confidenceResult.data,
+    });
+
+    if (!recommendationResult.success || !recommendationResult.data) {
+      throw new Error(recommendationResult.error?.reason ?? 'Recommendation generation failed');
+    }
+
+    logger.info('Recommendation workflow completed', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      durationMs: Date.now() - start,
+      status: recommendationResult.data.status,
+    });
+
+    return {
+      workflowId: financialResult.workflowId,
+      candidate: financialResult.candidate,
+      evidence: financialResult.evidence,
+      evidenceStatus: financialResult.evidenceStatus,
+      validation: financialResult.validation,
+      governance: financialResult.governance,
+      readiness: financialResult.readiness,
+      financialImpact: financialResult.financialImpact,
+      confidence: confidenceResult.data,
+      recommendation: recommendationResult.data,
+      completedAt: new Date().toISOString(),
+    };
+  }
+
   async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
-    const evidencePackage = await this.runEvidenceWorkflow(request);
-    const legacyEvidence = toLegacyEvidence(evidencePackage, evidencePackage.evidence);
+    const recommendationWorkflow = await this.runRecommendationWorkflow(request);
+    const legacyEvidence = {
+      resourceId: recommendationWorkflow.candidate.resourceId,
+      resourceType: recommendationWorkflow.candidate.resourceType,
+      region: recommendationWorkflow.candidate.region,
+      status: recommendationWorkflow.evidenceStatus,
+      cpuUtilization: recommendationWorkflow.evidence.telemetry.cpuUtilization,
+      memoryUtilization: recommendationWorkflow.evidence.telemetry.memoryUtilization,
+      networkUtilization: recommendationWorkflow.evidence.telemetry.networkUtilization,
+      monthlyCost: recommendationWorkflow.evidence.pricing.monthlyRate,
+      instanceType: recommendationWorkflow.evidence.instance.instanceType,
+      recommendedInstanceType: recommendationWorkflow.evidence.recommendations[0]?.target,
+      tags: recommendationWorkflow.evidence.tags,
+      collectedAt: recommendationWorkflow.evidence.collectedAt,
+    };
     const plugin = this.deps.getPlugin(request.plugin);
 
     const qualification = await plugin.qualify(legacyEvidence);
-    const confidence = await plugin.scoreConfidence(legacyEvidence);
-    const recommendation = await plugin.recommend(legacyEvidence);
+    const recommendation =
+      recommendationWorkflow.recommendation.action ??
+      (await plugin.recommend(legacyEvidence));
 
     const context = {
-      workflowId: evidencePackage.workflowId,
+      workflowId: recommendationWorkflow.workflowId,
       plugin: request.plugin,
       provider: PROVIDER_NAMES.MOCK,
-      region: evidencePackage.candidate.region,
+      region: recommendationWorkflow.candidate.region,
       mode: PLATFORM_MODE.DEMO,
       startedAt: new Date().toISOString(),
-      candidate: evidencePackage.candidate,
+      candidate: recommendationWorkflow.candidate,
     };
-
-    const governanceResult = await this.deps.governanceEngine.execute({
-      context,
-      candidate: evidencePackage.candidate,
-      evidence: evidencePackage.evidence,
-      evidenceStatus: evidencePackage.status,
-      validation: evidencePackage.validation,
-      recommendation,
-    });
-    if (!governanceResult.success || !governanceResult.data) {
-      throw new Error(governanceResult.error?.reason ?? 'Governance evaluation failed');
-    }
-
-    const financialResult = await this.deps.financialEngine.execute({
-      context,
-      candidate: evidencePackage.candidate,
-      evidence: evidencePackage.evidence,
-      governance: governanceResult.data,
-    });
-    if (!financialResult.success || !financialResult.data) {
-      throw new Error(financialResult.error?.reason ?? 'Financial calculation failed');
-    }
 
     const verificationResult = await this.deps.verificationEngine.execute({
       context,
       recommendation,
-      financialImpact: financialResult.data,
+      financialImpact: recommendationWorkflow.financialImpact,
     });
     if (!verificationResult.success || !verificationResult.data) {
       throw new Error(verificationResult.error?.reason ?? 'Verification failed');
     }
 
     return {
-      workflowId: evidencePackage.workflowId,
+      workflowId: recommendationWorkflow.workflowId,
       status: WORKFLOW_STATES.COMPLETED,
       currentStage: WORKFLOW_STAGES.VERIFICATION,
       context,
-      candidate: evidencePackage.candidate,
+      candidate: recommendationWorkflow.candidate,
       evidence: legacyEvidence,
       qualification,
-      readiness: governanceResult.data.readiness,
-      confidence,
+      readiness: recommendationWorkflow.readiness,
+      confidence: recommendationWorkflow.confidence,
       recommendation,
-      governance: governanceResult.data,
-      financialImpact: financialResult.data,
+      governance: recommendationWorkflow.governance,
+      financialImpact: recommendationWorkflow.financialImpact,
+      recommendationDecision: recommendationWorkflow.recommendation,
       verification: verificationResult.data,
       completedAt: new Date().toISOString(),
     };

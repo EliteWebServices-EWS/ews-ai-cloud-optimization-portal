@@ -4,6 +4,7 @@
  */
 
 import type {
+  ConfidenceStatus,
   EvidenceStatus,
   FinancialStatus,
   GovernanceStatus,
@@ -12,6 +13,7 @@ import type {
   PolicyStatus,
   ProviderName,
   ReadinessStatus,
+  RecommendationStatus,
   VerificationStatusValue,
   WorkflowStage,
   WorkflowState,
@@ -76,11 +78,22 @@ export interface PolicyResult {
   suggestedAction?: string;
 }
 
-/** Confidence scoring output — should this recommendation be trusted? */
+/** Individual confidence factor contributing to the overall score. */
+export interface ConfidenceFactor {
+  name: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+/** Confidence scoring output — should this optimization be trusted? */
 export interface ConfidenceResult {
   score: number;
+  status: ConfidenceStatus;
+  reason: string;
+  factors: ConfidenceFactor[];
+  /** @deprecated Use status — retained for demo workflow compatibility. */
   level: 'low' | 'medium' | 'high';
-  factors: string[];
 }
 
 /** Governance engine decision output. */
@@ -144,7 +157,7 @@ export interface FinancialImpact {
   roi: number;
 }
 
-/** Optimization recommendation produced by a plugin. */
+/** Optimization action produced from evidence hints — not a final decision. */
 export interface Recommendation {
   action: string;
   resourceId: string;
@@ -154,6 +167,38 @@ export interface Recommendation {
   reason: string;
   region: string;
   metadata?: Record<string, unknown>;
+}
+
+/** Structured reason contributing to a recommendation decision. */
+export interface RecommendationReason {
+  code: string;
+  message: string;
+}
+
+/** Human-readable summary of the proposed optimization action. */
+export interface RecommendationSummary {
+  action: string;
+  fromInstanceType: string;
+  toInstanceType: string;
+  description: string;
+}
+
+/** Business justification breakdown for a recommendation decision. */
+export interface RecommendationExplanation {
+  governance: string;
+  financial: string;
+  confidence: string;
+}
+
+/** Recommendation Engine decision output. */
+export interface RecommendationDecision {
+  status: RecommendationStatus;
+  summary: string;
+  reason: string;
+  detail: RecommendationSummary;
+  explanation: RecommendationExplanation;
+  reasons: RecommendationReason[];
+  action?: Recommendation;
 }
 
 /** Outcome of an executed optimization change. */
@@ -260,9 +305,47 @@ export interface FinancialWorkflowResult {
   workflowId: string;
   candidate: Candidate;
   evidence: StandardizedEvidence;
+  evidenceStatus: EvidenceStatus;
+  validation: EvidenceValidationResult;
   governance: GovernanceResult;
   readiness: ReadinessResult;
   financialImpact: FinancialImpact;
+  completedAt: string;
+}
+
+/** Confidence engine input — evaluates trust in optimization based on evidence quality. */
+export interface ConfidenceRequest {
+  context: OptimizationContext;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  evidenceStatus: EvidenceStatus;
+  validation: EvidenceValidationResult;
+  governance: GovernanceResult;
+  financialImpact: FinancialImpact;
+}
+
+/** Recommendation engine input — combines upstream engine outputs into a decision. */
+export interface RecommendationRequest {
+  context: OptimizationContext;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  governance: GovernanceResult;
+  financialImpact: FinancialImpact;
+  confidence: ConfidenceResult;
+}
+
+/** Sprint 5 recommendation workflow response returned by the orchestrator. */
+export interface RecommendationWorkflowResult {
+  workflowId: string;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  evidenceStatus: EvidenceStatus;
+  validation: EvidenceValidationResult;
+  governance: GovernanceResult;
+  readiness: ReadinessResult;
+  financialImpact: FinancialImpact;
+  confidence: ConfidenceResult;
+  recommendation: RecommendationDecision;
   completedAt: string;
 }
 
@@ -290,6 +373,8 @@ export interface WorkflowResult {
   financialImpact: FinancialImpact;
   verification: VerificationResult;
   completedAt: string;
+  /** Sprint 5 recommendation decision when produced by the Recommendation Engine. */
+  recommendationDecision?: RecommendationDecision;
 }
 
 /** Provider-normalized EC2 instance representation. */
