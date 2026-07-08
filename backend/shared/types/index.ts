@@ -5,6 +5,7 @@
 
 import type {
   EvidenceStatus,
+  FinancialStatus,
   GovernanceStatus,
   PluginName,
   PolicySeverity,
@@ -96,14 +97,51 @@ export interface GovernanceResult {
   policies: PolicyResult[];
 }
 
-/** Financial impact estimation output. */
-export interface FinancialImpact {
-  currentCost: number;
-  recommendedCost: number;
+/** Cost estimate for a single instance configuration. */
+export interface CostEstimate {
+  instanceType: string;
+  hourlyRate: number;
+  monthlyCost: number;
+  currency: string;
+}
+
+/** Savings estimate derived from current vs projected costs. */
+export interface SavingsEstimate {
   monthlySavings: number;
   annualSavings: number;
+  percentageReduction: number;
+}
+
+/** Pricing summary comparing current and projected instance costs. */
+export interface PricingSummary {
+  region: string;
+  current: CostEstimate;
+  projected: CostEstimate;
+}
+
+/** Complete financial summary with pricing, savings, and status. */
+export interface FinancialSummary {
+  pricing: PricingSummary;
+  savings: SavingsEstimate;
   roi: number;
+  status: FinancialStatus;
+}
+
+/** Financial impact estimation output. */
+export interface FinancialImpact {
+  currentMonthlyCost: number;
+  projectedMonthlyCost: number;
+  monthlySavings: number;
+  annualSavings: number;
+  percentageReduction: number;
+  status: FinancialStatus;
   currency: string;
+  summary: FinancialSummary;
+  /** @deprecated Use currentMonthlyCost — retained for demo workflow compatibility. */
+  currentCost: number;
+  /** @deprecated Use projectedMonthlyCost — retained for demo workflow compatibility. */
+  recommendedCost: number;
+  roi: number;
 }
 
 /** Optimization recommendation produced by a plugin. */
@@ -209,11 +247,23 @@ export interface GovernanceWorkflowResult {
   completedAt: string;
 }
 
-/** Financial engine input. */
+/** Financial engine input — estimates impact from evidence and provider pricing hints. */
 export interface FinancialRequest {
   context: OptimizationContext;
-  evidence: Evidence;
-  recommendation: Recommendation;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  governance: GovernanceResult;
+}
+
+/** Sprint 4 financial workflow response returned by the orchestrator. */
+export interface FinancialWorkflowResult {
+  workflowId: string;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  governance: GovernanceResult;
+  readiness: ReadinessResult;
+  financialImpact: FinancialImpact;
+  completedAt: string;
 }
 
 /** Verification engine input. */

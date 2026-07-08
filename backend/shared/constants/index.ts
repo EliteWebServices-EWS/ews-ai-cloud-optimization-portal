@@ -97,3 +97,11 @@ export const PLATFORM_MODE = {
 } as const;
 
 export type PlatformMode = (typeof PLATFORM_MODE)[keyof typeof PLATFORM_MODE];
+
+export const FINANCIAL_STATUS = {
+  ESTIMATED: 'ESTIMATED',
+  UNAVAILABLE: 'UNAVAILABLE',
+  INSUFFICIENT_DATA: 'INSUFFICIENT_DATA',
+} as const;
+
+export type FinancialStatus = (typeof FINANCIAL_STATUS)[keyof typeof FINANCIAL_STATUS];

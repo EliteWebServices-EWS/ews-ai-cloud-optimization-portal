@@ -2,6 +2,7 @@ import type { OptimizationPlugin, EvidenceEngineInterface } from '../shared/inte
 import type {
   Evidence,
   EvidencePackage,
+  FinancialWorkflowResult,
   GovernanceWorkflowResult,
   OptimizationContext,
   StandardizedEvidence,
@@ -60,9 +61,11 @@ function toLegacyEvidence(
 
 export interface RunGovernanceWorkflowRequest extends RunWorkflowRequest {}
 
+export interface RunFinancialWorkflowRequest extends RunWorkflowRequest {}
+
 /**
  * Workflow Orchestrator — coordinates engines and plugins through the optimization lifecycle.
- * Sprint 3: governance evaluation workflow implemented. Later stages remain placeholders.
+ * Sprint 4: financial impact workflow implemented. Later stages remain placeholders.
  */
 export class WorkflowOrchestrator {
   constructor(private readonly deps: WorkflowOrchestratorDependencies) {}
@@ -172,6 +175,57 @@ export class WorkflowOrchestrator {
     };
   }
 
+  async runFinancialWorkflow(
+    request: RunFinancialWorkflowRequest
+  ): Promise<FinancialWorkflowResult> {
+    const start = Date.now();
+    const governanceResult = await this.runGovernanceWorkflow(request);
+
+    const context: OptimizationContext = {
+      workflowId: governanceResult.workflowId,
+      plugin: request.plugin,
+      provider: PROVIDER_NAMES.MOCK,
+      region: governanceResult.candidate.region,
+      mode: PLATFORM_MODE.DEMO,
+      startedAt: new Date().toISOString(),
+      candidate: governanceResult.candidate,
+    };
+
+    logger.info('Starting financial workflow', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      operation: 'runFinancialWorkflow',
+    });
+
+    const financialResult = await this.deps.financialEngine.execute({
+      context,
+      candidate: governanceResult.candidate,
+      evidence: governanceResult.evidence,
+      governance: governanceResult.governance,
+    });
+
+    if (!financialResult.success || !financialResult.data) {
+      throw new Error(financialResult.error?.reason ?? 'Financial calculation failed');
+    }
+
+    logger.info('Financial workflow completed', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      durationMs: Date.now() - start,
+      status: financialResult.data.status,
+    });
+
+    return {
+      workflowId: governanceResult.workflowId,
+      candidate: governanceResult.candidate,
+      evidence: governanceResult.evidence,
+      governance: governanceResult.governance,
+      readiness: governanceResult.readiness,
+      financialImpact: financialResult.data,
+      completedAt: new Date().toISOString(),
+    };
+  }
+
   async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
     const evidencePackage = await this.runEvidenceWorkflow(request);
     const legacyEvidence = toLegacyEvidence(evidencePackage, evidencePackage.evidence);
@@ -205,14 +259,14 @@ export class WorkflowOrchestrator {
 
     const financialResult = await this.deps.financialEngine.execute({
       context,
-      evidence: legacyEvidence,
-      recommendation,
+      candidate: evidencePackage.candidate,
+      evidence: evidencePackage.evidence,
+      governance: governanceResult.data,
     });
     if (!financialResult.success || !financialResult.data) {
       throw new Error(financialResult.error?.reason ?? 'Financial calculation failed');
     }
 
-    const pluginFinancial = await plugin.estimateFinancialImpact(recommendation);
     const verificationResult = await this.deps.verificationEngine.execute({
       context,
       recommendation,
@@ -234,7 +288,7 @@ export class WorkflowOrchestrator {
       confidence,
       recommendation,
       governance: governanceResult.data,
-      financialImpact: pluginFinancial,
+      financialImpact: financialResult.data,
       verification: verificationResult.data,
       completedAt: new Date().toISOString(),
     };
