@@ -16,6 +16,7 @@ import type {
 import { EVIDENCE_STATUS, PLUGIN_NAMES, VERIFICATION_STATUS } from '../../shared/constants';
 import { AppError, createLogger } from '../../shared/utils';
 import { calculateReadiness, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
+import { calculateConfidence, DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
 import {
   calculateFinancialImpact,
   DEFAULT_FINANCIAL_CONFIG,
@@ -27,7 +28,7 @@ const logger = createLogger('Ec2Plugin');
 
 /**
  * EC2 Optimization Plugin — Plugin #1 reference implementation.
- * Sprint 4: delegates financial estimation to the Financial Engine calculator module.
+ * Sprint 5: delegates confidence scoring to the Confidence Engine module.
  */
 export class Ec2Plugin implements OptimizationPlugin {
   readonly metadata: PluginMetadata = {
@@ -135,25 +136,29 @@ export class Ec2Plugin implements OptimizationPlugin {
     });
   }
 
-  async scoreConfidence(_evidence: Evidence): Promise<ConfidenceResult> {
-    return {
-      score: 0,
-      level: 'low',
-      factors: ['Confidence scoring deferred to Sprint 3+'],
-    };
+  async scoreConfidence(evidence: Evidence): Promise<ConfidenceResult> {
+    const standardized = this.toStandardizedEvidence(evidence);
+    return calculateConfidence({
+      evidence: standardized,
+      validation: { valid: true, errors: [], warnings: [] },
+      resourceId: evidence.resourceId,
+      config: DEFAULT_CONFIDENCE_CONFIG,
+    });
   }
 
   async recommend(evidence: Evidence): Promise<Recommendation> {
-    const recommendations = await this.provider.getRecommendations('ec2', evidence.region);
-    const match = recommendations.find((rec) => rec.resourceId === evidence.resourceId);
+    const standardized = this.toStandardizedEvidence(evidence);
+    const match = standardized.recommendations.find(
+      (rec) => rec.resourceId === evidence.resourceId
+    );
 
     return {
       action: match?.action ?? 'resize',
       resourceId: evidence.resourceId,
       resourceType: evidence.resourceType,
       from: evidence.instanceType,
-      to: match?.target ?? 't3.medium',
-      reason: match?.reason ?? 'Recommendation deferred to Sprint 3+',
+      to: match?.target ?? evidence.instanceType,
+      reason: match?.reason ?? 'No provider recommendation hint available',
       region: evidence.region,
     };
   }

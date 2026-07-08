@@ -5,6 +5,8 @@ import type { ProviderInterface } from '../../shared/interfaces';
 import { DEFAULT_REGION, PLUGIN_NAMES, PROVIDER_NAMES } from '../../shared/constants';
 import { GOVERNANCE_POLICY_CATALOG, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
 import { DEFAULT_FINANCIAL_CONFIG, generateFinancialReport } from '../../engines/financial';
+import { DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
+import { DEFAULT_RECOMMENDATION_CONFIG } from '../../engines/recommendation';
 import { MOCK_PRICING } from '../../providers/mock/data';
 import {
   AppError,
@@ -93,6 +95,49 @@ function formatFinancialResponse(
       percentageReduction: result.financialImpact.percentageReduction,
       status: result.financialImpact.status,
       currency: result.financialImpact.currency,
+    },
+  };
+}
+
+function formatRecommendationResponse(
+  result: Awaited<ReturnType<WorkflowOrchestrator['runRecommendationWorkflow']>>
+) {
+  return {
+    candidate: result.candidate,
+    evidence: {
+      telemetry: result.evidence.telemetry,
+      metrics: result.evidence.metrics,
+      pricing: result.evidence.pricing,
+      recommendations: result.evidence.recommendations,
+      tags: result.evidence.tags,
+      instance: result.evidence.instance,
+    },
+    governance: {
+      status: result.governance.status,
+      decision: result.governance.decision,
+      readinessScore: result.governance.readinessScore,
+      reason: result.governance.reason,
+      approver: result.governance.approver,
+      policies: result.governance.policies,
+    },
+    financialImpact: {
+      currentMonthlyCost: result.financialImpact.currentMonthlyCost,
+      projectedMonthlyCost: result.financialImpact.projectedMonthlyCost,
+      monthlySavings: result.financialImpact.monthlySavings,
+      annualSavings: result.financialImpact.annualSavings,
+      percentageReduction: result.financialImpact.percentageReduction,
+      status: result.financialImpact.status,
+      currency: result.financialImpact.currency,
+    },
+    confidence: {
+      score: result.confidence.score,
+      status: result.confidence.status,
+      reason: result.confidence.reason,
+    },
+    recommendation: {
+      status: result.recommendation.status,
+      summary: result.recommendation.summary,
+      reason: result.recommendation.reason,
     },
   };
 }
@@ -206,6 +251,24 @@ export function createPluginRoutes(deps: Pick<ApiDependencies, 'pluginRegistry' 
       );
     } catch (error) {
       handleRouteError(res, error, requestId, 'financial');
+    }
+  });
+
+  router.get('/plugins/ec2/recommendation', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runRecommendationWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatRecommendationResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'recommendation');
     }
   });
 
@@ -343,6 +406,24 @@ export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>
     }
   });
 
+  router.get('/workflow/recommendation', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runRecommendationWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatRecommendationResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'recommendation');
+    }
+  });
+
   router.get('/workflow/demo', async (_req: Request, res: Response) => {
     const requestId = generateRequestId();
 
@@ -429,6 +510,63 @@ export function createFinancialRoutes(
   return router;
 }
 
+/** Recommendation and confidence catalog routes. */
+export function createRecommendationRoutes(
+  deps: Pick<ApiDependencies, 'orchestrator'>
+): Router {
+  const router = Router();
+
+  router.get('/recommendations', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runRecommendationWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(
+          {
+            recommendation: result.recommendation,
+            configuration: DEFAULT_RECOMMENDATION_CONFIG,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'recommendation');
+    }
+  });
+
+  router.get('/confidence', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runRecommendationWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(
+          {
+            confidence: result.confidence,
+            configuration: DEFAULT_CONFIDENCE_CONFIG,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'confidence');
+    }
+  });
+
+  return router;
+}
+
 /** Governance policy catalog routes. */
 export function createGovernanceRoutes(): Router {
   const router = Router();
@@ -460,6 +598,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createWorkflowRoutes(deps));
   router.use(createGovernanceRoutes());
   router.use(createFinancialRoutes(deps));
+  router.use(createRecommendationRoutes(deps));
 
   return router;
 }
