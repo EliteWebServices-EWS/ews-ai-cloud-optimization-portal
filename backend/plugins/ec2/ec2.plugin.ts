@@ -10,16 +10,18 @@ import type {
   QualificationResult,
   ReadinessResult,
   Recommendation,
+  StandardizedEvidence,
   VerificationResult,
 } from '../../shared/types';
 import { EVIDENCE_STATUS, PLUGIN_NAMES, VERIFICATION_STATUS } from '../../shared/constants';
 import { AppError, createLogger } from '../../shared/utils';
+import { calculateReadiness, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
 
 const logger = createLogger('Ec2Plugin');
 
 /**
  * EC2 Optimization Plugin — Plugin #1 reference implementation.
- * Sprint 2: collects provider data for the Evidence Engine. No optimization decisions.
+ * Sprint 3: delegates readiness scoring to the Governance Engine readiness module.
  */
 export class Ec2Plugin implements OptimizationPlugin {
   readonly metadata: PluginMetadata = {
@@ -119,12 +121,12 @@ export class Ec2Plugin implements OptimizationPlugin {
     };
   }
 
-  async scoreReadiness(_evidence: Evidence): Promise<ReadinessResult> {
-    return {
-      score: 0,
-      status: 'not_ready',
-      factors: ['Readiness scoring deferred to Sprint 3+'],
-    };
+  async scoreReadiness(evidence: Evidence): Promise<ReadinessResult> {
+    const standardized = this.toStandardizedEvidence(evidence);
+    return calculateReadiness({
+      evidence: standardized,
+      config: DEFAULT_GOVERNANCE_CONFIG,
+    });
   }
 
   async scoreConfidence(_evidence: Evidence): Promise<ConfidenceResult> {
@@ -169,7 +171,53 @@ export class Ec2Plugin implements OptimizationPlugin {
       expectedSavings: 0,
       actualSavings: 0,
       variance: 0,
-      message: 'Verification deferred to Sprint 3+',
+      message: 'Verification deferred to future sprint',
+    };
+  }
+
+  /** Map legacy Evidence to StandardizedEvidence for readiness scoring. */
+  private toStandardizedEvidence(evidence: Evidence): StandardizedEvidence {
+    return {
+      telemetry: {
+        cpuUtilization: evidence.cpuUtilization ?? 0,
+        memoryUtilization: evidence.memoryUtilization ?? 0,
+        networkUtilization: evidence.networkUtilization,
+        observationWindowDays: 14,
+      },
+      metrics: {
+        cpuUtilization: evidence.metrics?.cpuUtilization ?? [],
+        memoryUtilization: evidence.metrics?.memoryUtilization ?? [],
+        period: '1h',
+        datapoints: evidence.metrics?.cpuUtilization.length ?? 0,
+        utilizationHistory: [],
+      },
+      pricing: {
+        instanceType: evidence.instanceType ?? 'unknown',
+        region: evidence.region,
+        hourlyRate: evidence.monthlyCost ? evidence.monthlyCost / 730 : 0,
+        monthlyRate: evidence.monthlyCost ?? 0,
+        currency: 'USD',
+      },
+      recommendations: evidence.recommendedInstanceType
+        ? [
+            {
+              resourceId: evidence.resourceId,
+              resourceType: evidence.resourceType,
+              action: 'resize',
+              target: evidence.recommendedInstanceType,
+              reason: 'From legacy evidence',
+            },
+          ]
+        : [],
+      tags: evidence.tags ?? {},
+      instance: {
+        instanceId: evidence.resourceId,
+        instanceType: evidence.instanceType ?? 'unknown',
+        state: 'running',
+        region: evidence.region,
+        launchTime: evidence.collectedAt,
+      },
+      collectedAt: evidence.collectedAt,
     };
   }
 }

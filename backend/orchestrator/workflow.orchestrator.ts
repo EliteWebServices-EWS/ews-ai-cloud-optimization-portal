@@ -1,10 +1,8 @@
-import type { OptimizationPlugin } from '../shared/interfaces';
-import type {
-  EvidenceEngineInterface,
-} from '../shared/interfaces';
+import type { OptimizationPlugin, EvidenceEngineInterface } from '../shared/interfaces';
 import type {
   Evidence,
   EvidencePackage,
+  GovernanceWorkflowResult,
   OptimizationContext,
   StandardizedEvidence,
   WorkflowResult,
@@ -60,9 +58,11 @@ function toLegacyEvidence(
   };
 }
 
+export interface RunGovernanceWorkflowRequest extends RunWorkflowRequest {}
+
 /**
  * Workflow Orchestrator — coordinates engines and plugins through the optimization lifecycle.
- * Sprint 2: evidence collection workflow implemented. Later stages remain placeholders.
+ * Sprint 3: governance evaluation workflow implemented. Later stages remain placeholders.
  */
 export class WorkflowOrchestrator {
   constructor(private readonly deps: WorkflowOrchestratorDependencies) {}
@@ -119,13 +119,65 @@ export class WorkflowOrchestrator {
     return evidenceResult.data.package;
   }
 
+  async runGovernanceWorkflow(
+    request: RunGovernanceWorkflowRequest
+  ): Promise<GovernanceWorkflowResult> {
+    const start = Date.now();
+    const evidencePackage = await this.runEvidenceWorkflow(request);
+
+    const context: OptimizationContext = {
+      workflowId: evidencePackage.workflowId,
+      plugin: request.plugin,
+      provider: PROVIDER_NAMES.MOCK,
+      region: evidencePackage.candidate.region,
+      mode: PLATFORM_MODE.DEMO,
+      startedAt: new Date().toISOString(),
+      candidate: evidencePackage.candidate,
+    };
+
+    logger.info('Starting governance workflow', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      operation: 'runGovernanceWorkflow',
+    });
+
+    const governanceResult = await this.deps.governanceEngine.execute({
+      context,
+      candidate: evidencePackage.candidate,
+      evidence: evidencePackage.evidence,
+      evidenceStatus: evidencePackage.status,
+      validation: evidencePackage.validation,
+    });
+
+    if (!governanceResult.success || !governanceResult.data) {
+      throw new Error(governanceResult.error?.reason ?? 'Governance evaluation failed');
+    }
+
+    logger.info('Governance workflow completed', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      durationMs: Date.now() - start,
+      status: governanceResult.data.status,
+    });
+
+    return {
+      workflowId: evidencePackage.workflowId,
+      candidate: evidencePackage.candidate,
+      evidence: evidencePackage.evidence,
+      evidenceStatus: evidencePackage.status,
+      validation: evidencePackage.validation,
+      governance: governanceResult.data,
+      readiness: governanceResult.data.readiness,
+      completedAt: new Date().toISOString(),
+    };
+  }
+
   async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
     const evidencePackage = await this.runEvidenceWorkflow(request);
     const legacyEvidence = toLegacyEvidence(evidencePackage, evidencePackage.evidence);
     const plugin = this.deps.getPlugin(request.plugin);
 
     const qualification = await plugin.qualify(legacyEvidence);
-    const readiness = await plugin.scoreReadiness(legacyEvidence);
     const confidence = await plugin.scoreConfidence(legacyEvidence);
     const recommendation = await plugin.recommend(legacyEvidence);
 
@@ -141,7 +193,10 @@ export class WorkflowOrchestrator {
 
     const governanceResult = await this.deps.governanceEngine.execute({
       context,
-      evidence: legacyEvidence,
+      candidate: evidencePackage.candidate,
+      evidence: evidencePackage.evidence,
+      evidenceStatus: evidencePackage.status,
+      validation: evidencePackage.validation,
       recommendation,
     });
     if (!governanceResult.success || !governanceResult.data) {
@@ -175,7 +230,7 @@ export class WorkflowOrchestrator {
       candidate: evidencePackage.candidate,
       evidence: legacyEvidence,
       qualification,
-      readiness,
+      readiness: governanceResult.data.readiness,
       confidence,
       recommendation,
       governance: governanceResult.data,

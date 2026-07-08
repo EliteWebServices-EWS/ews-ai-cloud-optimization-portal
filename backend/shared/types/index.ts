@@ -7,7 +7,10 @@ import type {
   EvidenceStatus,
   GovernanceStatus,
   PluginName,
+  PolicySeverity,
+  PolicyStatus,
   ProviderName,
+  ReadinessStatus,
   VerificationStatusValue,
   WorkflowStage,
   WorkflowState,
@@ -47,11 +50,29 @@ export interface QualificationResult {
   reason: string;
 }
 
-/** Readiness scoring output — can this recommendation be evaluated? */
+/** Individual readiness factor contributing to the overall score. */
+export interface ReadinessFactor {
+  name: string;
+  score: number;
+  weight: number;
+  met: boolean;
+  detail: string;
+}
+
+/** Readiness scoring output — can this candidate proceed to optimization evaluation? */
 export interface ReadinessResult {
   score: number;
-  status: 'ready' | 'not_ready' | 'partial';
-  factors: string[];
+  status: ReadinessStatus;
+  factors: ReadinessFactor[];
+}
+
+/** Result of evaluating a single governance policy rule. */
+export interface PolicyResult {
+  name: string;
+  status: PolicyStatus;
+  reason: string;
+  severity: PolicySeverity;
+  suggestedAction?: string;
 }
 
 /** Confidence scoring output — should this recommendation be trusted? */
@@ -63,10 +84,16 @@ export interface ConfidenceResult {
 
 /** Governance engine decision output. */
 export interface GovernanceResult {
-  status: GovernanceStatus;
+  /** Readiness gate — whether evidence is sufficient for downstream evaluation. */
+  status: ReadinessStatus;
+  /** Policy decision — whether optimization is permitted under governance rules. */
+  decision: GovernanceStatus;
+  readinessScore: number;
+  /** Detailed readiness breakdown with weighted factors. */
+  readiness: ReadinessResult;
   reason: string;
   approver?: string;
-  policiesEvaluated?: string[];
+  policies: PolicyResult[];
 }
 
 /** Financial impact estimation output. */
@@ -160,11 +187,26 @@ export interface EvidenceResult {
   status: EvidenceStatus;
 }
 
-/** Governance engine input. */
+/** Governance engine input — evaluates evidence quality and applies governance policies. */
 export interface GovernanceRequest {
   context: OptimizationContext;
-  evidence: Evidence;
-  recommendation: Recommendation;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  evidenceStatus: EvidenceStatus;
+  validation: EvidenceValidationResult;
+  recommendation?: Recommendation;
+}
+
+/** Sprint 3 governance workflow response returned by the orchestrator. */
+export interface GovernanceWorkflowResult {
+  workflowId: string;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  evidenceStatus: EvidenceStatus;
+  validation: EvidenceValidationResult;
+  governance: GovernanceResult;
+  readiness: ReadinessResult;
+  completedAt: string;
 }
 
 /** Financial engine input. */
