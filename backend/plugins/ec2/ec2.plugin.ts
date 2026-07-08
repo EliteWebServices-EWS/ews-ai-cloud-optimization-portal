@@ -3,7 +3,6 @@ import type {
   Candidate,
   ConfidenceResult,
   Evidence,
-  ExecutionResult,
   FinancialImpact,
   PluginMetadata,
   ProviderEvidenceBundle,
@@ -11,9 +10,8 @@ import type {
   ReadinessResult,
   Recommendation,
   StandardizedEvidence,
-  VerificationResult,
 } from '../../shared/types';
-import { EVIDENCE_STATUS, PLUGIN_NAMES, VERIFICATION_STATUS } from '../../shared/constants';
+import { EVIDENCE_STATUS, PLUGIN_NAMES } from '../../shared/constants';
 import { AppError, createLogger } from '../../shared/utils';
 import { calculateReadiness, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
 import { calculateConfidence, DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
@@ -28,7 +26,7 @@ const logger = createLogger('Ec2Plugin');
 
 /**
  * EC2 Optimization Plugin — Plugin #1 reference implementation.
- * Sprint 5: delegates confidence scoring to the Confidence Engine module.
+ * Sprint 6: collects post-execution observations for the Verification Engine.
  */
 export class Ec2Plugin implements OptimizationPlugin {
   readonly metadata: PluginMetadata = {
@@ -231,15 +229,88 @@ export class Ec2Plugin implements OptimizationPlugin {
     );
   }
 
-  async verify(executionResult: ExecutionResult): Promise<VerificationResult> {
+  async verify(request: import('../../shared/types').PluginVerifyRequest): Promise<import('../../shared/types').Observation> {
+    const { executionResult, recommendation, financialImpact } = request;
+
+    logger.info('Observation collected', {
+      plugin: this.metadata.name,
+      operation: 'verify',
+      executionId: executionResult.executionId,
+    });
+
+    if (!executionResult.success) {
+      const previousType =
+        (executionResult.previousState.instanceType as string | undefined) ??
+        recommendation.from ??
+        'unknown';
+
+      return {
+        resourceId: executionResult.resourceId,
+        resourceType: executionResult.resourceType,
+        region: recommendation.region,
+        collectedAt: new Date().toISOString(),
+        instanceType: previousType,
+        previousInstanceType: previousType,
+        monthlyCostBefore: financialImpact.currentMonthlyCost,
+        monthlyCostAfter: financialImpact.currentMonthlyCost,
+        observedMonthlySavings: 0,
+        metrics: [
+          {
+            name: 'instanceType',
+            expected: recommendation.to ?? previousType,
+            observed: previousType,
+            matched: false,
+          },
+          {
+            name: 'monthlySavings',
+            expected: financialImpact.monthlySavings,
+            observed: 0,
+            unit: financialImpact.currency,
+            matched: false,
+          },
+        ],
+        executionId: executionResult.executionId,
+        source: 'simulated',
+      };
+    }
+
+    const previousType = executionResult.change.from;
+    const observedType =
+      (executionResult.newState.instanceType as string | undefined) ??
+      executionResult.change.to;
+
+    const previousPricing = await this.provider.getPricing(previousType, recommendation.region);
+    const observedPricing = await this.provider.getPricing(observedType, recommendation.region);
+    const observedMonthlySavings =
+      Math.round((previousPricing.monthlyRate - observedPricing.monthlyRate) * 100) / 100;
+
     return {
-      status: executionResult.success
-        ? VERIFICATION_STATUS.VERIFIED
-        : VERIFICATION_STATUS.PENDING,
-      expectedSavings: 0,
-      actualSavings: 0,
-      variance: 0,
-      message: 'Verification deferred to future sprint',
+      resourceId: executionResult.resourceId,
+      resourceType: executionResult.resourceType,
+      region: recommendation.region,
+      collectedAt: new Date().toISOString(),
+      instanceType: observedType,
+      previousInstanceType: previousType,
+      monthlyCostBefore: previousPricing.monthlyRate,
+      monthlyCostAfter: observedPricing.monthlyRate,
+      observedMonthlySavings,
+      metrics: [
+        {
+          name: 'instanceType',
+          expected: recommendation.to ?? observedType,
+          observed: observedType,
+          matched: (recommendation.to ?? observedType) === observedType,
+        },
+        {
+          name: 'monthlySavings',
+          expected: financialImpact.monthlySavings,
+          observed: observedMonthlySavings,
+          unit: financialImpact.currency,
+          matched: observedMonthlySavings >= financialImpact.monthlySavings,
+        },
+      ],
+      executionId: executionResult.executionId,
+      source: 'simulated',
     };
   }
 

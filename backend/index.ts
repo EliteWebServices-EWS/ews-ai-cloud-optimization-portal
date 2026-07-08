@@ -7,7 +7,9 @@ import {
   createConfidenceEngine,
   createRecommendationEngine,
   createVerificationEngine,
+  createLearningStore,
 } from './engines';
+import { createExecutionSimulator } from './execution';
 import { createWorkflowOrchestrator } from './orchestrator';
 import { createPluginRegistry } from './plugins';
 import { createProvider } from './providers';
@@ -22,6 +24,9 @@ export function createApp(): express.Application {
   const provider = createProvider(PROVIDER_NAMES.MOCK);
   const pluginRegistry = createPluginRegistry(provider);
 
+  const learningStore = createLearningStore();
+  const executionSimulator = createExecutionSimulator();
+
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
     governanceEngine: createGovernanceEngine(),
@@ -29,6 +34,8 @@ export function createApp(): express.Application {
     confidenceEngine: createConfidenceEngine(),
     recommendationEngine: createRecommendationEngine(),
     verificationEngine: createVerificationEngine(),
+    executionSimulator,
+    learningStore,
     getPlugin: (name: import('./shared/constants').PluginName) => pluginRegistry.get(name),
   });
 
@@ -40,6 +47,8 @@ export function createApp(): express.Application {
     pluginRegistry,
     provider,
     activeProvider: PROVIDER_NAMES.MOCK,
+    executionSimulator,
+    learningStore,
   }));
 
   return app;

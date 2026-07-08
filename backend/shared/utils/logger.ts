@@ -11,6 +11,10 @@ export interface LogContext {
   operation?: string;
   durationMs?: number;
   status?: string;
+  executionId?: string;
+  recommendationStatus?: string;
+  verifiedSavings?: number;
+  verificationStatus?: string;
 }
 
 export class Logger {

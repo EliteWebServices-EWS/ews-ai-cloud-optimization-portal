@@ -2,11 +2,14 @@ import { Router, type Request, type Response } from 'express';
 import type { WorkflowOrchestrator } from '../../orchestrator';
 import type { PluginRegistry } from '../../plugins';
 import type { ProviderInterface } from '../../shared/interfaces';
+import type { ExecutionSimulatorInterface } from '../../execution';
+import type { LearningStoreInterface } from '../../engines/learning';
 import { DEFAULT_REGION, PLUGIN_NAMES, PROVIDER_NAMES } from '../../shared/constants';
 import { GOVERNANCE_POLICY_CATALOG, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
 import { DEFAULT_FINANCIAL_CONFIG, generateFinancialReport } from '../../engines/financial';
 import { DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
 import { DEFAULT_RECOMMENDATION_CONFIG } from '../../engines/recommendation';
+import { DEFAULT_VERIFICATION_CONFIG } from '../../engines/verification';
 import { MOCK_PRICING } from '../../providers/mock/data';
 import {
   AppError,
@@ -22,6 +25,8 @@ export interface ApiDependencies {
   pluginRegistry: PluginRegistry;
   provider: ProviderInterface;
   activeProvider: string;
+  executionSimulator: ExecutionSimulatorInterface;
+  learningStore: LearningStoreInterface;
 }
 
 function handleRouteError(
@@ -139,6 +144,90 @@ function formatRecommendationResponse(
       summary: result.recommendation.summary,
       reason: result.recommendation.reason,
     },
+  };
+}
+
+function formatVerificationResponse(
+  result: Awaited<ReturnType<WorkflowOrchestrator['runVerificationWorkflow']>>
+) {
+  return {
+    candidate: result.candidate,
+    evidence: {
+      telemetry: result.evidence.telemetry,
+      metrics: result.evidence.metrics,
+      pricing: result.evidence.pricing,
+      recommendations: result.evidence.recommendations,
+      tags: result.evidence.tags,
+      instance: result.evidence.instance,
+    },
+    governance: {
+      status: result.governance.status,
+      decision: result.governance.decision,
+      readinessScore: result.governance.readinessScore,
+      reason: result.governance.reason,
+      approver: result.governance.approver,
+      policies: result.governance.policies,
+    },
+    financialImpact: {
+      currentMonthlyCost: result.financialImpact.currentMonthlyCost,
+      projectedMonthlyCost: result.financialImpact.projectedMonthlyCost,
+      monthlySavings: result.financialImpact.monthlySavings,
+      annualSavings: result.financialImpact.annualSavings,
+      percentageReduction: result.financialImpact.percentageReduction,
+      status: result.financialImpact.status,
+      currency: result.financialImpact.currency,
+    },
+    confidence: {
+      score: result.confidence.score,
+      status: result.confidence.status,
+      reason: result.confidence.reason,
+    },
+    recommendation: {
+      status: result.recommendation.status,
+      summary: result.recommendation.summary,
+      reason: result.recommendation.reason,
+    },
+    execution: {
+      executionId: result.execution.executionId,
+      status: result.execution.status,
+      change: result.execution.change,
+      message: result.execution.message,
+      executedAt: result.execution.executedAt,
+    },
+    observation: result.observation,
+    verification: {
+      status: result.verification.status,
+      expectedSavings: result.verification.expectedSavings,
+      verifiedSavings: result.verification.verifiedSavings,
+      actualSavings: result.verification.actualSavings,
+      variance: result.verification.variance,
+      variancePercentage: result.verification.variancePercentage,
+      stateMatched: result.verification.stateMatched,
+      confidenceScore: result.verification.confidenceScore,
+      message: result.verification.message,
+    },
+    report: result.report,
+  };
+}
+
+function formatCompleteResponse(
+  result: Awaited<ReturnType<WorkflowOrchestrator['runCompleteWorkflow']>>
+) {
+  return {
+    ...formatVerificationResponse(result),
+    workflow: {
+      status: result.status,
+      currentStage: result.currentStage,
+      workflowId: result.workflowId,
+      completedAt: result.completedAt,
+    },
+    learningRecord: result.learningRecord
+      ? {
+          id: result.learningRecord.id,
+          workflowId: result.learningRecord.workflowId,
+          recordedAt: result.learningRecord.recordedAt,
+        }
+      : undefined,
   };
 }
 
@@ -424,6 +513,42 @@ export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>
     }
   });
 
+  router.get('/workflow/verification', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runVerificationWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatVerificationResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'verification');
+    }
+  });
+
+  router.get('/workflow/complete', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runCompleteWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatCompleteResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'complete');
+    }
+  });
+
   router.get('/workflow/demo', async (_req: Request, res: Response) => {
     const requestId = generateRequestId();
 
@@ -567,6 +692,97 @@ export function createRecommendationRoutes(
   return router;
 }
 
+/** Execution simulation and verification report routes. */
+export function createVerificationRoutes(deps: Pick<ApiDependencies, 'orchestrator' | 'executionSimulator' | 'learningStore'>): Router {
+  const router = Router();
+
+  router.post('/execution/simulate', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId =
+        typeof req.body?.resourceId === 'string'
+          ? req.body.resourceId
+          : typeof req.query.resourceId === 'string'
+            ? req.query.resourceId
+            : undefined;
+
+      const recommendationWorkflow = await deps.orchestrator.runRecommendationWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      const executionResult = await deps.executionSimulator.simulate({
+        context: {
+          workflowId: recommendationWorkflow.workflowId,
+          plugin: PLUGIN_NAMES.EC2,
+          provider: PROVIDER_NAMES.MOCK,
+          region: recommendationWorkflow.candidate.region,
+          mode: 'demo',
+          startedAt: new Date().toISOString(),
+          candidate: recommendationWorkflow.candidate,
+        },
+        candidate: recommendationWorkflow.candidate,
+        recommendation: recommendationWorkflow.recommendation,
+      });
+
+      res.json(
+        buildSuccessResponse(
+          {
+            execution: executionResult,
+            recommendation: recommendationWorkflow.recommendation,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'execution');
+    }
+  });
+
+  router.get('/verification/reports', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const workflowId =
+        typeof req.query.workflowId === 'string' ? req.query.workflowId : undefined;
+
+      if (workflowId) {
+        const record = deps.learningStore.getByWorkflowId(workflowId);
+        if (!record) {
+          throw new AppError('NOT_FOUND', `No verification report found for workflow ${workflowId}`, 404);
+        }
+
+        res.json(
+          buildSuccessResponse(
+            {
+              report: deps.learningStore.listReports().find((item) => item.workflowId === workflowId),
+              configuration: DEFAULT_VERIFICATION_CONFIG,
+            },
+            requestId
+          )
+        );
+        return;
+      }
+
+      res.json(
+        buildSuccessResponse(
+          {
+            reports: deps.learningStore.listReports(),
+            total: deps.learningStore.listRecords().length,
+            configuration: DEFAULT_VERIFICATION_CONFIG,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'verification');
+    }
+  });
+
+  return router;
+}
+
 /** Governance policy catalog routes. */
 export function createGovernanceRoutes(): Router {
   const router = Router();
@@ -599,6 +815,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createGovernanceRoutes());
   router.use(createFinancialRoutes(deps));
   router.use(createRecommendationRoutes(deps));
+  router.use(createVerificationRoutes(deps));
 
   return router;
 }

@@ -6,5 +6,6 @@ export {
   buildSuccessResponse,
   generateRequestId,
   generateWorkflowId,
+  generateExecutionId,
 } from './response';
 export { isNonEmptyArray, requireNonEmptyString, requireObject } from './validation';
