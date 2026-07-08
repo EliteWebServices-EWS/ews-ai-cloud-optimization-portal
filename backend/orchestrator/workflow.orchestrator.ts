@@ -1,12 +1,18 @@
 import type { OptimizationPlugin, EvidenceEngineInterface } from '../shared/interfaces';
 import type {
+  CompleteWorkflowResult,
   EvidencePackage,
   FinancialWorkflowResult,
   GovernanceWorkflowResult,
   OptimizationContext,
+  OptimizationOutcome,
   RecommendationWorkflowResult,
+  VerificationWorkflowResult,
   WorkflowResult,
 } from '../shared/types';
+import type { ExecutionSimulatorInterface } from '../execution';
+import type { LearningStoreInterface } from '../engines/learning';
+import type { VerificationEngine } from '../engines/verification';
 import {
   PLATFORM_MODE,
   PROVIDER_NAMES,
@@ -24,7 +30,9 @@ export interface WorkflowOrchestratorDependencies {
   financialEngine: import('../shared/interfaces').FinancialEngineInterface;
   confidenceEngine: import('../shared/interfaces').ConfidenceEngineInterface;
   recommendationEngine: import('../shared/interfaces').RecommendationEngineInterface;
-  verificationEngine: import('../shared/interfaces').VerificationEngineInterface;
+  verificationEngine: VerificationEngine;
+  executionSimulator: ExecutionSimulatorInterface;
+  learningStore: LearningStoreInterface;
   getPlugin: (name: PluginName) => OptimizationPlugin;
 }
 
@@ -42,9 +50,13 @@ export interface RunFinancialWorkflowRequest extends RunWorkflowRequest {}
 
 export interface RunRecommendationWorkflowRequest extends RunWorkflowRequest {}
 
+export interface RunVerificationWorkflowRequest extends RunWorkflowRequest {}
+
+export interface RunCompleteWorkflowRequest extends RunWorkflowRequest {}
+
 /**
  * Workflow Orchestrator — coordinates engines and plugins through the optimization lifecycle.
- * Sprint 5: confidence and recommendation workflow implemented. Verification remains placeholder.
+ * Sprint 6: closed-loop workflow with mock execution and verification.
  */
 export class WorkflowOrchestrator {
   constructor(private readonly deps: WorkflowOrchestratorDependencies) {}
@@ -278,30 +290,14 @@ export class WorkflowOrchestrator {
     };
   }
 
-  async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
+  async runVerificationWorkflow(
+    request: RunVerificationWorkflowRequest
+  ): Promise<VerificationWorkflowResult> {
+    const start = Date.now();
     const recommendationWorkflow = await this.runRecommendationWorkflow(request);
-    const legacyEvidence = {
-      resourceId: recommendationWorkflow.candidate.resourceId,
-      resourceType: recommendationWorkflow.candidate.resourceType,
-      region: recommendationWorkflow.candidate.region,
-      status: recommendationWorkflow.evidenceStatus,
-      cpuUtilization: recommendationWorkflow.evidence.telemetry.cpuUtilization,
-      memoryUtilization: recommendationWorkflow.evidence.telemetry.memoryUtilization,
-      networkUtilization: recommendationWorkflow.evidence.telemetry.networkUtilization,
-      monthlyCost: recommendationWorkflow.evidence.pricing.monthlyRate,
-      instanceType: recommendationWorkflow.evidence.instance.instanceType,
-      recommendedInstanceType: recommendationWorkflow.evidence.recommendations[0]?.target,
-      tags: recommendationWorkflow.evidence.tags,
-      collectedAt: recommendationWorkflow.evidence.collectedAt,
-    };
     const plugin = this.deps.getPlugin(request.plugin);
 
-    const qualification = await plugin.qualify(legacyEvidence);
-    const recommendation =
-      recommendationWorkflow.recommendation.action ??
-      (await plugin.recommend(legacyEvidence));
-
-    const context = {
+    const context: OptimizationContext = {
       workflowId: recommendationWorkflow.workflowId,
       plugin: request.plugin,
       provider: PROVIDER_NAMES.MOCK,
@@ -311,30 +307,171 @@ export class WorkflowOrchestrator {
       candidate: recommendationWorkflow.candidate,
     };
 
-    const verificationResult = await this.deps.verificationEngine.execute({
+    logger.info('Starting verification workflow', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      operation: 'runVerificationWorkflow',
+    });
+
+    const executionResult = await this.deps.executionSimulator.simulate({
       context,
-      recommendation,
+      candidate: recommendationWorkflow.candidate,
+      recommendation: recommendationWorkflow.recommendation,
+    });
+
+    const recommendationAction =
+      recommendationWorkflow.recommendation.action ??
+      ({
+        action: recommendationWorkflow.recommendation.detail.action,
+        resourceId: recommendationWorkflow.candidate.resourceId,
+        resourceType: recommendationWorkflow.candidate.resourceType,
+        from: recommendationWorkflow.recommendation.detail.fromInstanceType,
+        to: recommendationWorkflow.recommendation.detail.toInstanceType,
+        reason: recommendationWorkflow.recommendation.reason,
+        region: recommendationWorkflow.candidate.region,
+      } as import('../shared/types').Recommendation);
+
+    const observation = await plugin.verify({
+      executionResult,
+      recommendation: recommendationAction,
       financialImpact: recommendationWorkflow.financialImpact,
     });
+
+    logger.info('Observation collected', {
+      workflowId: context.workflowId,
+      operation: 'runVerificationWorkflow',
+      executionId: executionResult.executionId,
+    });
+
+    const verificationResult = await this.deps.verificationEngine.execute({
+      context,
+      recommendation: recommendationWorkflow.recommendation,
+      financialImpact: recommendationWorkflow.financialImpact,
+      executionResult,
+      observation,
+    });
+
     if (!verificationResult.success || !verificationResult.data) {
       throw new Error(verificationResult.error?.reason ?? 'Verification failed');
     }
 
-    return {
+    const report = this.deps.verificationEngine.buildReport(
+      {
+        context,
+        recommendation: recommendationWorkflow.recommendation,
+        financialImpact: recommendationWorkflow.financialImpact,
+        executionResult,
+        observation,
+      },
+      verificationResult.data
+    );
+
+    const outcome: OptimizationOutcome = {
       workflowId: recommendationWorkflow.workflowId,
+      plugin: request.plugin,
+      candidate: recommendationWorkflow.candidate,
+      recommendation: recommendationWorkflow.recommendation,
+      execution: executionResult,
+      observation,
+      verification: verificationResult.data,
+      financialImpact: recommendationWorkflow.financialImpact,
+      completedAt: new Date().toISOString(),
+    };
+
+    const learningRecord = this.deps.learningStore.save(
+      this.deps.learningStore.buildRecord(outcome)
+    );
+
+    logger.info('Verification workflow completed', {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      durationMs: Date.now() - start,
+      status: verificationResult.data.status,
+    });
+
+    return {
+      ...recommendationWorkflow,
+      execution: executionResult,
+      observation,
+      verification: verificationResult.data,
+      report,
+      learningRecord,
+      completedAt: new Date().toISOString(),
+    };
+  }
+
+  async runCompleteWorkflow(
+    request: RunCompleteWorkflowRequest
+  ): Promise<CompleteWorkflowResult> {
+    const verificationWorkflow = await this.runVerificationWorkflow(request);
+
+    return {
+      ...verificationWorkflow,
+      status: WORKFLOW_STATES.COMPLETED,
+      currentStage: WORKFLOW_STAGES.LEARNING,
+    };
+  }
+
+  async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
+    const completeWorkflow = await this.runCompleteWorkflow(request);
+    const legacyEvidence = {
+      resourceId: completeWorkflow.candidate.resourceId,
+      resourceType: completeWorkflow.candidate.resourceType,
+      region: completeWorkflow.candidate.region,
+      status: completeWorkflow.evidenceStatus,
+      cpuUtilization: completeWorkflow.evidence.telemetry.cpuUtilization,
+      memoryUtilization: completeWorkflow.evidence.telemetry.memoryUtilization,
+      networkUtilization: completeWorkflow.evidence.telemetry.networkUtilization,
+      monthlyCost: completeWorkflow.evidence.pricing.monthlyRate,
+      instanceType: completeWorkflow.evidence.instance.instanceType,
+      recommendedInstanceType: completeWorkflow.evidence.recommendations[0]?.target,
+      tags: completeWorkflow.evidence.tags,
+      collectedAt: completeWorkflow.evidence.collectedAt,
+    };
+    const plugin = this.deps.getPlugin(request.plugin);
+
+    const qualification = await plugin.qualify(legacyEvidence);
+    const recommendation =
+      completeWorkflow.recommendation.action ??
+      ({
+        action: completeWorkflow.recommendation.detail.action,
+        resourceId: completeWorkflow.candidate.resourceId,
+        resourceType: completeWorkflow.candidate.resourceType,
+        from: completeWorkflow.recommendation.detail.fromInstanceType,
+        to: completeWorkflow.recommendation.detail.toInstanceType,
+        reason: completeWorkflow.recommendation.reason,
+        region: completeWorkflow.candidate.region,
+      } as import('../shared/types').Recommendation);
+
+    const context: OptimizationContext = {
+      workflowId: completeWorkflow.workflowId,
+      plugin: request.plugin,
+      provider: PROVIDER_NAMES.MOCK,
+      region: completeWorkflow.candidate.region,
+      mode: PLATFORM_MODE.DEMO,
+      startedAt: new Date().toISOString(),
+      candidate: completeWorkflow.candidate,
+    };
+
+    return {
+      workflowId: completeWorkflow.workflowId,
       status: WORKFLOW_STATES.COMPLETED,
       currentStage: WORKFLOW_STAGES.VERIFICATION,
       context,
-      candidate: recommendationWorkflow.candidate,
+      candidate: completeWorkflow.candidate,
       evidence: legacyEvidence,
       qualification,
-      readiness: recommendationWorkflow.readiness,
-      confidence: recommendationWorkflow.confidence,
+      readiness: completeWorkflow.readiness,
+      confidence: completeWorkflow.confidence,
       recommendation,
-      governance: recommendationWorkflow.governance,
-      financialImpact: recommendationWorkflow.financialImpact,
-      recommendationDecision: recommendationWorkflow.recommendation,
-      verification: verificationResult.data,
+      governance: completeWorkflow.governance,
+      financialImpact: completeWorkflow.financialImpact,
+      execution: completeWorkflow.execution,
+      observation: completeWorkflow.observation,
+      recommendationDecision: completeWorkflow.recommendation,
+      verification: completeWorkflow.verification,
+      verificationReport: completeWorkflow.report,
+      learningRecord: completeWorkflow.learningRecord,
       completedAt: new Date().toISOString(),
     };
   }

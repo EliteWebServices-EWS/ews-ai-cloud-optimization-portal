@@ -6,6 +6,7 @@
 import type {
   ConfidenceStatus,
   EvidenceStatus,
+  ExecutionStatus,
   FinancialStatus,
   GovernanceStatus,
   PluginName,
@@ -201,16 +202,93 @@ export interface RecommendationDecision {
   action?: Recommendation;
 }
 
-/** Outcome of an executed optimization change. */
+/** Describes a resource change applied during mock execution. */
+export interface ExecutionChange {
+  action: string;
+  from: string;
+  to: string;
+  resourceType: string;
+}
+
+/** Metadata describing how and where execution occurred. */
+export interface ExecutionMetadata {
+  workflowId: string;
+  plugin: PluginName;
+  region: string;
+  simulated: boolean;
+  recommendationStatus: RecommendationStatus;
+}
+
+/** Input to the mock execution simulator. */
+export interface ExecutionRequest {
+  context: OptimizationContext;
+  candidate: Candidate;
+  recommendation: RecommendationDecision;
+}
+
+/** Outcome of a simulated optimization execution. */
 export interface ExecutionResult {
+  executionId: string;
+  status: ExecutionStatus;
   resourceId: string;
   resourceType: string;
   action: string;
   success: boolean;
   executedAt: string;
+  change: ExecutionChange;
+  previousState: Record<string, unknown>;
+  newState: Record<string, unknown>;
+  metadata: ExecutionMetadata;
+  message?: string;
+  /** @deprecated Use previousState — retained for demo workflow compatibility. */
   beforeState?: Record<string, unknown>;
+  /** @deprecated Use newState — retained for demo workflow compatibility. */
   afterState?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
+}
+
+/** Single observed metric collected after execution. */
+export interface ObservationMetric {
+  name: string;
+  expected: number | string;
+  observed: number | string;
+  unit?: string;
+  matched: boolean;
+}
+
+/** Post-execution observation collected by a plugin. */
+export interface Observation {
+  resourceId: string;
+  resourceType: string;
+  region: string;
+  collectedAt: string;
+  instanceType: string;
+  previousInstanceType: string;
+  monthlyCostBefore: number;
+  monthlyCostAfter: number;
+  observedMonthlySavings: number;
+  metrics: ObservationMetric[];
+  executionId: string;
+  source: 'simulated';
+}
+
+/** Expected outcome used by the Verification Engine comparator. */
+export interface VerificationExpectation {
+  expectedMonthlySavings: number;
+  expectedInstanceType: string;
+  previousInstanceType: string;
+  currency: string;
+}
+
+/** Detailed verification report for API and learning storage. */
+export interface VerificationReport {
+  workflowId: string;
+  executionId: string;
+  status: VerificationStatusValue;
+  expected: VerificationExpectation;
+  observation: Observation;
+  result: VerificationResult;
+  generatedAt: string;
+  summary: string;
 }
 
 /** Verification engine output. */
@@ -218,12 +296,53 @@ export interface VerificationResult {
   status: VerificationStatusValue;
   expectedSavings: number;
   actualSavings: number;
+  verifiedSavings: number;
   variance: number;
+  variancePercentage: number;
+  stateMatched: boolean;
   confidenceScore?: number;
   message?: string;
 }
 
-/** Metadata describing a registered optimization plugin. */
+/** Plugin input for collecting post-execution observations. */
+export interface PluginVerifyRequest {
+  executionResult: ExecutionResult;
+  recommendation: Recommendation;
+  financialImpact: FinancialImpact;
+}
+
+/** Historical observation stored for future learning. */
+export interface HistoricalObservation {
+  workflowId: string;
+  observation: Observation;
+  recordedAt: string;
+}
+
+/** Complete optimization outcome for learning data capture. */
+export interface OptimizationOutcome {
+  workflowId: string;
+  plugin: PluginName;
+  candidate: Candidate;
+  recommendation: RecommendationDecision;
+  execution: ExecutionResult;
+  observation: Observation;
+  verification: VerificationResult;
+  financialImpact: FinancialImpact;
+  completedAt: string;
+}
+
+/** Learning record persisted after closed-loop verification. */
+export interface LearningRecord {
+  id: string;
+  workflowId: string;
+  plugin: PluginName;
+  recommendation: RecommendationDecision;
+  execution: ExecutionResult;
+  observation: Observation;
+  verification: VerificationResult;
+  outcome: OptimizationOutcome;
+  recordedAt: string;
+}
 export interface PluginMetadata {
   name: PluginName;
   version: string;
@@ -352,9 +471,36 @@ export interface RecommendationWorkflowResult {
 /** Verification engine input. */
 export interface VerificationRequest {
   context: OptimizationContext;
-  recommendation: Recommendation;
+  recommendation: RecommendationDecision;
   financialImpact: FinancialImpact;
-  executionResult?: ExecutionResult;
+  executionResult: ExecutionResult;
+  observation: Observation;
+}
+
+/** Sprint 6 verification workflow response returned by the orchestrator. */
+export interface VerificationWorkflowResult {
+  workflowId: string;
+  candidate: Candidate;
+  evidence: StandardizedEvidence;
+  evidenceStatus: EvidenceStatus;
+  validation: EvidenceValidationResult;
+  governance: GovernanceResult;
+  readiness: ReadinessResult;
+  financialImpact: FinancialImpact;
+  confidence: ConfidenceResult;
+  recommendation: RecommendationDecision;
+  execution: ExecutionResult;
+  observation: Observation;
+  verification: VerificationResult;
+  report: VerificationReport;
+  learningRecord?: LearningRecord;
+  completedAt: string;
+}
+
+/** Sprint 6 complete closed-loop workflow response. */
+export interface CompleteWorkflowResult extends VerificationWorkflowResult {
+  status: WorkflowState;
+  currentStage: WorkflowStage;
 }
 
 /** Combined workflow result returned by the orchestrator. */
@@ -371,10 +517,16 @@ export interface WorkflowResult {
   recommendation: Recommendation;
   governance: GovernanceResult;
   financialImpact: FinancialImpact;
+  execution?: ExecutionResult;
+  observation?: Observation;
   verification: VerificationResult;
   completedAt: string;
   /** Sprint 5 recommendation decision when produced by the Recommendation Engine. */
   recommendationDecision?: RecommendationDecision;
+  /** Sprint 6 verification report when produced by the closed-loop workflow. */
+  verificationReport?: VerificationReport;
+  /** Sprint 6 learning record when outcome is stored. */
+  learningRecord?: LearningRecord;
 }
 
 /** Provider-normalized EC2 instance representation. */

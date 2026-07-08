@@ -65,3 +65,8 @@ export function generateRequestId(prefix = 'req'): string {
 export function generateWorkflowId(): string {
   return `wf-${Date.now().toString(36)}`;
 }
+
+/** Generate a unique execution identifier. */
+export function generateExecutionId(): string {
+  return `exec-${Date.now().toString(36)}`;
+}

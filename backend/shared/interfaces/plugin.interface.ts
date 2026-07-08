@@ -2,14 +2,14 @@ import type {
   Candidate,
   ConfidenceResult,
   Evidence,
-  ExecutionResult,
   FinancialImpact,
+  Observation,
   PluginMetadata,
+  PluginVerifyRequest,
   ProviderEvidenceBundle,
   QualificationResult,
   ReadinessResult,
   Recommendation,
-  VerificationResult,
 } from '../types';
 
 /**
@@ -43,6 +43,6 @@ export interface OptimizationPlugin {
   /** Produce an optimization recommendation. */
   recommend(evidence: Evidence): Promise<Recommendation>;
 
-  /** Verify execution outcome against expected results. */
-  verify(executionResult: ExecutionResult): Promise<VerificationResult>;
+  /** Collect post-execution observations for the Verification Engine. */
+  verify(request: PluginVerifyRequest): Promise<Observation>;
 }

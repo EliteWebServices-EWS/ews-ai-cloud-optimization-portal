@@ -30,6 +30,7 @@ export const WORKFLOW_STAGES = {
   GOVERNANCE: 'governance',
   FINANCIAL: 'financial',
   RECOMMENDATION: 'recommendation',
+  EXECUTION: 'execution',
   VERIFICATION: 'verification',
   LEARNING: 'learning',
 } as const;
@@ -86,6 +87,15 @@ export const VERIFICATION_STATUS = {
 
 export type VerificationStatusValue =
   (typeof VERIFICATION_STATUS)[keyof typeof VERIFICATION_STATUS];
+
+export const EXECUTION_STATUS = {
+  PENDING: 'PENDING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  SKIPPED: 'SKIPPED',
+} as const;
+
+export type ExecutionStatus = (typeof EXECUTION_STATUS)[keyof typeof EXECUTION_STATUS];
 
 export const API_VERSION = 'v1';
 

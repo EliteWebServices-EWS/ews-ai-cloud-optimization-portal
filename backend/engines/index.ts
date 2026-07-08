@@ -4,3 +4,4 @@ export { createFinancialEngine, FinancialEngine } from './financial';
 export { createConfidenceEngine, ConfidenceEngine } from './confidence';
 export { createRecommendationEngine, RecommendationEngine } from './recommendation';
 export { createVerificationEngine, VerificationEngine } from './verification';
+export { createLearningStore, InMemoryLearningStore } from './learning';
