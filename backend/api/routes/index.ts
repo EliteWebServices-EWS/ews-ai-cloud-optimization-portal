@@ -3,6 +3,7 @@ import type { WorkflowOrchestrator } from '../../orchestrator';
 import type { PluginRegistry } from '../../plugins';
 import type { ProviderInterface } from '../../shared/interfaces';
 import { DEFAULT_REGION, PLUGIN_NAMES, PROVIDER_NAMES } from '../../shared/constants';
+import { GOVERNANCE_POLICY_CATALOG, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
 import {
   AppError,
   buildErrorResponse,
@@ -34,6 +35,31 @@ function handleRouteError(
 
   const message = error instanceof Error ? error.message : 'Request failed';
   res.status(500).json(buildErrorResponse('ENGINE_ERROR', message, requestId, stage));
+}
+
+function formatGovernanceResponse(
+  result: Awaited<ReturnType<WorkflowOrchestrator['runGovernanceWorkflow']>>
+) {
+  return {
+    candidate: result.candidate,
+    evidence: {
+      telemetry: result.evidence.telemetry,
+      metrics: result.evidence.metrics,
+      pricing: result.evidence.pricing,
+      recommendations: result.evidence.recommendations,
+      tags: result.evidence.tags,
+      instance: result.evidence.instance,
+    },
+    governance: {
+      status: result.governance.status,
+      decision: result.governance.decision,
+      readinessScore: result.governance.readinessScore,
+      reason: result.governance.reason,
+      approver: result.governance.approver,
+      policies: result.governance.policies,
+    },
+    readiness: result.readiness,
+  };
 }
 
 /** Health check routes. */
@@ -109,6 +135,24 @@ export function createPluginRoutes(deps: Pick<ApiDependencies, 'pluginRegistry' 
       );
     } catch (error) {
       handleRouteError(res, error, requestId, 'evidence');
+    }
+  });
+
+  router.get('/plugins/ec2/governance', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runGovernanceWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatGovernanceResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'governance');
     }
   });
 
@@ -210,6 +254,24 @@ export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>
     }
   });
 
+  router.get('/workflow/governance', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
+      const result = await deps.orchestrator.runGovernanceWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+      });
+
+      res.json(
+        buildSuccessResponse(formatGovernanceResponse(result), requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'governance');
+    }
+  });
+
   router.get('/workflow/demo', async (_req: Request, res: Response) => {
     const requestId = generateRequestId();
 
@@ -227,6 +289,27 @@ export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>
   return router;
 }
 
+/** Governance policy catalog routes. */
+export function createGovernanceRoutes(): Router {
+  const router = Router();
+
+  router.get('/governance/policies', (_req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    res.json(
+      buildSuccessResponse(
+        {
+          policies: GOVERNANCE_POLICY_CATALOG,
+          configuration: DEFAULT_GOVERNANCE_CONFIG,
+        },
+        requestId
+      )
+    );
+  });
+
+  return router;
+}
+
 /** Compose all API v1 routes. */
 export function createApiRoutes(deps: ApiDependencies): Router {
   const router = Router();
@@ -235,6 +318,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createPluginRoutes(deps));
   router.use(createProviderRoutes(deps));
   router.use(createWorkflowRoutes(deps));
+  router.use(createGovernanceRoutes());
 
   return router;
 }

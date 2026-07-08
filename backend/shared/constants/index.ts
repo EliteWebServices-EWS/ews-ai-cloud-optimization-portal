@@ -52,6 +52,31 @@ export const GOVERNANCE_STATUS = {
 
 export type GovernanceStatus = (typeof GOVERNANCE_STATUS)[keyof typeof GOVERNANCE_STATUS];
 
+export const READINESS_STATUS = {
+  READY: 'READY',
+  PARTIALLY_READY: 'PARTIALLY_READY',
+  NOT_READY: 'NOT_READY',
+} as const;
+
+export type ReadinessStatus = (typeof READINESS_STATUS)[keyof typeof READINESS_STATUS];
+
+export const POLICY_STATUS = {
+  PASS: 'PASS',
+  FAIL: 'FAIL',
+  WARN: 'WARN',
+} as const;
+
+export type PolicyStatus = (typeof POLICY_STATUS)[keyof typeof POLICY_STATUS];
+
+export const POLICY_SEVERITY = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+  CRITICAL: 'CRITICAL',
+} as const;
+
+export type PolicySeverity = (typeof POLICY_SEVERITY)[keyof typeof POLICY_SEVERITY];
+
 export const VERIFICATION_STATUS = {
   PENDING: 'pending',
   VERIFIED: 'verified',
