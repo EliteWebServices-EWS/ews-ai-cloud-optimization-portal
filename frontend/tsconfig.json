@@ -15,5 +15,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["dashboard/src/**/*.ts"]
 }
