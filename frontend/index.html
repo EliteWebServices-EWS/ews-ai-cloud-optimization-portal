@@ -1,24 +1,54 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elite Web Services — AWS Cloud Strategy &amp; Transformation</title>
-    <link rel="icon" href="assets/logo/ews-logo-primary.png">
-    <link rel="stylesheet" href="styles/ews-site.css">
-    <link rel="stylesheet" href="styles/brand-colors.css">
-    <link rel="stylesheet" href="styles/main.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SISU'M Decision Dashboard | EWS Cloud Optimization</title>
+  <link rel="icon" href="./assets/logo/ews-logo-primary.png">
 </head>
 <body>
+  <header class="dashboard-header">
+    <a href="./portal/index.html" class="brand-link">
+      <img src="./assets/logo/ews-logo-primary.png" alt="EWS" width="36" height="36">
+      <div>
+        <strong>SISU'M</strong>
+        <span>Cloud Optimization Decision Platform</span>
+      </div>
+    </a>
+    <span class="demo-badge">Demo Mode · Mock Provider</span>
+  </header>
 
-    <header></header>
+  <main class="dashboard-layout">
+    <section class="dashboard-hero">
+      <div>
+        <h1>Decision Dashboard</h1>
+        <p class="hero-subtitle">Evidence-driven optimization decisions from the backend workflow engine.</p>
+      </div>
+      <div class="hero-actions">
+        <label for="candidate-select" class="sr-only">Select candidate</label>
+        <select id="candidate-select" aria-label="Optimization candidate"></select>
+        <button id="analyze-btn" type="button" class="btn-primary">Analyze Environment</button>
+      </div>
+    </section>
 
-    <main></main>
+    <div id="state-message" hidden></div>
 
-    <footer></footer>
+    <div id="overview-panel" class="panel-slot"></div>
+    <div id="progress-panel" class="panel-slot"></div>
 
-    <script src="js/ews-nav.js"></script>
-    <script src="master-theme.js"></script>
+    <div class="dashboard-grid">
+      <div id="candidate-panel" class="panel-slot"></div>
+      <div id="evidence-panel" class="panel-slot"></div>
+      <div id="governance-panel" class="panel-slot"></div>
+      <div id="financial-panel" class="panel-slot"></div>
+      <div id="confidence-panel" class="panel-slot"></div>
+      <div id="recommendation-panel" class="panel-slot"></div>
+      <div id="verification-panel" class="panel-slot panel-wide"></div>
+    </div>
 
+    <p class="dashboard-footer">All metrics sourced from backend engines · No client-side optimization logic</p>
+  </main>
+
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

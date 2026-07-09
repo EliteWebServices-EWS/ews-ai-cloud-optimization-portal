@@ -231,6 +231,54 @@ function formatCompleteResponse(
   };
 }
 
+function formatWorkflowDetailResponse(
+  record: NonNullable<ReturnType<WorkflowOrchestrator['getWorkflow']>>
+) {
+  const ctx = record.context;
+  return {
+    metadata: record.metadata,
+    status: record.metadata.status,
+    executionState: record.metadata.executionState,
+    currentStage: ctx.currentStage,
+    completedStages: ctx.completedStages,
+    failedStages: ctx.failedStages,
+    failure: ctx.failure,
+    retry: ctx.retry,
+    result: record.result,
+    candidate: ctx.candidate,
+    evidence: ctx.evidence
+      ? {
+          status: ctx.evidenceStatus,
+          validation: ctx.validation,
+          telemetry: ctx.evidence.telemetry,
+          instance: ctx.evidence.instance,
+          pricing: ctx.evidence.pricing,
+          recommendations: ctx.evidence.recommendations,
+          tags: ctx.evidence.tags,
+          collectedAt: ctx.evidence.collectedAt,
+        }
+      : undefined,
+    governance: ctx.governance
+      ? {
+          status: ctx.governance.status,
+          decision: ctx.governance.decision,
+          readinessScore: ctx.governance.readinessScore,
+          readiness: ctx.readiness,
+          reason: ctx.governance.reason,
+          approver: ctx.governance.approver,
+          policies: ctx.governance.policies,
+        }
+      : undefined,
+    financialImpact: ctx.financialImpact,
+    confidence: ctx.confidence,
+    recommendation: ctx.recommendation,
+    execution: ctx.execution,
+    observation: ctx.observation,
+    verification: ctx.verification,
+    report: ctx.report,
+  };
+}
+
 /** Health check routes. */
 export function createHealthRoutes(): Router {
   const router = Router();
@@ -540,49 +588,7 @@ export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>
       }
 
       res.json(
-        buildSuccessResponse(
-          {
-            metadata: record.metadata,
-            status: record.metadata.status,
-            executionState: record.metadata.executionState,
-            currentStage: record.context.currentStage,
-            completedStages: record.context.completedStages,
-            failedStages: record.context.failedStages,
-            failure: record.context.failure,
-            retry: record.context.retry,
-            result: record.result
-              ? {
-                  workflowId: record.result.workflowId,
-                  status: record.result.status,
-                  executionState: record.result.executionState,
-                  durationMs: record.result.durationMs,
-                  completedAt: record.result.completedAt,
-                  recommendation: record.result.recommendation,
-                  financialImpact: record.result.financialImpact,
-                  verification: record.result.verification,
-                }
-              : undefined,
-            context: {
-              candidate: record.context.candidate,
-              evidenceStatus: record.context.evidenceStatus,
-              governance: record.context.governance
-                ? { status: record.context.governance.status, decision: record.context.governance.decision }
-                : undefined,
-              financialImpact: record.context.financialImpact
-                ? { monthlySavings: record.context.financialImpact.monthlySavings }
-                : undefined,
-              confidence: record.context.confidence
-                ? { score: record.context.confidence.score, status: record.context.confidence.status }
-                : undefined,
-              recommendation: record.context.recommendation,
-              execution: record.context.execution
-                ? { executionId: record.context.execution.executionId, status: record.context.execution.status }
-                : undefined,
-              verification: record.context.verification,
-            },
-          },
-          requestId
-        )
+        buildSuccessResponse(formatWorkflowDetailResponse(record), requestId)
       );
     } catch (error) {
       handleRouteError(res, error, requestId, 'workflow');
