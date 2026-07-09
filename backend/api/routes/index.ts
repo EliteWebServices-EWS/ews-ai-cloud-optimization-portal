@@ -422,9 +422,172 @@ export function createProviderRoutes(deps: Pick<ApiDependencies, 'activeProvider
   return router;
 }
 
-/** Workflow routes. */
+/** Workflow routes — Sprint 7 hardened workflow APIs. */
 export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>): Router {
   const router = Router();
+
+  router.post('/workflows/run', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const plugin =
+        typeof req.body?.plugin === 'string' ? req.body.plugin : PLUGIN_NAMES.EC2;
+      const mode = req.body?.mode === 'dry-run' ? 'dry-run' : 'full';
+      const resourceId =
+        typeof req.body?.resourceId === 'string' ? req.body.resourceId : undefined;
+      const region =
+        typeof req.body?.region === 'string' ? req.body.region : DEFAULT_REGION;
+
+      if (plugin !== PLUGIN_NAMES.EC2) {
+        throw new AppError('PLUGIN_NOT_FOUND', `Plugin not supported: ${plugin}`, 404);
+      }
+
+      const result = await deps.orchestrator.executeWorkflow({
+        plugin: PLUGIN_NAMES.EC2,
+        resourceId,
+        region,
+        mode,
+        triggerSource: 'api',
+      });
+
+      const statusCode = result.status === 'failed' ? 422 : 201;
+      res.status(statusCode).json(
+        buildSuccessResponse(
+          {
+            workflowId: result.workflowId,
+            status: result.status,
+            executionState: result.executionState,
+            durationMs: result.durationMs,
+            completedStages: result.completedStages,
+            failedStages: result.failedStages,
+            failure: result.failure,
+            candidate: result.candidate
+              ? {
+                  resourceId: result.candidate.resourceId,
+                  resourceType: result.candidate.resourceType,
+                  region: result.candidate.region,
+                }
+              : undefined,
+            recommendation: result.recommendation
+              ? {
+                  status: result.recommendation.status,
+                  summary: result.recommendation.summary,
+                  reason: result.recommendation.reason,
+                }
+              : undefined,
+            financialImpact: result.financialImpact
+              ? {
+                  monthlySavings: result.financialImpact.monthlySavings,
+                  annualSavings: result.financialImpact.annualSavings,
+                  status: result.financialImpact.status,
+                }
+              : undefined,
+            verification: result.verification
+              ? { status: result.verification.status }
+              : undefined,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'workflow');
+    }
+  });
+
+  router.get('/workflows/status/:id', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const workflowId = req.params.id;
+      const status = deps.orchestrator.getWorkflowStatus(workflowId);
+
+      if (!status) {
+        throw new AppError('NOT_FOUND', `Workflow not found: ${workflowId}`, 404);
+      }
+
+      res.json(
+        buildSuccessResponse(
+          {
+            workflowId: status.metadata.workflowId,
+            status: status.metadata.status,
+            executionState: status.metadata.executionState,
+            plugin: status.metadata.plugin,
+            createdAt: status.metadata.createdAt,
+            completedAt: status.metadata.completedAt,
+            triggerSource: status.metadata.triggerSource,
+            currentStage: status.currentStage,
+            completedStages: status.completedStages,
+            failedStages: status.failedStages,
+            failure: status.failure,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'workflow');
+    }
+  });
+
+  router.get('/workflows/:id', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const workflowId = req.params.id;
+      const record = deps.orchestrator.getWorkflow(workflowId);
+
+      if (!record) {
+        throw new AppError('NOT_FOUND', `Workflow not found: ${workflowId}`, 404);
+      }
+
+      res.json(
+        buildSuccessResponse(
+          {
+            metadata: record.metadata,
+            status: record.metadata.status,
+            executionState: record.metadata.executionState,
+            currentStage: record.context.currentStage,
+            completedStages: record.context.completedStages,
+            failedStages: record.context.failedStages,
+            failure: record.context.failure,
+            retry: record.context.retry,
+            result: record.result
+              ? {
+                  workflowId: record.result.workflowId,
+                  status: record.result.status,
+                  executionState: record.result.executionState,
+                  durationMs: record.result.durationMs,
+                  completedAt: record.result.completedAt,
+                  recommendation: record.result.recommendation,
+                  financialImpact: record.result.financialImpact,
+                  verification: record.result.verification,
+                }
+              : undefined,
+            context: {
+              candidate: record.context.candidate,
+              evidenceStatus: record.context.evidenceStatus,
+              governance: record.context.governance
+                ? { status: record.context.governance.status, decision: record.context.governance.decision }
+                : undefined,
+              financialImpact: record.context.financialImpact
+                ? { monthlySavings: record.context.financialImpact.monthlySavings }
+                : undefined,
+              confidence: record.context.confidence
+                ? { score: record.context.confidence.score, status: record.context.confidence.status }
+                : undefined,
+              recommendation: record.context.recommendation,
+              execution: record.context.execution
+                ? { executionId: record.context.execution.executionId, status: record.context.execution.status }
+                : undefined,
+              verification: record.context.verification,
+            },
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'workflow');
+    }
+  });
 
   router.get('/workflow/evidence', async (req: Request, res: Response) => {
     const requestId = generateRequestId();

@@ -29,6 +29,7 @@ export const WORKFLOW_STAGES = {
   QUALIFICATION: 'qualification',
   GOVERNANCE: 'governance',
   FINANCIAL: 'financial',
+  CONFIDENCE: 'confidence',
   RECOMMENDATION: 'recommendation',
   EXECUTION: 'execution',
   VERIFICATION: 'verification',
@@ -36,6 +37,27 @@ export const WORKFLOW_STAGES = {
 } as const;
 
 export type WorkflowStage = (typeof WORKFLOW_STAGES)[keyof typeof WORKFLOW_STAGES];
+
+/** Explicit execution states tracked by the Workflow Orchestrator (Sprint 7). */
+export const WORKFLOW_EXECUTION_STATES = {
+  INITIALIZED: 'initialized',
+  EVIDENCE_COLLECTION: 'evidence_collection',
+  GOVERNANCE_EVALUATION: 'governance_evaluation',
+  FINANCIAL_ANALYSIS: 'financial_analysis',
+  CONFIDENCE_ANALYSIS: 'confidence_analysis',
+  RECOMMENDATION_GENERATION: 'recommendation_generation',
+  EXECUTION: 'execution',
+  VERIFICATION: 'verification',
+  OUTCOME_STORAGE: 'outcome_storage',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+} as const;
+
+export type WorkflowExecutionState =
+  (typeof WORKFLOW_EXECUTION_STATES)[keyof typeof WORKFLOW_EXECUTION_STATES];
+
+/** Maximum retry attempts for recoverable workflow stage failures. */
+export const WORKFLOW_MAX_RETRIES = 3;
 
 export const EVIDENCE_STATUS = {
   COMPLETE: 'complete',
