@@ -8,6 +8,7 @@ export interface LogContext {
   workflowId?: string;
   engine?: string;
   plugin?: string;
+  stage?: string;
   operation?: string;
   durationMs?: number;
   status?: string;

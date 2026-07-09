@@ -27,7 +27,8 @@
     "plugins/**/*.ts",
     "providers/**/*.ts",
     "orchestrator/**/*.ts",
-    "shared/**/*.ts"
+    "shared/**/*.ts",
+    "tests/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "src"]
 }

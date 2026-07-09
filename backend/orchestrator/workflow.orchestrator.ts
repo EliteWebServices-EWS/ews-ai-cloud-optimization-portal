@@ -6,6 +6,7 @@ import type {
   GovernanceWorkflowResult,
   OptimizationContext,
   OptimizationOutcome,
+  Recommendation,
   RecommendationWorkflowResult,
   VerificationWorkflowResult,
   WorkflowResult,
@@ -16,11 +17,36 @@ import type { VerificationEngine } from '../engines/verification';
 import {
   PLATFORM_MODE,
   PROVIDER_NAMES,
+  WORKFLOW_EXECUTION_STATES,
   WORKFLOW_STAGES,
   WORKFLOW_STATES,
   type PluginName,
 } from '../shared/constants';
 import { createLogger, generateWorkflowId } from '../shared/utils';
+import { resolveWorkflowConfig, type WorkflowConfig } from './workflow.config';
+import { WorkflowStageError, toEngineError } from './workflow.errors';
+import { createRetryState, recordFailedAttempt } from './workflow.retry';
+import { createWorkflowStore, type WorkflowStoreInterface } from './workflow.store';
+import type {
+  ExecuteWorkflowRequest,
+  HardenedWorkflowResult,
+  WorkflowContext,
+  WorkflowFailure,
+  WorkflowMetadata,
+  WorkflowRecord,
+} from './workflow.types';
+import {
+  STAGE_EXECUTION_STATE,
+  validateConfidenceStage,
+  validateEvidenceStage,
+  validateExecutionStage,
+  validateFinancialStage,
+  validateGovernanceStage,
+  validateLearningStage,
+  validateRecommendationStage,
+  validateStageEnabled,
+  validateVerificationStage,
+} from './workflow.validator';
 
 const logger = createLogger('WorkflowOrchestrator');
 
@@ -34,6 +60,8 @@ export interface WorkflowOrchestratorDependencies {
   executionSimulator: ExecutionSimulatorInterface;
   learningStore: LearningStoreInterface;
   getPlugin: (name: PluginName) => OptimizationPlugin;
+  workflowStore?: WorkflowStoreInterface;
+  workflowConfig?: WorkflowConfig;
 }
 
 export interface RunWorkflowRequest {
@@ -55,30 +83,323 @@ export interface RunVerificationWorkflowRequest extends RunWorkflowRequest {}
 export interface RunCompleteWorkflowRequest extends RunWorkflowRequest {}
 
 /**
- * Workflow Orchestrator — coordinates engines and plugins through the optimization lifecycle.
- * Sprint 6: closed-loop workflow with mock execution and verification.
+ * Workflow Orchestrator — production-ready workflow engine coordinating engines and plugins.
+ * Sprint 7: explicit states, context, failure management, retry structure, and tracking.
  */
 export class WorkflowOrchestrator {
-  constructor(private readonly deps: WorkflowOrchestratorDependencies) {}
+  private readonly store: WorkflowStoreInterface;
+  private readonly defaultConfig: WorkflowConfig;
 
-  async runEvidenceWorkflow(request: RunEvidenceWorkflowRequest): Promise<EvidencePackage> {
+  constructor(private readonly deps: WorkflowOrchestratorDependencies) {
+    this.store = deps.workflowStore ?? createWorkflowStore();
+    this.defaultConfig = deps.workflowConfig ?? resolveWorkflowConfig('full');
+  }
+
+  /** Start and execute a full optimization workflow with tracking. */
+  async executeWorkflow(request: ExecuteWorkflowRequest): Promise<HardenedWorkflowResult> {
+    const config = resolveWorkflowConfig(request.mode);
     const workflowId = generateWorkflowId();
-    const start = Date.now();
     const region = request.region ?? 'us-east-1';
+    const startedAt = new Date().toISOString();
+    const startMs = Date.now();
 
-    const context: OptimizationContext = {
+    const context = this.createInitialContext({
       workflowId,
       plugin: request.plugin,
-      provider: PROVIDER_NAMES.MOCK,
       region,
-      mode: PLATFORM_MODE.DEMO,
-      startedAt: new Date().toISOString(),
+      triggerSource: request.triggerSource ?? 'api',
+      startedAt,
+      config,
+    });
+
+    const metadata: WorkflowMetadata = {
+      workflowId,
+      plugin: request.plugin,
+      createdAt: startedAt,
+      status: WORKFLOW_STATES.RUNNING,
+      executionState: WORKFLOW_EXECUTION_STATES.INITIALIZED,
+      triggerSource: request.triggerSource ?? 'api',
+      resourceId: request.resourceId,
+      region,
     };
 
-    logger.info('Starting evidence workflow', {
+    const record: WorkflowRecord = { metadata, context };
+    this.store.save(record);
+
+    logger.info('Workflow started', {
       workflowId,
       plugin: request.plugin,
-      operation: 'runEvidenceWorkflow',
+      stage: WORKFLOW_STAGES.EVIDENCE,
+      operation: 'executeWorkflow',
+      status: WORKFLOW_STATES.RUNNING,
+    });
+
+    try {
+      const plugin = this.deps.getPlugin(request.plugin);
+      const candidates = await plugin.collectCandidates();
+      const candidate =
+        candidates.find((item) => item.resourceId === request.resourceId) ?? candidates[0];
+
+      if (!candidate) {
+        return this.failWorkflow(context, config, WORKFLOW_STAGES.EVIDENCE, {
+          engine: 'Workflow Orchestrator',
+          code: 'NO_CANDIDATES',
+          reason: 'No optimization candidates found',
+        }, startMs);
+      }
+
+      context.candidate = candidate;
+      this.store.updateContext(workflowId, context);
+
+      await this.runPipeline(context, config, plugin);
+
+      const durationMs = Date.now() - startMs;
+      context.completedAt = new Date().toISOString();
+      context.durationMs = durationMs;
+      context.status = WORKFLOW_STATES.COMPLETED;
+      context.executionState = WORKFLOW_EXECUTION_STATES.COMPLETED;
+
+      const result = this.buildWorkflowResult(context, durationMs);
+      this.store.updateContext(workflowId, context);
+      this.store.updateResult(workflowId, result);
+
+      logger.info('Workflow completed', {
+        workflowId,
+        plugin: request.plugin,
+        stage: context.currentStage,
+        operation: 'executeWorkflow',
+        durationMs,
+        status: WORKFLOW_STATES.COMPLETED,
+      });
+
+      return result;
+    } catch (error) {
+      if (error instanceof WorkflowStageError) {
+        return this.failWorkflow(
+          context,
+          config,
+          error.failedStage,
+          error.engineError,
+          startMs
+        );
+      }
+      const engineError = toEngineError(error, 'Workflow Orchestrator');
+      return this.failWorkflow(
+        context,
+        config,
+        context.currentStage ?? WORKFLOW_STAGES.EVIDENCE,
+        engineError,
+        startMs
+      );
+    }
+  }
+
+  /** Retrieve a tracked workflow by ID. */
+  getWorkflow(workflowId: string): WorkflowRecord | undefined {
+    return this.store.get(workflowId);
+  }
+
+  /** Retrieve workflow status summary by ID. */
+  getWorkflowStatus(workflowId: string): {
+    metadata: WorkflowMetadata;
+    completedStages: string[];
+    failedStages: string[];
+    currentStage?: string;
+    failure?: WorkflowFailure;
+  } | undefined {
+    const record = this.store.get(workflowId);
+    if (!record) {
+      return undefined;
+    }
+    return {
+      metadata: record.metadata,
+      completedStages: record.context.completedStages,
+      failedStages: record.context.failedStages,
+      currentStage: record.context.currentStage,
+      failure: record.context.failure,
+    };
+  }
+
+  async runEvidenceWorkflow(request: RunEvidenceWorkflowRequest): Promise<EvidencePackage> {
+    const context = await this.runPartialWorkflow(request, [WORKFLOW_STAGES.EVIDENCE]);
+    if (!context.evidence || !context.candidate || !context.evidenceStatus || !context.validation) {
+      throw new Error('Evidence collection did not produce expected output');
+    }
+    return {
+      workflowId: context.workflowId,
+      candidate: context.candidate,
+      evidence: context.evidence,
+      status: context.evidenceStatus,
+      validation: context.validation,
+    };
+  }
+
+  async runGovernanceWorkflow(
+    request: RunGovernanceWorkflowRequest
+  ): Promise<GovernanceWorkflowResult> {
+    const context = await this.runPartialWorkflow(request, [
+      WORKFLOW_STAGES.EVIDENCE,
+      WORKFLOW_STAGES.GOVERNANCE,
+    ]);
+    this.assertStageOutputs(context, WORKFLOW_STAGES.GOVERNANCE);
+    return this.toGovernanceResult(context);
+  }
+
+  async runFinancialWorkflow(
+    request: RunFinancialWorkflowRequest
+  ): Promise<FinancialWorkflowResult> {
+    const context = await this.runPartialWorkflow(request, [
+      WORKFLOW_STAGES.EVIDENCE,
+      WORKFLOW_STAGES.GOVERNANCE,
+      WORKFLOW_STAGES.FINANCIAL,
+    ]);
+    this.assertStageOutputs(context, WORKFLOW_STAGES.FINANCIAL);
+    return this.toFinancialResult(context);
+  }
+
+  async runRecommendationWorkflow(
+    request: RunRecommendationWorkflowRequest
+  ): Promise<RecommendationWorkflowResult> {
+    const context = await this.runPartialWorkflow(request, [
+      WORKFLOW_STAGES.EVIDENCE,
+      WORKFLOW_STAGES.GOVERNANCE,
+      WORKFLOW_STAGES.FINANCIAL,
+      WORKFLOW_STAGES.CONFIDENCE,
+      WORKFLOW_STAGES.RECOMMENDATION,
+    ]);
+    this.assertStageOutputs(context, WORKFLOW_STAGES.RECOMMENDATION);
+    return this.toRecommendationResult(context);
+  }
+
+  async runVerificationWorkflow(
+    request: RunVerificationWorkflowRequest
+  ): Promise<VerificationWorkflowResult> {
+    const context = await this.runPartialWorkflow(request, [
+      WORKFLOW_STAGES.EVIDENCE,
+      WORKFLOW_STAGES.GOVERNANCE,
+      WORKFLOW_STAGES.FINANCIAL,
+      WORKFLOW_STAGES.CONFIDENCE,
+      WORKFLOW_STAGES.RECOMMENDATION,
+      WORKFLOW_STAGES.EXECUTION,
+      WORKFLOW_STAGES.VERIFICATION,
+      WORKFLOW_STAGES.LEARNING,
+    ]);
+    this.assertStageOutputs(context, WORKFLOW_STAGES.VERIFICATION);
+    return this.toVerificationResult(context);
+  }
+
+  async runCompleteWorkflow(
+    request: RunCompleteWorkflowRequest
+  ): Promise<CompleteWorkflowResult> {
+    const result = await this.executeWorkflow({ ...request, mode: 'full', triggerSource: 'api' });
+    const verification = this.toVerificationResultFromHardened(result);
+    return {
+      ...verification,
+      status: WORKFLOW_STATES.COMPLETED,
+      currentStage: WORKFLOW_STAGES.LEARNING,
+    };
+  }
+
+  async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
+    const hardened = await this.executeWorkflow({ ...request, mode: 'full', triggerSource: 'api' });
+    const record = this.store.get(hardened.workflowId);
+    if (!record) {
+      throw new Error(`Workflow record not found: ${hardened.workflowId}`);
+    }
+    const context = record.context;
+    const plugin = this.deps.getPlugin(request.plugin);
+
+    const legacyEvidence = {
+      resourceId: context.candidate!.resourceId,
+      resourceType: context.candidate!.resourceType,
+      region: context.candidate!.region,
+      status: context.evidenceStatus!,
+      cpuUtilization: context.evidence!.telemetry.cpuUtilization,
+      memoryUtilization: context.evidence!.telemetry.memoryUtilization,
+      networkUtilization: context.evidence!.telemetry.networkUtilization,
+      monthlyCost: context.evidence!.pricing.monthlyRate,
+      instanceType: context.evidence!.instance.instanceType,
+      recommendedInstanceType: context.evidence!.recommendations[0]?.target,
+      tags: context.evidence!.tags,
+      collectedAt: context.evidence!.collectedAt,
+    };
+
+    const qualification = await plugin.qualify(legacyEvidence);
+    const recommendation = this.toLegacyRecommendation(context);
+
+    const optimizationContext: OptimizationContext = {
+      workflowId: context.workflowId,
+      plugin: request.plugin,
+      provider: PROVIDER_NAMES.MOCK,
+      region: context.candidate!.region,
+      mode: PLATFORM_MODE.DEMO,
+      startedAt: context.startedAt,
+      candidate: context.candidate,
+    };
+
+    return {
+      workflowId: context.workflowId,
+      status: WORKFLOW_STATES.COMPLETED,
+      currentStage: WORKFLOW_STAGES.VERIFICATION,
+      context: optimizationContext,
+      candidate: context.candidate!,
+      evidence: legacyEvidence,
+      qualification,
+      readiness: context.readiness!,
+      confidence: context.confidence!,
+      recommendation,
+      governance: context.governance!,
+      financialImpact: context.financialImpact!,
+      execution: context.execution,
+      observation: context.observation,
+      verification: context.verification!,
+      completedAt: context.completedAt ?? new Date().toISOString(),
+      recommendationDecision: context.recommendation,
+      verificationReport: context.report,
+      learningRecord: context.learningRecord,
+    };
+  }
+
+  private createInitialContext(params: {
+    workflowId: string;
+    plugin: PluginName;
+    region: string;
+    triggerSource: WorkflowContext['triggerSource'];
+    startedAt: string;
+    config: WorkflowConfig;
+  }): WorkflowContext {
+    return {
+      workflowId: params.workflowId,
+      plugin: params.plugin,
+      provider: PROVIDER_NAMES.MOCK,
+      region: params.region,
+      mode: PLATFORM_MODE.DEMO,
+      triggerSource: params.triggerSource,
+      startedAt: params.startedAt,
+      status: WORKFLOW_STATES.RUNNING,
+      executionState: WORKFLOW_EXECUTION_STATES.INITIALIZED,
+      completedStages: [],
+      failedStages: [],
+      retry: createRetryState(params.config.maxRetries),
+    };
+  }
+
+  private async runPartialWorkflow(
+    request: RunWorkflowRequest,
+    stages: import('../shared/constants').WorkflowStage[]
+  ): Promise<WorkflowContext> {
+    const config = this.defaultConfig;
+    const workflowId = generateWorkflowId();
+    const region = request.region ?? 'us-east-1';
+    const startedAt = new Date().toISOString();
+
+    const context = this.createInitialContext({
+      workflowId,
+      plugin: request.plugin,
+      region,
+      triggerSource: 'api',
+      startedAt,
+      config,
     });
 
     const plugin = this.deps.getPlugin(request.plugin);
@@ -92,388 +413,494 @@ export class WorkflowOrchestrator {
 
     context.candidate = candidate;
 
-    const providerData = await plugin.collectProviderEvidence(candidate);
+    for (const stage of stages) {
+      await this.executeStage(context, config, plugin, stage);
+    }
+
+    return context;
+  }
+
+  private async runPipeline(
+    context: WorkflowContext,
+    config: WorkflowConfig,
+    plugin: OptimizationPlugin
+  ): Promise<void> {
+    const pipeline: import('../shared/constants').WorkflowStage[] = [
+      WORKFLOW_STAGES.EVIDENCE,
+      WORKFLOW_STAGES.GOVERNANCE,
+      WORKFLOW_STAGES.FINANCIAL,
+      WORKFLOW_STAGES.CONFIDENCE,
+      WORKFLOW_STAGES.RECOMMENDATION,
+    ];
+
+    if (config.featureFlags.enableExecution) {
+      pipeline.push(WORKFLOW_STAGES.EXECUTION, WORKFLOW_STAGES.VERIFICATION);
+    }
+    if (config.featureFlags.enableLearning) {
+      pipeline.push(WORKFLOW_STAGES.LEARNING);
+    }
+
+    for (const stage of pipeline) {
+      await this.executeStage(context, config, plugin, stage);
+      this.store.updateContext(context.workflowId, context);
+    }
+  }
+
+  private async executeStage(
+    context: WorkflowContext,
+    config: WorkflowConfig,
+    plugin: OptimizationPlugin,
+    stage: import('../shared/constants').WorkflowStage
+  ): Promise<void> {
+    validateStageEnabled(config, stage);
+    context.currentStage = stage;
+    context.executionState = STAGE_EXECUTION_STATE[stage];
+
+    logger.info('Stage started', {
+      workflowId: context.workflowId,
+      plugin: context.plugin,
+      stage,
+      operation: 'executeStage',
+      status: WORKFLOW_STATES.RUNNING,
+    });
+
+    const stageStart = Date.now();
+
+    try {
+      switch (stage) {
+        case WORKFLOW_STAGES.EVIDENCE:
+          await this.collectEvidence(context, plugin);
+          break;
+        case WORKFLOW_STAGES.GOVERNANCE:
+          await this.evaluateGovernance(context);
+          break;
+        case WORKFLOW_STAGES.FINANCIAL:
+          await this.calculateFinancialImpact(context);
+          break;
+        case WORKFLOW_STAGES.CONFIDENCE:
+          await this.calculateConfidence(context);
+          break;
+        case WORKFLOW_STAGES.RECOMMENDATION:
+          await this.generateRecommendation(context);
+          break;
+        case WORKFLOW_STAGES.EXECUTION:
+          await this.simulateExecution(context, plugin);
+          break;
+        case WORKFLOW_STAGES.VERIFICATION:
+          await this.verifyOutcome(context, plugin);
+          break;
+        case WORKFLOW_STAGES.LEARNING:
+          await this.storeOutcome(context);
+          break;
+        default:
+          break;
+      }
+
+      context.completedStages.push(stage);
+
+      logger.info('Stage completed', {
+        workflowId: context.workflowId,
+        plugin: context.plugin,
+        stage,
+        operation: 'executeStage',
+        durationMs: Date.now() - stageStart,
+        status: 'completed',
+      });
+    } catch (error) {
+      const engineError = error instanceof WorkflowStageError
+        ? error.engineError
+        : toEngineError(error, 'Workflow Orchestrator');
+
+      throw error instanceof WorkflowStageError
+        ? error
+        : new WorkflowStageError(stage, context.executionState, engineError);
+    }
+  }
+
+  private async collectEvidence(
+    context: WorkflowContext,
+    plugin: OptimizationPlugin
+  ): Promise<void> {
+    validateEvidenceStage(context);
+
+    const optimizationContext = this.toOptimizationContext(context);
+    const providerData = await plugin.collectProviderEvidence(context.candidate!);
     const evidenceResult = await this.deps.evidenceEngine.execute({
-      context,
-      candidate,
+      context: optimizationContext,
+      candidate: context.candidate!,
       providerData,
     });
 
     if (!evidenceResult.success || !evidenceResult.data) {
-      throw new Error(evidenceResult.error?.reason ?? 'Evidence collection failed');
+      throw new WorkflowStageError(
+        WORKFLOW_STAGES.EVIDENCE,
+        WORKFLOW_EXECUTION_STATES.EVIDENCE_COLLECTION,
+        evidenceResult.error ?? {
+          engine: 'Evidence Engine',
+          code: 'EVIDENCE_FAILED',
+          reason: 'Evidence collection failed',
+        }
+      );
     }
 
-    logger.info('Evidence workflow completed', {
-      workflowId,
-      plugin: request.plugin,
-      durationMs: Date.now() - start,
-      status: evidenceResult.data.status,
-    });
-
-    return evidenceResult.data.package;
+    context.evidence = evidenceResult.data.package.evidence;
+    context.evidenceStatus = evidenceResult.data.status;
+    context.validation = evidenceResult.data.package.validation;
   }
 
-  async runGovernanceWorkflow(
-    request: RunGovernanceWorkflowRequest
-  ): Promise<GovernanceWorkflowResult> {
-    const start = Date.now();
-    const evidencePackage = await this.runEvidenceWorkflow(request);
-
-    const context: OptimizationContext = {
-      workflowId: evidencePackage.workflowId,
-      plugin: request.plugin,
-      provider: PROVIDER_NAMES.MOCK,
-      region: evidencePackage.candidate.region,
-      mode: PLATFORM_MODE.DEMO,
-      startedAt: new Date().toISOString(),
-      candidate: evidencePackage.candidate,
-    };
-
-    logger.info('Starting governance workflow', {
-      workflowId: context.workflowId,
-      plugin: request.plugin,
-      operation: 'runGovernanceWorkflow',
-    });
+  private async evaluateGovernance(context: WorkflowContext): Promise<void> {
+    validateGovernanceStage(context);
 
     const governanceResult = await this.deps.governanceEngine.execute({
-      context,
-      candidate: evidencePackage.candidate,
-      evidence: evidencePackage.evidence,
-      evidenceStatus: evidencePackage.status,
-      validation: evidencePackage.validation,
+      context: this.toOptimizationContext(context),
+      candidate: context.candidate!,
+      evidence: context.evidence!,
+      evidenceStatus: context.evidenceStatus!,
+      validation: context.validation!,
     });
 
     if (!governanceResult.success || !governanceResult.data) {
-      throw new Error(governanceResult.error?.reason ?? 'Governance evaluation failed');
+      throw new WorkflowStageError(
+        WORKFLOW_STAGES.GOVERNANCE,
+        WORKFLOW_EXECUTION_STATES.GOVERNANCE_EVALUATION,
+        governanceResult.error ?? {
+          engine: 'Governance Engine',
+          code: 'GOVERNANCE_FAILED',
+          reason: 'Governance evaluation failed',
+        }
+      );
     }
 
-    logger.info('Governance workflow completed', {
-      workflowId: context.workflowId,
-      plugin: request.plugin,
-      durationMs: Date.now() - start,
-      status: governanceResult.data.status,
-    });
-
-    return {
-      workflowId: evidencePackage.workflowId,
-      candidate: evidencePackage.candidate,
-      evidence: evidencePackage.evidence,
-      evidenceStatus: evidencePackage.status,
-      validation: evidencePackage.validation,
-      governance: governanceResult.data,
-      readiness: governanceResult.data.readiness,
-      completedAt: new Date().toISOString(),
-    };
+    context.governance = governanceResult.data;
+    context.readiness = governanceResult.data.readiness;
   }
 
-  async runFinancialWorkflow(
-    request: RunFinancialWorkflowRequest
-  ): Promise<FinancialWorkflowResult> {
-    const start = Date.now();
-    const governanceResult = await this.runGovernanceWorkflow(request);
-
-    const context: OptimizationContext = {
-      workflowId: governanceResult.workflowId,
-      plugin: request.plugin,
-      provider: PROVIDER_NAMES.MOCK,
-      region: governanceResult.candidate.region,
-      mode: PLATFORM_MODE.DEMO,
-      startedAt: new Date().toISOString(),
-      candidate: governanceResult.candidate,
-    };
-
-    logger.info('Starting financial workflow', {
-      workflowId: context.workflowId,
-      plugin: request.plugin,
-      operation: 'runFinancialWorkflow',
-    });
+  private async calculateFinancialImpact(context: WorkflowContext): Promise<void> {
+    validateFinancialStage(context);
 
     const financialResult = await this.deps.financialEngine.execute({
-      context,
-      candidate: governanceResult.candidate,
-      evidence: governanceResult.evidence,
-      governance: governanceResult.governance,
+      context: this.toOptimizationContext(context),
+      candidate: context.candidate!,
+      evidence: context.evidence!,
+      governance: context.governance!,
     });
 
     if (!financialResult.success || !financialResult.data) {
-      throw new Error(financialResult.error?.reason ?? 'Financial calculation failed');
+      throw new WorkflowStageError(
+        WORKFLOW_STAGES.FINANCIAL,
+        WORKFLOW_EXECUTION_STATES.FINANCIAL_ANALYSIS,
+        financialResult.error ?? {
+          engine: 'Financial Engine',
+          code: 'FINANCIAL_FAILED',
+          reason: 'Financial calculation failed',
+        }
+      );
     }
 
-    logger.info('Financial workflow completed', {
-      workflowId: context.workflowId,
-      plugin: request.plugin,
-      durationMs: Date.now() - start,
-      status: financialResult.data.status,
-    });
-
-    return {
-      workflowId: governanceResult.workflowId,
-      candidate: governanceResult.candidate,
-      evidence: governanceResult.evidence,
-      evidenceStatus: governanceResult.evidenceStatus,
-      validation: governanceResult.validation,
-      governance: governanceResult.governance,
-      readiness: governanceResult.readiness,
-      financialImpact: financialResult.data,
-      completedAt: new Date().toISOString(),
-    };
+    context.financialImpact = financialResult.data;
   }
 
-  async runRecommendationWorkflow(
-    request: RunRecommendationWorkflowRequest
-  ): Promise<RecommendationWorkflowResult> {
-    const start = Date.now();
-    const financialResult = await this.runFinancialWorkflow(request);
-
-    const context: OptimizationContext = {
-      workflowId: financialResult.workflowId,
-      plugin: request.plugin,
-      provider: PROVIDER_NAMES.MOCK,
-      region: financialResult.candidate.region,
-      mode: PLATFORM_MODE.DEMO,
-      startedAt: new Date().toISOString(),
-      candidate: financialResult.candidate,
-    };
-
-    logger.info('Starting recommendation workflow', {
-      workflowId: context.workflowId,
-      plugin: request.plugin,
-      operation: 'runRecommendationWorkflow',
-    });
+  private async calculateConfidence(context: WorkflowContext): Promise<void> {
+    validateConfidenceStage(context);
 
     const confidenceResult = await this.deps.confidenceEngine.execute({
-      context,
-      candidate: financialResult.candidate,
-      evidence: financialResult.evidence,
-      evidenceStatus: financialResult.evidenceStatus,
-      validation: financialResult.validation,
-      governance: financialResult.governance,
-      financialImpact: financialResult.financialImpact,
+      context: this.toOptimizationContext(context),
+      candidate: context.candidate!,
+      evidence: context.evidence!,
+      evidenceStatus: context.evidenceStatus!,
+      validation: context.validation!,
+      governance: context.governance!,
+      financialImpact: context.financialImpact!,
     });
 
     if (!confidenceResult.success || !confidenceResult.data) {
-      throw new Error(confidenceResult.error?.reason ?? 'Confidence calculation failed');
+      throw new WorkflowStageError(
+        WORKFLOW_STAGES.CONFIDENCE,
+        WORKFLOW_EXECUTION_STATES.CONFIDENCE_ANALYSIS,
+        confidenceResult.error ?? {
+          engine: 'Confidence Engine',
+          code: 'CONFIDENCE_FAILED',
+          reason: 'Confidence calculation failed',
+        }
+      );
     }
 
+    context.confidence = confidenceResult.data;
+  }
+
+  private async generateRecommendation(context: WorkflowContext): Promise<void> {
+    validateRecommendationStage(context);
+
     const recommendationResult = await this.deps.recommendationEngine.execute({
-      context,
-      candidate: financialResult.candidate,
-      evidence: financialResult.evidence,
-      governance: financialResult.governance,
-      financialImpact: financialResult.financialImpact,
-      confidence: confidenceResult.data,
+      context: this.toOptimizationContext(context),
+      candidate: context.candidate!,
+      evidence: context.evidence!,
+      governance: context.governance!,
+      financialImpact: context.financialImpact!,
+      confidence: context.confidence!,
     });
 
     if (!recommendationResult.success || !recommendationResult.data) {
-      throw new Error(recommendationResult.error?.reason ?? 'Recommendation generation failed');
+      throw new WorkflowStageError(
+        WORKFLOW_STAGES.RECOMMENDATION,
+        WORKFLOW_EXECUTION_STATES.RECOMMENDATION_GENERATION,
+        recommendationResult.error ?? {
+          engine: 'Recommendation Engine',
+          code: 'RECOMMENDATION_FAILED',
+          reason: 'Recommendation generation failed',
+        }
+      );
     }
 
-    logger.info('Recommendation workflow completed', {
-      workflowId: context.workflowId,
-      plugin: request.plugin,
-      durationMs: Date.now() - start,
-      status: recommendationResult.data.status,
-    });
-
-    return {
-      workflowId: financialResult.workflowId,
-      candidate: financialResult.candidate,
-      evidence: financialResult.evidence,
-      evidenceStatus: financialResult.evidenceStatus,
-      validation: financialResult.validation,
-      governance: financialResult.governance,
-      readiness: financialResult.readiness,
-      financialImpact: financialResult.financialImpact,
-      confidence: confidenceResult.data,
-      recommendation: recommendationResult.data,
-      completedAt: new Date().toISOString(),
-    };
+    context.recommendation = recommendationResult.data;
   }
 
-  async runVerificationWorkflow(
-    request: RunVerificationWorkflowRequest
-  ): Promise<VerificationWorkflowResult> {
-    const start = Date.now();
-    const recommendationWorkflow = await this.runRecommendationWorkflow(request);
-    const plugin = this.deps.getPlugin(request.plugin);
-
-    const context: OptimizationContext = {
-      workflowId: recommendationWorkflow.workflowId,
-      plugin: request.plugin,
-      provider: PROVIDER_NAMES.MOCK,
-      region: recommendationWorkflow.candidate.region,
-      mode: PLATFORM_MODE.DEMO,
-      startedAt: new Date().toISOString(),
-      candidate: recommendationWorkflow.candidate,
-    };
-
-    logger.info('Starting verification workflow', {
-      workflowId: context.workflowId,
-      plugin: request.plugin,
-      operation: 'runVerificationWorkflow',
-    });
+  private async simulateExecution(
+    context: WorkflowContext,
+    _plugin: OptimizationPlugin
+  ): Promise<void> {
+    validateExecutionStage(context);
 
     const executionResult = await this.deps.executionSimulator.simulate({
-      context,
-      candidate: recommendationWorkflow.candidate,
-      recommendation: recommendationWorkflow.recommendation,
+      context: this.toOptimizationContext(context),
+      candidate: context.candidate!,
+      recommendation: context.recommendation!,
     });
 
-    const recommendationAction =
-      recommendationWorkflow.recommendation.action ??
-      ({
-        action: recommendationWorkflow.recommendation.detail.action,
-        resourceId: recommendationWorkflow.candidate.resourceId,
-        resourceType: recommendationWorkflow.candidate.resourceType,
-        from: recommendationWorkflow.recommendation.detail.fromInstanceType,
-        to: recommendationWorkflow.recommendation.detail.toInstanceType,
-        reason: recommendationWorkflow.recommendation.reason,
-        region: recommendationWorkflow.candidate.region,
-      } as import('../shared/types').Recommendation);
+    context.execution = executionResult;
+  }
 
+  private async verifyOutcome(
+    context: WorkflowContext,
+    plugin: OptimizationPlugin
+  ): Promise<void> {
+    validateExecutionStage(context);
+
+    const recommendationAction = this.toLegacyRecommendation(context);
     const observation = await plugin.verify({
-      executionResult,
+      executionResult: context.execution!,
       recommendation: recommendationAction,
-      financialImpact: recommendationWorkflow.financialImpact,
+      financialImpact: context.financialImpact!,
     });
 
-    logger.info('Observation collected', {
-      workflowId: context.workflowId,
-      operation: 'runVerificationWorkflow',
-      executionId: executionResult.executionId,
-    });
+    context.observation = observation;
+
+    validateVerificationStage(context);
 
     const verificationResult = await this.deps.verificationEngine.execute({
-      context,
-      recommendation: recommendationWorkflow.recommendation,
-      financialImpact: recommendationWorkflow.financialImpact,
-      executionResult,
+      context: this.toOptimizationContext(context),
+      recommendation: context.recommendation!,
+      financialImpact: context.financialImpact!,
+      executionResult: context.execution!,
       observation,
     });
 
     if (!verificationResult.success || !verificationResult.data) {
-      throw new Error(verificationResult.error?.reason ?? 'Verification failed');
+      throw new WorkflowStageError(
+        WORKFLOW_STAGES.VERIFICATION,
+        WORKFLOW_EXECUTION_STATES.VERIFICATION,
+        verificationResult.error ?? {
+          engine: 'Verification Engine',
+          code: 'VERIFICATION_FAILED',
+          reason: 'Verification failed',
+        }
+      );
     }
 
-    const report = this.deps.verificationEngine.buildReport(
+    context.verification = verificationResult.data;
+    context.report = this.deps.verificationEngine.buildReport(
       {
-        context,
-        recommendation: recommendationWorkflow.recommendation,
-        financialImpact: recommendationWorkflow.financialImpact,
-        executionResult,
+        context: this.toOptimizationContext(context),
+        recommendation: context.recommendation!,
+        financialImpact: context.financialImpact!,
+        executionResult: context.execution!,
         observation,
       },
       verificationResult.data
     );
+  }
+
+  private async storeOutcome(context: WorkflowContext): Promise<void> {
+    validateLearningStage(context);
 
     const outcome: OptimizationOutcome = {
-      workflowId: recommendationWorkflow.workflowId,
-      plugin: request.plugin,
-      candidate: recommendationWorkflow.candidate,
-      recommendation: recommendationWorkflow.recommendation,
-      execution: executionResult,
-      observation,
-      verification: verificationResult.data,
-      financialImpact: recommendationWorkflow.financialImpact,
+      workflowId: context.workflowId,
+      plugin: context.plugin,
+      candidate: context.candidate!,
+      recommendation: context.recommendation!,
+      execution: context.execution!,
+      observation: context.observation!,
+      verification: context.verification!,
+      financialImpact: context.financialImpact!,
       completedAt: new Date().toISOString(),
     };
 
-    const learningRecord = this.deps.learningStore.save(
+    context.learningRecord = this.deps.learningStore.save(
       this.deps.learningStore.buildRecord(outcome)
     );
+  }
 
-    logger.info('Verification workflow completed', {
+  private failWorkflow(
+    context: WorkflowContext,
+    _config: WorkflowConfig,
+    failedStage: import('../shared/constants').WorkflowStage,
+    error: import('../shared/types').EngineError,
+    startMs: number
+  ): HardenedWorkflowResult {
+    const durationMs = Date.now() - startMs;
+    const timestamp = new Date().toISOString();
+
+    context.status = WORKFLOW_STATES.FAILED;
+    context.executionState = WORKFLOW_EXECUTION_STATES.FAILED;
+    context.failedStages.push(failedStage);
+    context.completedAt = timestamp;
+    context.durationMs = durationMs;
+    context.failure = {
       workflowId: context.workflowId,
-      plugin: request.plugin,
-      durationMs: Date.now() - start,
-      status: verificationResult.data.status,
+      failedStage,
+      executionState: STAGE_EXECUTION_STATE[failedStage] ?? WORKFLOW_EXECUTION_STATES.FAILED,
+      error,
+      timestamp,
+    };
+    context.retry = recordFailedAttempt(
+      context.retry,
+      failedStage,
+      context.executionState,
+      error
+    );
+
+    const result = this.buildWorkflowResult(context, durationMs);
+    this.store.updateContext(context.workflowId, context);
+    this.store.updateResult(context.workflowId, result);
+
+    logger.error('Stage failed', {
+      workflowId: context.workflowId,
+      plugin: context.plugin,
+      stage: failedStage,
+      operation: 'executeWorkflow',
+      durationMs,
+      status: WORKFLOW_STATES.FAILED,
     });
 
+    logger.info('Workflow completed', {
+      workflowId: context.workflowId,
+      plugin: context.plugin,
+      stage: failedStage,
+      operation: 'executeWorkflow',
+      durationMs,
+      status: WORKFLOW_STATES.FAILED,
+    });
+
+    return result;
+  }
+
+  private buildWorkflowResult(context: WorkflowContext, durationMs: number): HardenedWorkflowResult {
     return {
-      ...recommendationWorkflow,
-      execution: executionResult,
-      observation,
-      verification: verificationResult.data,
-      report,
-      learningRecord,
-      completedAt: new Date().toISOString(),
+      workflowId: context.workflowId,
+      status: context.status,
+      executionState: context.executionState,
+      durationMs,
+      candidate: context.candidate,
+      recommendation: context.recommendation,
+      financialImpact: context.financialImpact,
+      verification: context.verification,
+      report: context.report,
+      learningRecord: context.learningRecord,
+      completedStages: [...context.completedStages],
+      failedStages: [...context.failedStages],
+      failure: context.failure,
+      retry: context.retry,
+      completedAt: context.completedAt,
     };
   }
 
-  async runCompleteWorkflow(
-    request: RunCompleteWorkflowRequest
-  ): Promise<CompleteWorkflowResult> {
-    const verificationWorkflow = await this.runVerificationWorkflow(request);
-
+  private toOptimizationContext(context: WorkflowContext): OptimizationContext {
     return {
-      ...verificationWorkflow,
-      status: WORKFLOW_STATES.COMPLETED,
-      currentStage: WORKFLOW_STAGES.LEARNING,
+      workflowId: context.workflowId,
+      plugin: context.plugin,
+      provider: context.provider,
+      region: context.region,
+      mode: context.mode,
+      startedAt: context.startedAt,
+      candidate: context.candidate,
     };
   }
 
-  async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
-    const completeWorkflow = await this.runCompleteWorkflow(request);
-    const legacyEvidence = {
-      resourceId: completeWorkflow.candidate.resourceId,
-      resourceType: completeWorkflow.candidate.resourceType,
-      region: completeWorkflow.candidate.region,
-      status: completeWorkflow.evidenceStatus,
-      cpuUtilization: completeWorkflow.evidence.telemetry.cpuUtilization,
-      memoryUtilization: completeWorkflow.evidence.telemetry.memoryUtilization,
-      networkUtilization: completeWorkflow.evidence.telemetry.networkUtilization,
-      monthlyCost: completeWorkflow.evidence.pricing.monthlyRate,
-      instanceType: completeWorkflow.evidence.instance.instanceType,
-      recommendedInstanceType: completeWorkflow.evidence.recommendations[0]?.target,
-      tags: completeWorkflow.evidence.tags,
-      collectedAt: completeWorkflow.evidence.collectedAt,
-    };
-    const plugin = this.deps.getPlugin(request.plugin);
-
-    const qualification = await plugin.qualify(legacyEvidence);
-    const recommendation =
-      completeWorkflow.recommendation.action ??
+  private toLegacyRecommendation(context: WorkflowContext): Recommendation {
+    return (
+      context.recommendation?.action ??
       ({
-        action: completeWorkflow.recommendation.detail.action,
-        resourceId: completeWorkflow.candidate.resourceId,
-        resourceType: completeWorkflow.candidate.resourceType,
-        from: completeWorkflow.recommendation.detail.fromInstanceType,
-        to: completeWorkflow.recommendation.detail.toInstanceType,
-        reason: completeWorkflow.recommendation.reason,
-        region: completeWorkflow.candidate.region,
-      } as import('../shared/types').Recommendation);
+        action: context.recommendation!.detail.action,
+        resourceId: context.candidate!.resourceId,
+        resourceType: context.candidate!.resourceType,
+        from: context.recommendation!.detail.fromInstanceType,
+        to: context.recommendation!.detail.toInstanceType,
+        reason: context.recommendation!.reason,
+        region: context.candidate!.region,
+      } as Recommendation)
+    );
+  }
 
-    const context: OptimizationContext = {
-      workflowId: completeWorkflow.workflowId,
-      plugin: request.plugin,
-      provider: PROVIDER_NAMES.MOCK,
-      region: completeWorkflow.candidate.region,
-      mode: PLATFORM_MODE.DEMO,
-      startedAt: new Date().toISOString(),
-      candidate: completeWorkflow.candidate,
-    };
+  private assertStageOutputs(
+    context: WorkflowContext,
+    stage: import('../shared/constants').WorkflowStage
+  ): void {
+    if (context.failedStages.length > 0 || context.status === WORKFLOW_STATES.FAILED) {
+      const reason = context.failure?.error.reason ?? 'Workflow stage failed';
+      throw new Error(reason);
+    }
+    if (!context.completedStages.includes(stage)) {
+      throw new Error(`Stage ${stage} did not complete successfully`);
+    }
+  }
 
+  private toGovernanceResult(context: WorkflowContext): GovernanceWorkflowResult {
     return {
-      workflowId: completeWorkflow.workflowId,
-      status: WORKFLOW_STATES.COMPLETED,
-      currentStage: WORKFLOW_STAGES.VERIFICATION,
-      context,
-      candidate: completeWorkflow.candidate,
-      evidence: legacyEvidence,
-      qualification,
-      readiness: completeWorkflow.readiness,
-      confidence: completeWorkflow.confidence,
-      recommendation,
-      governance: completeWorkflow.governance,
-      financialImpact: completeWorkflow.financialImpact,
-      execution: completeWorkflow.execution,
-      observation: completeWorkflow.observation,
-      recommendationDecision: completeWorkflow.recommendation,
-      verification: completeWorkflow.verification,
-      verificationReport: completeWorkflow.report,
-      learningRecord: completeWorkflow.learningRecord,
+      workflowId: context.workflowId,
+      candidate: context.candidate!,
+      evidence: context.evidence!,
+      evidenceStatus: context.evidenceStatus!,
+      validation: context.validation!,
+      governance: context.governance!,
+      readiness: context.readiness!,
       completedAt: new Date().toISOString(),
     };
+  }
+
+  private toFinancialResult(context: WorkflowContext): FinancialWorkflowResult {
+    return {
+      ...this.toGovernanceResult(context),
+      financialImpact: context.financialImpact!,
+    };
+  }
+
+  private toRecommendationResult(context: WorkflowContext): RecommendationWorkflowResult {
+    return {
+      ...this.toFinancialResult(context),
+      confidence: context.confidence!,
+      recommendation: context.recommendation!,
+    };
+  }
+
+  private toVerificationResult(context: WorkflowContext): VerificationWorkflowResult {
+    return {
+      ...this.toRecommendationResult(context),
+      execution: context.execution!,
+      observation: context.observation!,
+      verification: context.verification!,
+      report: context.report!,
+      learningRecord: context.learningRecord,
+    };
+  }
+
+  private toVerificationResultFromHardened(
+    result: HardenedWorkflowResult
+  ): VerificationWorkflowResult {
+    const record = this.store.get(result.workflowId);
+    if (!record) {
+      throw new Error(`Workflow record not found: ${result.workflowId}`);
+    }
+    return this.toVerificationResult(record.context);
   }
 }
 
