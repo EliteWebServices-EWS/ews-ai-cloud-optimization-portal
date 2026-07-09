@@ -11,7 +11,10 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'dashboard-dist'),
     emptyOutDir: true,
     rollupOptions: {
-      input: path.resolve(__dirname, 'dashboard/index.html'),
+      input: {
+        main: path.resolve(__dirname, 'dashboard/index.html'),
+        reports: path.resolve(__dirname, 'dashboard/reports.html'),
+      },
     },
   },
   server: {

@@ -6,6 +6,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
   workflowId?: string;
+  reportId?: string;
   engine?: string;
   plugin?: string;
   stage?: string;
