@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SISU'M Optimization Reports | EWS Cloud Optimization</title>
+  <link rel="icon" href="/assets/logo/ews-logo-primary.png">
+</head>
+<body>
+  <header class="dashboard-header">
+    <a href="/index.html" class="brand-link">
+      <img src="/assets/logo/ews-logo-primary.png" alt="EWS" width="36" height="36">
+      <div>
+        <strong>SISU'M</strong>
+        <span>Cloud Optimization Decision Platform</span>
+      </div>
+    </a>
+    <nav class="dashboard-nav">
+      <a href="/index.html">Decision Dashboard</a>
+      <a href="/reports.html" aria-current="page">Reports</a>
+    </nav>
+    <span class="demo-badge">Demo Mode · Mock Provider</span>
+  </header>
+
+  <main class="dashboard-layout reports-layout">
+    <section class="dashboard-hero">
+      <div>
+        <h1>Optimization Reports</h1>
+        <p class="hero-subtitle">Structured summaries from the Reporting Engine — aggregation only, no client-side calculations.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="refresh-reports-btn" type="button" class="btn-secondary">Refresh</button>
+        <button id="generate-report-btn" type="button" class="btn-primary">Generate Demo Report</button>
+      </div>
+    </section>
+
+    <div id="state-message" hidden></div>
+
+    <form id="report-filters" class="report-filters" aria-label="Report filters">
+      <label>
+        Status
+        <select name="status">
+          <option value="">All</option>
+          <option value="complete">Complete</option>
+          <option value="partial">Partial</option>
+          <option value="failed">Failed</option>
+          <option value="empty">Empty</option>
+        </select>
+      </label>
+      <label>
+        Resource Type
+        <select name="resourceType">
+          <option value="">All</option>
+          <option value="EC2">EC2</option>
+        </select>
+      </label>
+      <label>
+        Confidence
+        <select name="confidenceLevel">
+          <option value="">All</option>
+          <option value="HIGH">High</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="LOW">Low</option>
+        </select>
+      </label>
+      <label>
+        Verification
+        <select name="verificationStatus">
+          <option value="">All</option>
+          <option value="verified">Verified</option>
+          <option value="partial">Partial</option>
+          <option value="failed">Failed</option>
+          <option value="pending">Pending</option>
+        </select>
+      </label>
+      <button type="submit" class="btn-secondary">Apply Filters</button>
+      <button type="reset" class="btn-secondary">Clear</button>
+    </form>
+
+    <div class="reports-grid">
+      <aside id="report-list-panel" class="panel-slot report-list-panel"></aside>
+      <div class="reports-detail-column">
+        <div id="summary-panel" class="panel-slot"></div>
+        <div id="savings-panel" class="panel-slot"></div>
+        <div id="recommendation-panel" class="panel-slot"></div>
+        <div id="verification-panel" class="panel-slot"></div>
+        <div id="report-detail-panel" class="panel-slot panel-wide"></div>
+      </div>
+    </div>
+
+    <p class="dashboard-footer">Reports aggregated by Reporting Engine · Export formats prepared for future implementation</p>
+  </main>
+
+  <script type="module" src="./src/reports-main.ts"></script>
+</body>
+</html>

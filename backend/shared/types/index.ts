@@ -652,6 +652,24 @@ export interface EvidenceValidationResult {
   warnings: string[];
 }
 
+export type {
+  ReportStatus,
+  ReportExportFormat,
+  ReportExportOption,
+  ReportSummary,
+  ResourceSummary,
+  SavingsSummary,
+  DecisionSummary,
+  VerificationSummary,
+  EvidenceSummary,
+  GovernanceSummary,
+  ReportRecommendationEntry,
+  OptimizationReport,
+  ReportGenerationInput,
+  ReportFilterCriteria,
+  GenerateReportRequest,
+} from './report.types';
+
 /** Complete evidence package returned by the evidence collection workflow. */
 export interface EvidencePackage {
   workflowId: string;

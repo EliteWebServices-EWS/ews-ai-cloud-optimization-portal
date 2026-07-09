@@ -10,6 +10,12 @@ import { DEFAULT_FINANCIAL_CONFIG, generateFinancialReport } from '../../engines
 import { DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
 import { DEFAULT_RECOMMENDATION_CONFIG } from '../../engines/recommendation';
 import { DEFAULT_VERIFICATION_CONFIG } from '../../engines/verification';
+import {
+  filterReports,
+  parseReportFilters,
+  toReportGenerationInput,
+  type ReportingEngine,
+} from '../../engines/reporting';
 import { MOCK_PRICING } from '../../providers/mock/data';
 import {
   AppError,
@@ -27,6 +33,7 @@ export interface ApiDependencies {
   activeProvider: string;
   executionSimulator: ExecutionSimulatorInterface;
   learningStore: LearningStoreInterface;
+  reportingEngine: ReportingEngine;
 }
 
 function handleRouteError(
@@ -973,6 +980,120 @@ export function createGovernanceRoutes(): Router {
   return router;
 }
 
+/** Optimization report routes — Sprint 9 Reporting Layer. */
+export function createReportRoutes(
+  deps: Pick<ApiDependencies, 'orchestrator' | 'reportingEngine'>
+): Router {
+  const router = Router();
+
+  router.get('/reports', (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const filters = parseReportFilters(req.query as Record<string, unknown>);
+      const allReports = deps.reportingEngine.listReports();
+      const reports = filterReports(allReports, filters);
+
+      res.json(
+        buildSuccessResponse(
+          {
+            reports: reports.map((report) => ({
+              reportId: report.reportId,
+              workflowId: report.workflowId,
+              plugin: report.plugin,
+              status: report.status,
+              workflowStatus: report.workflowStatus,
+              createdAt: report.createdAt,
+              region: report.region,
+              summary: {
+                headline: report.summary.headline,
+                opportunityCount: report.summary.opportunityCount,
+                estimatedMonthlySavings: report.summary.estimatedMonthlySavings,
+                verifiedMonthlySavings: report.summary.verifiedMonthlySavings,
+                verifiedCount: report.summary.verifiedCount,
+                currency: report.summary.currency,
+                optimizationStatus: report.summary.optimizationStatus,
+                executiveSummary: report.summary.executiveSummary,
+              },
+              resourceCount: report.resources.length,
+              confidenceStatus: report.recommendations[0]?.decision.confidenceStatus,
+              verificationStatus: report.verification?.status,
+            })),
+            total: reports.length,
+            filters,
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'reports');
+    }
+  });
+
+  router.get('/reports/:id', (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const reportId = req.params.id;
+      const report = deps.reportingEngine.getReport(reportId);
+
+      if (!report) {
+        throw new AppError('NOT_FOUND', `Report not found: ${reportId}`, 404);
+      }
+
+      res.json(buildSuccessResponse(report, requestId));
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'reports');
+    }
+  });
+
+  router.post('/reports/generate', (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+
+    try {
+      const workflowId =
+        typeof req.body?.workflowId === 'string' ? req.body.workflowId : undefined;
+
+      if (!workflowId) {
+        throw new AppError('INVALID_REQUEST', 'workflowId is required', 400);
+      }
+
+      const existing = deps.reportingEngine.getReportByWorkflowId(workflowId);
+      if (existing) {
+        res.json(buildSuccessResponse({ report: existing, cached: true }, requestId));
+        return;
+      }
+
+      const record = deps.orchestrator.getWorkflow(workflowId);
+      if (!record) {
+        throw new AppError(
+          'NOT_FOUND',
+          `Workflow not found: ${workflowId}`,
+          404,
+          'reports'
+        );
+      }
+
+      const input = toReportGenerationInput(record);
+      const result = deps.reportingEngine.execute(input);
+
+      if (!result.success || !result.data) {
+        const code = result.error?.code ?? 'REPORT_GENERATION_FAILED';
+        const message = result.error?.reason ?? 'Report generation failed';
+        throw new AppError(code, message, 422, 'reports');
+      }
+
+      res.status(201).json(
+        buildSuccessResponse({ report: result.data, cached: false }, requestId)
+      );
+    } catch (error) {
+      handleRouteError(res, error, requestId, 'reports');
+    }
+  });
+
+  return router;
+}
+
 /** Compose all API v1 routes. */
 export function createApiRoutes(deps: ApiDependencies): Router {
   const router = Router();
@@ -985,6 +1106,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createFinancialRoutes(deps));
   router.use(createRecommendationRoutes(deps));
   router.use(createVerificationRoutes(deps));
+  router.use(createReportRoutes(deps));
 
   return router;
 }

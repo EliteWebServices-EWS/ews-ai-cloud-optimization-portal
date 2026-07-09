@@ -70,3 +70,8 @@ export function generateWorkflowId(): string {
 export function generateExecutionId(): string {
   return `exec-${Date.now().toString(36)}`;
 }
+
+/** Generate a unique optimization report identifier. */
+export function generateReportId(): string {
+  return `rpt-${Date.now().toString(36)}`;
+}

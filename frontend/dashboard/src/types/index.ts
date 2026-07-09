@@ -237,3 +237,127 @@ export interface RunWorkflowRequest {
   resourceId?: string;
   region?: string;
 }
+
+export interface ReportFilterParams {
+  status?: string;
+  resourceType?: string;
+  confidenceLevel?: string;
+  verificationStatus?: string;
+  plugin?: string;
+}
+
+export interface ReportSummaryView {
+  headline: string;
+  opportunityCount: number;
+  estimatedMonthlySavings: number;
+  verifiedMonthlySavings: number;
+  verifiedCount: number;
+  currency: string;
+  optimizationStatus: string;
+  executiveSummary: string;
+  technicalSummary?: string;
+}
+
+export interface ReportListItem {
+  reportId: string;
+  workflowId: string;
+  plugin: string;
+  status: string;
+  workflowStatus: string;
+  createdAt: string;
+  region: string;
+  summary: ReportSummaryView;
+  resourceCount: number;
+  confidenceStatus?: string;
+  verificationStatus?: string;
+}
+
+export interface ResourceSummaryView {
+  resourceId: string;
+  resourceType: string;
+  region: string;
+  instanceType?: string;
+  targetInstanceType?: string;
+  environment?: string;
+  evidenceStatus?: string;
+  cpuUtilization?: number;
+  memoryUtilization?: number;
+}
+
+export interface SavingsSummaryView {
+  currentMonthlyCost: number;
+  projectedMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  estimatedAnnualSavings: number;
+  verifiedMonthlySavings: number;
+  percentageReduction: number;
+  currency: string;
+  status: string;
+}
+
+export interface DecisionSummaryView {
+  recommendationStatus: string;
+  confidenceScore: number;
+  confidenceStatus: string;
+  governanceDecision: string;
+  governanceReason: string;
+  summary: string;
+  reason: string;
+  action?: string;
+  fromInstanceType?: string;
+  toInstanceType?: string;
+}
+
+export interface VerificationSummaryView {
+  status: string;
+  expectedSavings: number;
+  actualSavings: number;
+  verifiedSavings: number;
+  variance: number;
+  variancePercentage: number;
+  stateMatched: boolean;
+  message?: string;
+}
+
+export interface ReportRecommendationView {
+  resourceId: string;
+  resourceType: string;
+  region: string;
+  decision: DecisionSummaryView;
+  financialImpact?: SavingsSummaryView;
+  verification?: VerificationSummaryView;
+}
+
+export interface OptimizationReport {
+  reportId: string;
+  workflowId: string;
+  plugin: string;
+  status: string;
+  workflowStatus: string;
+  createdAt: string;
+  completedAt?: string;
+  region: string;
+  summary: ReportSummaryView;
+  resources: ResourceSummaryView[];
+  financialImpact: SavingsSummaryView;
+  recommendations: ReportRecommendationView[];
+  evidence?: {
+    status?: string;
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    observationWindowDays?: number;
+    collectedAt?: string;
+  };
+  governance?: {
+    decision: string;
+    readinessStatus: string;
+    readinessScore: number;
+    reason: string;
+    approver?: string;
+    policyCount: number;
+    failedPolicies: number;
+  };
+  verification?: VerificationSummaryView;
+  exportOptions: Array<{ format: string; available: boolean; description: string }>;
+}

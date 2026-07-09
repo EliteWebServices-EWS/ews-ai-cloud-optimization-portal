@@ -8,6 +8,7 @@ import {
   createRecommendationEngine,
   createVerificationEngine,
   createLearningStore,
+  createReportingEngine,
 } from './engines';
 import { createExecutionSimulator } from './execution';
 import { createWorkflowOrchestrator } from './orchestrator';
@@ -26,6 +27,7 @@ export function createApp(): express.Application {
 
   const learningStore = createLearningStore();
   const executionSimulator = createExecutionSimulator();
+  const reportingEngine = createReportingEngine();
 
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
@@ -61,6 +63,7 @@ export function createApp(): express.Application {
     activeProvider: PROVIDER_NAMES.MOCK,
     executionSimulator,
     learningStore,
+    reportingEngine,
   }));
 
   return app;

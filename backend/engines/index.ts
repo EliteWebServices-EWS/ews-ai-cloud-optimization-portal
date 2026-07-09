@@ -5,3 +5,4 @@ export { createConfidenceEngine, ConfidenceEngine } from './confidence';
 export { createRecommendationEngine, RecommendationEngine } from './recommendation';
 export { createVerificationEngine, VerificationEngine } from './verification';
 export { createLearningStore, InMemoryLearningStore } from './learning';
+export { createReportingEngine, ReportingEngine } from './reporting';
