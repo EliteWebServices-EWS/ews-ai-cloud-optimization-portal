@@ -33,4 +33,7 @@ Thumbs.db
 
 # Temporary files
 *.tmp
-*.templocal-iam/
+*.temp
+
+# Local IAM files (do not commit)
+local-iam/
