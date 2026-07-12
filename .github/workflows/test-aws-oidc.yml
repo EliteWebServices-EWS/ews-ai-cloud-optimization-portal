@@ -1,0 +1,38 @@
+name: Test AWS OIDC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  verify-aws-access:
+    name: Verify temporary AWS credentials
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_BACKEND_DEPLOY_ROLE_ARN }}
+          role-session-name: sisum-oidc-test
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Show assumed AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Confirm administrator permissions are denied
+        shell: bash
+        run: |
+          if aws iam list-users; then
+            echo "ERROR: The deployment role has excessive IAM permissions."
+            exit 1
+          else
+            echo "Success: IAM user listing was denied as expected."
+          fi
