@@ -3,12 +3,17 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   SISU'M Backend — API Gateway HTTP API and Lambda for the Cloud Optimization
   Decision Platform (Express adapter via @codegenie/serverless-express).
+  Deploy from infrastructure/backend with CodeUri pointing at ../../backend/.
 
 Parameters:
-  Stage:
+  Environment:
     Type: String
-    Default: dev
-    Description: HTTP API stage name (for example dev, staging, prod).
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+    Description: Deployment environment used for resource naming and NODE_ENV.
 
   ProviderMode:
     Type: String
@@ -17,12 +22,15 @@ Parameters:
       - mock
       - aws
     Description: >
-      Provider selection for the backend. Use mock for demo/MVP deployments.
+      Provider selection for the backend. MVP deployments must use mock.
 
   CorsOrigin:
     Type: String
     Default: https://elitewebservices-ews.github.io
-    Description: Allowed CORS origin for API responses (no trailing slash or path).
+    Description: >
+      Primary CORS origin echoed by the Express app (no trailing slash or path).
+      API Gateway also allows https://elitewebservices.org and
+      https://www.elitewebservices.org.
 
   LogLevel:
     Type: String
@@ -34,21 +42,19 @@ Parameters:
       - error
     Description: Structured log level for backend components.
 
-  LambdaExecutionRoleArn:
-    Type: String
-    Description: ARN of the pre-provisioned SisumLambdaExecutionRole.
-
 Globals:
   Function:
     Runtime: nodejs24.x
-    Timeout: 60
-    MemorySize: 256
+    Timeout: 30
+    MemorySize: 512
     Architectures:
-      - x86_64
+      - arm64
   HttpApi:
     CorsConfiguration:
       AllowOrigins:
-        - !Ref CorsOrigin
+        - https://elitewebservices.org
+        - https://www.elitewebservices.org
+        - https://elitewebservices-ews.github.io
       AllowHeaders:
         - Content-Type
         - Authorization
@@ -61,19 +67,27 @@ Resources:
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
-      StageName: !Ref Stage
+      Name: !Sub sisum-http-api-${Environment}
+      StageName: $default
       Description: SISU'M Backend HTTP API
+
+  SisumBackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/sisum-backend-${Environment}
+      RetentionInDays: 14
 
   SisumBackendFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub sisum-backend-${Stage}
+      FunctionName: !Sub sisum-backend-${Environment}
       Description: SISU'M Cloud Optimization Decision Platform API
       CodeUri: ../../backend/
-      Handler: lambda.handler
-      Role: !Ref LambdaExecutionRoleArn
+      Handler: dist/lambda.handler
+      Role: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/SisumLambdaExecutionRole
       Environment:
         Variables:
+          NODE_ENV: !Ref Environment
           PROVIDER_MODE: !Ref ProviderMode
           CORS_ORIGIN: !Ref CorsOrigin
           LOG_LEVEL: !Ref LogLevel
@@ -91,14 +105,6 @@ Resources:
             ApiId: !Ref SisumHttpApi
             Path: /{proxy+}
             Method: ANY
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        EntryPoints:
-          - lambda.ts
-        Target: es2022
-        Minify: true
-        Sourcemap: true
 
 Outputs:
   ApiUrl:
@@ -113,8 +119,26 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-ApiId
 
+  LambdaFunctionName:
+    Description: Lambda function name
+    Value: !Ref SisumBackendFunction
+    Export:
+      Name: !Sub ${AWS::StackName}-LambdaFunctionName
+
   LambdaArn:
     Description: Lambda function ARN
     Value: !GetAtt SisumBackendFunction.Arn
     Export:
       Name: !Sub ${AWS::StackName}-LambdaArn
+
+  Environment:
+    Description: Deployed environment
+    Value: !Ref Environment
+    Export:
+      Name: !Sub ${AWS::StackName}-Environment
+
+  ProviderMode:
+    Description: Active provider mode (mock or aws)
+    Value: !Ref ProviderMode
+    Export:
+      Name: !Sub ${AWS::StackName}-ProviderMode
