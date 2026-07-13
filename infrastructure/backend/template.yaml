@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SISU'M Backend — API Gateway HTTP API and Lambda for the Cloud Optimization
+  Decision Platform (Express adapter via @codegenie/serverless-express).
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    Description: HTTP API stage name (for example dev, staging, prod).
+
+  ProviderMode:
+    Type: String
+    Default: mock
+    AllowedValues:
+      - mock
+      - aws
+    Description: >
+      Provider selection for the backend. Use mock for demo/MVP deployments.
+
+  CorsOrigin:
+    Type: String
+    Default: https://elitewebservices-ews.github.io
+    Description: Allowed CORS origin for API responses (no trailing slash or path).
+
+  LogLevel:
+    Type: String
+    Default: info
+    AllowedValues:
+      - debug
+      - info
+      - warn
+      - error
+    Description: Structured log level for backend components.
+
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: ARN of the pre-provisioned SisumLambdaExecutionRole.
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Timeout: 60
+    MemorySize: 256
+    Architectures:
+      - x86_64
+  HttpApi:
+    CorsConfiguration:
+      AllowOrigins:
+        - !Ref CorsOrigin
+      AllowHeaders:
+        - Content-Type
+        - Authorization
+      AllowMethods:
+        - GET
+        - POST
+        - OPTIONS
+
+Resources:
+  SisumHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      Description: SISU'M Backend HTTP API
+
+  SisumBackendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub sisum-backend-${Stage}
+      Description: SISU'M Cloud Optimization Decision Platform API
+      CodeUri: ../../backend/
+      Handler: lambda.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Environment:
+        Variables:
+          PROVIDER_MODE: !Ref ProviderMode
+          CORS_ORIGIN: !Ref CorsOrigin
+          LOG_LEVEL: !Ref LogLevel
+          NODE_OPTIONS: --enable-source-maps
+      Events:
+        RootRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SisumHttpApi
+            Path: /
+            Method: ANY
+        ProxyRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SisumHttpApi
+            Path: /{proxy+}
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - lambda.ts
+        Target: es2022
+        Minify: true
+        Sourcemap: true
+
+Outputs:
+  ApiUrl:
+    Description: HTTP API base URL — use with /api/v1/health and other routes.
+    Value: !GetAtt SisumHttpApi.ApiEndpoint
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiUrl
+
+  ApiId:
+    Description: HTTP API identifier
+    Value: !Ref SisumHttpApi
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiId
+
+  LambdaArn:
+    Description: Lambda function ARN
+    Value: !GetAtt SisumBackendFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-LambdaArn

@@ -21,6 +21,7 @@
   },
   "include": [
     "index.ts",
+    "lambda.ts",
     "api/**/*.ts",
     "engines/**/*.ts",
     "execution/**/*.ts",
