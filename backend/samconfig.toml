@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "sisum-backend"
+resolve_s3 = true
+s3_prefix = "sisum-backend"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"production\" ProviderMode=\"mock\" CorsOrigin=\"https://elitewebservices-ews.github.io\" LogLevel=\"info\""
+image_repositories = []
+
+[default.global.parameters]
+region = "us-east-1"
