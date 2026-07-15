@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  SISUM production frontend hosting using a private Amazon S3 bucket,
+  Amazon CloudFront and CloudFront Origin Access Control.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+
+  FrontendBucketName:
+    Type: String
+    Default: sisum-frontend-production-739275446782
+    Description: Globally unique S3 bucket name for frontend files.
+
+Resources:
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref FrontendBucketName
+
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+      VersioningConfiguration:
+        Status: Enabled
+
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  FrontendOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub sisum-frontend-${Environment}-oac
+        Description: CloudFront access to the private SISUM frontend bucket
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendUrlRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub sisum-frontend-${Environment}-url-rewrite
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rewrite directory paths to index.html
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+
+          if (uri.endsWith('/')) {
+            request.uri = uri + 'index.html';
+          } else if (!uri.includes('.')) {
+            request.uri = uri + '/index.html';
+          }
+
+          return request;
+        }
+
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub SISUM ${Environment} frontend distribution
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+
+        Origins:
+          - Id: FrontendS3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FrontendOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt FrontendUrlRewriteFunction.FunctionARN
+
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+          MinimumProtocolVersion: TLSv1.2_2021
+
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action:
+              - s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub
+                  - "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${DistributionId}"
+                  - DistributionId: !Ref FrontendDistribution
+
+Outputs:
+  FrontendBucketName:
+    Description: Private S3 frontend bucket
+    Value: !Ref FrontendBucket
+
+  FrontendBucketArn:
+    Description: Private S3 frontend bucket ARN
+    Value: !GetAtt FrontendBucket.Arn
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID
+    Value: !Ref FrontendDistribution
+
+  CloudFrontDomainName:
+    Description: CloudFront frontend domain
+    Value: !GetAtt FrontendDistribution.DomainName
+
+  CloudFrontUrl:
+    Description: HTTPS URL for the SISUM frontend
+    Value: !Sub
+      - "https://${DomainName}"
+      - DomainName: !GetAtt FrontendDistribution.DomainName
