@@ -73,5 +73,8 @@ export function generateExecutionId(): string {
 
 /** Generate a unique optimization report identifier. */
 export function generateReportId(): string {
-  return `rpt-${Date.now().toString(36)}`;
+  const timestamp = Date.now().toString(36);
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+
+  return `rpt-${timestamp}-${randomSuffix}`;
 }
