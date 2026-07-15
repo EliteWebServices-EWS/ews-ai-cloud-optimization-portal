@@ -1,0 +1,136 @@
+name: Deploy Backend to AWS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sisum-backend-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: sisum-backend
+  API_HEALTH_URL: https://zqe6cl0m15.execute-api.us-east-1.amazonaws.com/api/v1/health
+
+jobs:
+  validate-and-deploy:
+    name: Validate and deploy backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    environment:
+      name: production
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Validate SAM template
+        working-directory: backend
+        run: sam validate --lint
+
+      - name: Build SAM application
+        working-directory: backend
+        run: sam build
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_BACKEND_DEPLOY_ROLE_ARN }}
+          role-session-name: sisum-backend-deploy
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "739275446782"
+
+      - name: Verify assumed AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Deploy backend with AWS SAM
+        working-directory: backend
+        run: |
+          sam deploy \
+            --config-file samconfig.toml \
+            --config-env default \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Verify CloudFormation stack
+        run: |
+          STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].StackStatus" \
+            --output text)
+
+          echo "Stack status: $STATUS"
+
+          case "$STATUS" in
+            CREATE_COMPLETE|UPDATE_COMPLETE)
+              echo "CloudFormation stack is healthy."
+              ;;
+            *)
+              echo "Unexpected CloudFormation stack status: $STATUS"
+              exit 1
+              ;;
+          esac
+
+      - name: Smoke test backend health endpoint
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "Health-check attempt $attempt"
+
+            if curl \
+              --fail \
+              --silent \
+              --show-error \
+              --retry 2 \
+              --retry-delay 3 \
+              "$API_HEALTH_URL"; then
+              echo
+              echo "Backend health check passed."
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "Backend health check failed after five attempts."
+          exit 1
