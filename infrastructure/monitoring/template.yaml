@@ -1,0 +1,622 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  SISUM production monitoring and observability resources, including
+  a CloudWatch dashboard, operational alarms, and an SNS notification topic.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+
+  LambdaFunctionName:
+    Type: String
+    Default: sisum-backend-production
+    Description: Production SISUM Lambda function name.
+
+  HttpApiId:
+    Type: String
+    Default: zqe6cl0m15
+    Description: Production API Gateway HTTP API identifier.
+
+  HttpApiStage:
+    Type: String
+    Default: "$default"
+    Description: API Gateway HTTP API stage name.
+
+  CloudFrontDistributionId:
+    Type: String
+    Default: E88PZIPZ6DVL4
+    Description: Production CloudFront distribution identifier.
+
+  FrontendBucketName:
+    Type: String
+    Default: sisum-frontend-production-739275446782
+    Description: Production frontend S3 bucket name.
+
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: >
+      Optional email address for alarm notifications. Leave empty to create
+      the monitoring stack without an email subscription.
+
+Conditions:
+  HasNotificationEmail: !Not
+    - !Equals
+      - !Ref NotificationEmail
+      - ""
+
+Resources:
+  MonitoringAlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub sisum-${Environment}-monitoring-alarms
+      DisplayName: SISUM Production Alarms
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  MonitoringEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasNotificationEmail
+    Properties:
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+      TopicArn: !Ref MonitoringAlarmTopic
+
+  LambdaErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-lambda-errors
+      AlarmDescription: >
+        SISUM production Lambda reported one or more errors within five minutes.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-lambda-throttles
+      AlarmDescription: >
+        SISUM production Lambda was throttled one or more times within five minutes.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-lambda-duration-high
+      AlarmDescription: >
+        SISUM Lambda average duration exceeded ten seconds for two consecutive periods.
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 10000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  ApiGateway5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-api-5xx-errors
+      AlarmDescription: >
+        SISUM HTTP API returned one or more server errors within five minutes.
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApiId
+        - Name: Stage
+          Value: !Ref HttpApiStage
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  ApiGatewayLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-api-latency-high
+      AlarmDescription: >
+        SISUM HTTP API average latency exceeded five seconds for two consecutive periods.
+      Namespace: AWS/ApiGateway
+      MetricName: Latency
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApiId
+        - Name: Stage
+          Value: !Ref HttpApiStage
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 5000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  CloudFront5xxErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-cloudfront-5xx-rate
+      AlarmDescription: >
+        SISUM CloudFront 5xx error rate exceeded one percent for five minutes.
+      Namespace: AWS/CloudFront
+      MetricName: 5xxErrorRate
+      Dimensions:
+        - Name: DistributionId
+          Value: !Ref CloudFrontDistributionId
+        - Name: Region
+          Value: Global
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  ProductionMonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub SISUM-${Environment}-Operations
+      DashboardBody: !Sub |
+        {
+          "start": "-PT24H",
+          "periodOverride": "inherit",
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 3,
+              "properties": {
+                "markdown": "# SISU'M Production Operations\n**Environment:** ${Environment}  \n**Website:** https://elitewebservices.org  \n**API ID:** ${HttpApiId}  \n**Lambda:** ${LambdaFunctionName}"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 3,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Lambda Invocations and Errors",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  [
+                    "AWS/Lambda",
+                    "Invocations",
+                    "FunctionName",
+                    "${LambdaFunctionName}",
+                    {
+                      "label": "Invocations"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Errors",
+                    ".",
+                    ".",
+                    {
+                      "label": "Errors"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Throttles",
+                    ".",
+                    ".",
+                    {
+                      "label": "Throttles"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 3,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Lambda Duration",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Average",
+                "yAxis": {
+                  "left": {
+                    "label": "Milliseconds",
+                    "showUnits": false
+                  }
+                },
+                "metrics": [
+                  [
+                    "AWS/Lambda",
+                    "Duration",
+                    "FunctionName",
+                    "${LambdaFunctionName}",
+                    {
+                      "label": "Average Duration"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 9,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "API Gateway Requests and Errors",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "metrics": [
+                  [
+                    "AWS/ApiGateway",
+                    "Count",
+                    "ApiId",
+                    "${HttpApiId}",
+                    "Stage",
+                    "${HttpApiStage}",
+                    {
+                      "stat": "Sum",
+                      "label": "Requests"
+                    }
+                  ],
+                  [
+                    ".",
+                    "4xx",
+                    ".",
+                    ".",
+                    ".",
+                    ".",
+                    {
+                      "stat": "Sum",
+                      "label": "4xx Errors"
+                    }
+                  ],
+                  [
+                    ".",
+                    "5xx",
+                    ".",
+                    ".",
+                    ".",
+                    ".",
+                    {
+                      "stat": "Sum",
+                      "label": "5xx Errors"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 9,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "API Gateway Latency",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Average",
+                "metrics": [
+                  [
+                    "AWS/ApiGateway",
+                    "Latency",
+                    "ApiId",
+                    "${HttpApiId}",
+                    "Stage",
+                    "${HttpApiStage}",
+                    {
+                      "label": "Total Latency"
+                    }
+                  ],
+                  [
+                    ".",
+                    "IntegrationLatency",
+                    ".",
+                    ".",
+                    ".",
+                    ".",
+                    {
+                      "label": "Integration Latency"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 15,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "CloudFront Requests",
+                "region": "us-east-1",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  [
+                    "AWS/CloudFront",
+                    "Requests",
+                    "DistributionId",
+                    "${CloudFrontDistributionId}",
+                    "Region",
+                    "Global",
+                    {
+                      "label": "Requests"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 15,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "CloudFront Error and Cache Rates",
+                "region": "us-east-1",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Average",
+                "yAxis": {
+                  "left": {
+                    "label": "Percent",
+                    "showUnits": false
+                  }
+                },
+                "metrics": [
+                  [
+                    "AWS/CloudFront",
+                    "4xxErrorRate",
+                    "DistributionId",
+                    "${CloudFrontDistributionId}",
+                    "Region",
+                    "Global",
+                    {
+                      "label": "4xx Error Rate"
+                    }
+                  ],
+                  [
+                    ".",
+                    "5xxErrorRate",
+                    ".",
+                    ".",
+                    ".",
+                    ".",
+                    {
+                      "label": "5xx Error Rate"
+                    }
+                  ],
+                  [
+                    ".",
+                    "CacheHitRate",
+                    ".",
+                    ".",
+                    ".",
+                    ".",
+                    {
+                      "label": "Cache Hit Rate"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 21,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "S3 Frontend Bucket Size",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 86400,
+                "stat": "Average",
+                "metrics": [
+                  [
+                    "AWS/S3",
+                    "BucketSizeBytes",
+                    "BucketName",
+                    "${FrontendBucketName}",
+                    "StorageType",
+                    "StandardStorage",
+                    {
+                      "label": "Bucket Size"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 21,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "S3 Frontend Object Count",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 86400,
+                "stat": "Average",
+                "metrics": [
+                  [
+                    "AWS/S3",
+                    "NumberOfObjects",
+                    "BucketName",
+                    "${FrontendBucketName}",
+                    "StorageType",
+                    "AllStorageTypes",
+                    {
+                      "label": "Objects"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "alarm",
+              "x": 0,
+              "y": 27,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "title": "Production Alarm Status",
+                "alarms": [
+                  "${LambdaErrorsAlarm.Arn}",
+                  "${LambdaThrottlesAlarm.Arn}",
+                  "${LambdaDurationAlarm.Arn}",
+                  "${ApiGateway5xxAlarm.Arn}",
+                  "${ApiGatewayLatencyAlarm.Arn}",
+                  "${CloudFront5xxErrorRateAlarm.Arn}"
+                ]
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DashboardName:
+    Description: CloudWatch production operations dashboard name.
+    Value: !Ref ProductionMonitoringDashboard
+
+  DashboardUrl:
+    Description: CloudWatch production operations dashboard URL.
+    Value: !Sub
+      - "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${Dashboard}"
+      - Dashboard: !Ref ProductionMonitoringDashboard
+
+  AlarmTopicArn:
+    Description: SNS topic ARN used by production monitoring alarms.
+    Value: !Ref MonitoringAlarmTopic
+
+  LambdaErrorsAlarmName:
+    Description: Lambda errors alarm name.
+    Value: !Ref LambdaErrorsAlarm
+
+  ApiGateway5xxAlarmName:
+    Description: API Gateway 5xx alarm name.
+    Value: !Ref ApiGateway5xxAlarm
+
+  CloudFront5xxAlarmName:
+    Description: CloudFront 5xx error-rate alarm name.
+    Value: !Ref CloudFront5xxErrorRateAlarm
