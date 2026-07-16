@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  GitHub OIDC deployment role for the SISUM production frontend.
+  The role may upload frontend files to the dedicated S3 bucket
+  and invalidate the dedicated CloudFront distribution.
+
+Parameters:
+  GitHubOrganization:
+    Type: String
+    Default: EliteWebServices-EWS
+    Description: GitHub organization that owns the repository.
+
+  GitHubRepository:
+    Type: String
+    Default: ews-ai-cloud-optimization-portal
+    Description: GitHub repository allowed to assume the deployment role.
+
+  GitHubEnvironment:
+    Type: String
+    Default: production
+    Description: GitHub Environment allowed to assume the role.
+
+  FrontendBucketName:
+    Type: String
+    Default: sisum-frontend-production-739275446782
+
+  CloudFrontDistributionId:
+    Type: String
+    Default: E88PZIPZ6DVL4
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: NeverCreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  SisumFrontendDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SisumFrontendDeployRole
+
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowGitHubProductionEnvironment
+            Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action:
+              - sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrganization}/${GitHubRepository}:environment:${GitHubEnvironment}
+
+      Policies:
+        - PolicyName: SisumFrontendDeploymentPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListFrontendBucket
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${FrontendBucketName}
+
+              - Sid: ManageFrontendObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${FrontendBucketName}/*
+
+              - Sid: InvalidateFrontendDistribution
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                  - cloudfront:GetInvalidation
+                  - cloudfront:ListInvalidations
+                Resource:
+                  - !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
+
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Purpose
+          Value: FrontendDeployment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Conditions:
+  NeverCreateOidcProvider: !Equals
+    - "create"
+    - "never"
+
+Outputs:
+  FrontendDeployRoleName:
+    Description: Name of the frontend GitHub deployment role
+    Value: !Ref SisumFrontendDeployRole
+
+  FrontendDeployRoleArn:
+    Description: ARN to configure in the GitHub production environment
+    Value: !GetAtt SisumFrontendDeployRole.Arn
+
+    
