@@ -25,7 +25,7 @@ Parameters:
 
   CorsOrigin:
     Type: String
-    Default: https://d287wcw6yqb2r1.cloudfront.net
+    Default: https://elitewebservices.org
     Description: >
       Primary CORS origin echoed by the Express app (no trailing slash or path).
       API Gateway also allows https://elitewebservices.org and

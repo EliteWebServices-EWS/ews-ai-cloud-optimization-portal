@@ -18,6 +18,20 @@ Parameters:
     Default: sisum-frontend-production-739275446782
     Description: Globally unique S3 bucket name for frontend files.
 
+  CertificateArn:
+    Type: String
+    Description: ACM certificate ARN for the production frontend domains.
+
+  PrimaryDomainName:
+    Type: String
+    Default: elitewebservices.org
+    Description: Primary production frontend domain.
+
+  WwwDomainName:
+    Type: String
+    Default: www.elitewebservices.org
+    Description: WWW production frontend domain.
+
 Resources:
   FrontendBucket:
     Type: AWS::S3::Bucket
@@ -95,6 +109,10 @@ Resources:
         PriceClass: PriceClass_100
         DefaultRootObject: index.html
 
+        Aliases:
+          - !Ref PrimaryDomainName
+          - !Ref WwwDomainName
+
         Origins:
           - Id: FrontendS3Origin
             DomainName: !GetAtt FrontendBucket.RegionalDomainName
@@ -135,7 +153,8 @@ Resources:
             ErrorCachingMinTTL: 0
 
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
           MinimumProtocolVersion: TLSv1.2_2021
 
       Tags:
@@ -188,3 +207,15 @@ Outputs:
     Value: !Sub
       - "https://${DomainName}"
       - DomainName: !GetAtt FrontendDistribution.DomainName
+
+  PrimaryDomainUrl:
+    Description: Primary custom-domain frontend URL
+    Value: !Sub "https://${PrimaryDomainName}"
+
+  WwwDomainUrl:
+    Description: WWW custom-domain frontend URL
+    Value: !Sub "https://${WwwDomainName}"
+
+  CertificateArn:
+    Description: ACM certificate attached to CloudFront
+    Value: !Ref CertificateArn
