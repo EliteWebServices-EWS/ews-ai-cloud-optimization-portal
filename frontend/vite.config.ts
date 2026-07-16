@@ -1,12 +1,12 @@
 /// <reference types="vitest/config" />
+
 import { defineConfig } from 'vite';
 import path from 'path';
 
-const isPagesDeploy = process.env.GITHUB_ACTIONS === 'true';
-
 export default defineConfig({
   root: path.resolve(__dirname, 'dashboard'),
-  base: isPagesDeploy ? '/dashboard/' : '/',
+  base: '/dashboard/',
+
   build: {
     outDir: path.resolve(__dirname, 'dashboard-dist'),
     emptyOutDir: true,
@@ -17,6 +17,7 @@ export default defineConfig({
       },
     },
   },
+
   server: {
     port: 5173,
     proxy: {
@@ -26,8 +27,10 @@ export default defineConfig({
       },
     },
   },
+
   test: {
     environment: 'jsdom',
     include: ['dashboard/src/**/*.test.ts'],
+    passWithNoTests: true,
   },
 });

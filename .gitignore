@@ -9,6 +9,13 @@ coverage/
 
 # AWS SAM generated artifacts
 .aws-sam/
+backend/.aws-sam/
+backend/.sam-cache/
+
+frontend/node_modules/
+frontend/dashboard-dist/
+frontend/deploy-dist/
+frontend/.env.production
 
 # Environment and secret files
 .env
