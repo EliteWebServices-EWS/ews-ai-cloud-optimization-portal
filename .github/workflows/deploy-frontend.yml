@@ -1,0 +1,156 @@
+name: Deploy Frontend
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - "infrastructure/frontend/**"
+      - "scripts/build-frontend-deployment.sh"
+      - ".github/workflows/deploy-frontend.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-frontend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy frontend
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      FRONTEND_BUCKET: sisum-frontend-production-739275446782
+      CLOUDFRONT_DISTRIBUTION_ID: E88PZIPZ6DVL4
+      CLOUDFRONT_URL: https://d287wcw6yqb2r1.cloudfront.net
+      VITE_API_BASE: https://zqe6cl0m15.execute-api.us-east-1.amazonaws.com/api/v1
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build dashboard
+        working-directory: frontend
+        run: npm run build
+
+      - name: Prepare frontend deployment package
+        run: bash scripts/build-frontend-deployment.sh
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: "739275446782"
+
+      - name: Verify AWS caller identity
+        run: aws sts get-caller-identity
+
+      - name: Upload frontend files to S3
+        run: |
+          aws s3 sync frontend/deploy-dist/ \
+            "s3://${FRONTEND_BUCKET}/" \
+            --delete \
+            --region "${AWS_REGION}"
+
+      - name: Apply no-cache metadata to root HTML
+        run: |
+          aws s3 cp frontend/deploy-dist/index.html \
+            "s3://${FRONTEND_BUCKET}/index.html" \
+            --content-type "text/html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --region "${AWS_REGION}"
+
+      - name: Apply no-cache metadata to dashboard HTML
+        run: |
+          aws s3 cp frontend/deploy-dist/dashboard/index.html \
+            "s3://${FRONTEND_BUCKET}/dashboard/index.html" \
+            --content-type "text/html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --region "${AWS_REGION}"
+
+          aws s3 cp frontend/deploy-dist/dashboard/reports.html \
+            "s3://${FRONTEND_BUCKET}/dashboard/reports.html" \
+            --content-type "text/html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --region "${AWS_REGION}"
+
+      - name: Apply long cache metadata to dashboard assets
+        run: |
+          aws s3 cp frontend/deploy-dist/dashboard/assets/ \
+            "s3://${FRONTEND_BUCKET}/dashboard/assets/" \
+            --recursive \
+            --cache-control "public, max-age=31536000, immutable" \
+            --region "${AWS_REGION}"
+
+      - name: Invalidate CloudFront
+        id: invalidate
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+            --paths "/*" \
+            --query "Invalidation.Id" \
+            --output text)
+
+          echo "invalidation_id=${INVALIDATION_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for CloudFront invalidation
+        run: |
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+            --id "${{ steps.invalidate.outputs.invalidation_id }}"
+
+      - name: Smoke-test marketing homepage
+        run: |
+          curl --fail --silent --show-error \
+            "${CLOUDFRONT_URL}/" \
+            > /dev/null
+
+      - name: Smoke-test decision dashboard
+        run: |
+          curl --fail --silent --show-error \
+            "${CLOUDFRONT_URL}/dashboard/" \
+            > /dev/null
+
+      - name: Smoke-test reports page
+        run: |
+          curl --fail --silent --show-error \
+            "${CLOUDFRONT_URL}/dashboard/reports.html" \
+            > /dev/null
+
+      - name: Smoke-test backend health with frontend origin
+        run: |
+          RESPONSE_HEADERS=$(mktemp)
+
+          curl --fail --silent --show-error \
+            --dump-header "${RESPONSE_HEADERS}" \
+            -H "Origin: ${CLOUDFRONT_URL}" \
+            "https://zqe6cl0m15.execute-api.us-east-1.amazonaws.com/api/v1/health" \
+            > /dev/null
+
+          grep -i \
+            "access-control-allow-origin: ${CLOUDFRONT_URL}" \
+            "${RESPONSE_HEADERS}"
