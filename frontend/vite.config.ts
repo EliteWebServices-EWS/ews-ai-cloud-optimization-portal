@@ -12,8 +12,18 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'dashboard/index.html'),
-        reports: path.resolve(__dirname, 'dashboard/reports.html'),
+        main: path.resolve(
+          __dirname,
+          'dashboard/index.html'
+        ),
+        reports: path.resolve(
+          __dirname,
+          'dashboard/reports.html'
+        ),
+        authCallback: path.resolve(
+          __dirname,
+          'dashboard/auth/callback.html'
+        ),
       },
     },
   },
@@ -30,7 +40,7 @@ export default defineConfig({
 
   test: {
     environment: 'jsdom',
-    include: ['dashboard/src/**/*.test.ts'],
+    include: ['src/**/*.test.ts'],
     passWithNoTests: true,
   },
 });
