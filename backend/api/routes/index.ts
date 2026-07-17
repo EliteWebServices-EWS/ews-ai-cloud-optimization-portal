@@ -25,6 +25,11 @@ import {
   isAppError,
 } from '../../shared/utils';
 import { listProviders } from '../../providers';
+import {
+  ALL_AUTHENTICATED_ROLES,
+  ANALYSIS_ROLES,
+  requireAnyRole,
+} from '../../auth';
 
 export interface ApiDependencies {
   orchestrator: WorkflowOrchestrator;
@@ -481,7 +486,10 @@ export function createProviderRoutes(deps: Pick<ApiDependencies, 'activeProvider
 export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>): Router {
   const router = Router();
 
-  router.post('/workflows/run', async (req: Request, res: Response) => {
+  router.post(
+    '/workflows/run',
+    requireAnyRole(...ANALYSIS_ROLES),
+    async (req: Request, res: Response) => {
     const requestId = generateRequestId();
 
     try {
@@ -872,7 +880,10 @@ export function createRecommendationRoutes(
 export function createVerificationRoutes(deps: Pick<ApiDependencies, 'orchestrator' | 'executionSimulator' | 'learningStore'>): Router {
   const router = Router();
 
-  router.post('/execution/simulate', async (req: Request, res: Response) => {
+  router.post(
+    '/execution/simulate',
+    requireAnyRole(...ANALYSIS_ROLES),
+    async (req: Request, res: Response) => {
     const requestId = generateRequestId();
 
     try {
@@ -1047,7 +1058,10 @@ export function createReportRoutes(
     }
   });
 
-  router.post('/reports/generate', (req: Request, res: Response) => {
+  router.post(
+    '/reports/generate',
+    requireAnyRole(...ANALYSIS_ROLES),
+    (req: Request, res: Response) => {
     const requestId = generateRequestId();
 
     try {
@@ -1098,7 +1112,12 @@ export function createReportRoutes(
 export function createApiRoutes(deps: ApiDependencies): Router {
   const router = Router();
 
+  // Health remains public for monitoring and deployment smoke tests.
   router.use(createHealthRoutes());
+
+  // All routes below this point require a recognized Cognito role.
+  router.use(requireAnyRole(...ALL_AUTHENTICATED_ROLES));
+
   router.use(createPluginRoutes(deps));
   router.use(createProviderRoutes(deps));
   router.use(createWorkflowRoutes(deps));

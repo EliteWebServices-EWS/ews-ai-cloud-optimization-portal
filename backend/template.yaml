@@ -127,6 +127,24 @@ Resources:
             Auth:
               Authorizer: NONE
 
+        PublicPreflightRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SisumHttpApi
+            Path: /{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+        PublicRootPreflightRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SisumHttpApi
+            Path: /
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
         RootRoute:
           Type: HttpApi
           Properties:
@@ -193,4 +211,3 @@ Outputs:
   JwtIssuer:
     Description: JWT issuer configured on API Gateway.
     Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}"
-    
