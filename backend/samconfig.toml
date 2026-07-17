@@ -8,7 +8,7 @@ s3_prefix = "sisum-backend"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "Environment=\"production\" ProviderMode=\"mock\" CorsOrigin=\"https://elitewebservices.org\" LogLevel=\"info\""
+parameter_overrides = "Environment=\"production\" ProviderMode=\"mock\" CorsOrigin=\"https://elitewebservices.org\" LogLevel=\"info\" CognitoUserPoolId=\"us-east-1_DARrpLb5p\" CognitoUserPoolClientId=\"1dc1g0tkflsspjd7uc6n131jft\""
 image_repositories = []
 
 [default.global.parameters]

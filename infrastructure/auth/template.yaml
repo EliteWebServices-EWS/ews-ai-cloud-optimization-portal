@@ -1,0 +1,244 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  SISUM production authentication infrastructure using Amazon Cognito.
+  Creates a user pool, public SPA client, managed login domain,
+  managed login branding, and role-based access groups.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+    Description: Deployment environment.
+
+  ApplicationName:
+    Type: String
+    Default: sisum
+    Description: Short application name used in Cognito resource names.
+
+  CognitoDomainPrefix:
+    Type: String
+    Default: sisum-production-739275446782
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: >
+      Use only lowercase letters, numbers, and hyphens.
+    Description: >
+      Globally unique Cognito managed-login domain prefix in this AWS Region.
+
+  PrimaryDomainName:
+    Type: String
+    Default: elitewebservices.org
+    Description: Primary frontend domain without https://.
+
+Resources:
+  SisumUserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub ${ApplicationName}-${Environment}-users
+
+      DeletionProtection: ACTIVE
+
+      UsernameConfiguration:
+        CaseSensitive: false
+
+      UsernameAttributes:
+        - email
+
+      AutoVerifiedAttributes:
+        - email
+
+      MfaConfiguration: "OFF"
+
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: Your SISUM account
+          EmailMessage: >
+            Your SISUM username is {username} and your temporary password is
+            {####}. Sign in and create a permanent password.
+
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate:
+          - email
+
+      UserPoolTags:
+        Project: SISUM
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  SisumUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ${ApplicationName}-${Environment}-web-client
+      UserPoolId: !Ref SisumUserPool
+
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+
+      AllowedOAuthFlowsUserPoolClient: true
+
+      AllowedOAuthFlows:
+        - code
+
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+
+      SupportedIdentityProviders:
+        - COGNITO
+
+      CallbackURLs:
+        - !Sub https://${PrimaryDomainName}/dashboard/auth/callback.html
+        - !Sub https://www.${PrimaryDomainName}/dashboard/auth/callback.html
+        - http://localhost:5173/dashboard/auth/callback.html
+
+      LogoutURLs:
+        - !Sub https://${PrimaryDomainName}/
+        - !Sub https://www.${PrimaryDomainName}/
+        - http://localhost:5173/
+
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+      ReadAttributes:
+        - email
+        - email_verified
+
+      WriteAttributes:
+        - email
+
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  SisumUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref SisumUserPool
+      ManagedLoginVersion: 2
+
+  SisumManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn:
+      - SisumUserPoolDomain
+    Properties:
+      UserPoolId: !Ref SisumUserPool
+      ClientId: !Ref SisumUserPoolClient
+      UseCognitoProvidedValues: true
+
+  ViewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: viewer
+      Description: May view dashboards, reports, and completed analyses.
+      Precedence: 30
+      UserPoolId: !Ref SisumUserPool
+
+  AnalystGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: analyst
+      Description: May run analyses and view optimization recommendations.
+      Precedence: 20
+      UserPoolId: !Ref SisumUserPool
+
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admin
+      Description: Full SISUM administrative access.
+      Precedence: 10
+      UserPoolId: !Ref SisumUserPool
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool identifier.
+    Value: !Ref SisumUserPool
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolId
+
+  UserPoolArn:
+    Description: Cognito User Pool ARN.
+    Value: !GetAtt SisumUserPool.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolArn
+
+  UserPoolClientId:
+    Description: Public SPA User Pool client identifier.
+    Value: !Ref SisumUserPoolClient
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolClientId
+
+  CognitoIssuerUrl:
+    Description: JWT issuer used by API Gateway.
+    Value: !Sub >
+      https://cognito-idp.${AWS::Region}.amazonaws.com/${SisumUserPool}
+
+  CognitoDomain:
+    Description: Cognito managed-login domain.
+    Value: !Sub >
+      https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com
+
+  LoginUrl:
+    Description: Cognito managed-login authorization URL.
+    Value: !Sub
+      - "https://${Domain}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize?client_id=${ClientId}&response_type=code&scope=openid+email+profile&redirect_uri=https%3A%2F%2F${PrimaryDomain}%2Fdashboard%2Fauth%2Fcallback.html"
+      - Domain: !Ref CognitoDomainPrefix
+        ClientId: !Ref SisumUserPoolClient
+        PrimaryDomain: !Ref PrimaryDomainName
+
+  CallbackUrl:
+    Description: Primary production authentication callback URL.
+    Value: !Sub >
+      https://${PrimaryDomainName}/dashboard/auth/callback.html
+
+  LogoutUrl:
+    Description: Primary production logout redirect URL.
+    Value: !Sub https://${PrimaryDomainName}/
+
+  ViewerGroupName:
+    Description: Cognito viewer group.
+    Value: !Ref ViewerGroup
+
+  AnalystGroupName:
+    Description: Cognito analyst group.
+    Value: !Ref AnalystGroup
+
+  AdminGroupName:
+    Description: Cognito administrator group.
+    Value: !Ref AdminGroup

@@ -3,30 +3,69 @@
  */
 
 import { DecisionDashboard } from './pages/DecisionDashboard';
+import { requireAuthentication } from './auth/guard';
+import { attachLogoutButton } from './auth/logout';
+import { getUserEmail, getUserGroups } from './auth/session';
 import './styles/brand-colors.css';
 import './styles/dashboard.css';
 
 function getRequiredElement<T extends HTMLElement>(id: string): T {
-  const el = document.getElementById(id);
-  if (!el) {
+  const element = document.getElementById(id);
+
+  if (!element) {
     throw new Error(`Required element #${id} not found`);
   }
-  return el as T;
+
+  return element as T;
 }
 
-const dashboard = new DecisionDashboard({
-  stateMessage: getRequiredElement('state-message'),
-  overview: getRequiredElement('overview-panel'),
-  progress: getRequiredElement('progress-panel'),
-  candidate: getRequiredElement('candidate-panel'),
-  evidence: getRequiredElement('evidence-panel'),
-  governance: getRequiredElement('governance-panel'),
-  financial: getRequiredElement('financial-panel'),
-  confidence: getRequiredElement('confidence-panel'),
-  recommendation: getRequiredElement('recommendation-panel'),
-  verification: getRequiredElement('verification-panel'),
-  analyzeButton: getRequiredElement<HTMLButtonElement>('analyze-btn'),
-  candidateSelect: getRequiredElement<HTMLSelectElement>('candidate-select'),
-});
+function displayAuthenticatedUser(): void {
+  const userElement = document.getElementById('authenticated-user');
 
-void dashboard.initialize();
+  if (!userElement) {
+    return;
+  }
+
+  const email = getUserEmail() ?? 'Authenticated user';
+  const roles = getUserGroups();
+
+  userElement.textContent =
+    roles.length > 0
+      ? `${email} · ${roles.join(', ')}`
+      : email;
+}
+
+async function initializeDashboard(): Promise<void> {
+  await requireAuthentication();
+
+  displayAuthenticatedUser();
+  attachLogoutButton();
+
+  const dashboard = new DecisionDashboard({
+    stateMessage: getRequiredElement('state-message'),
+    overview: getRequiredElement('overview-panel'),
+    progress: getRequiredElement('progress-panel'),
+    candidate: getRequiredElement('candidate-panel'),
+    evidence: getRequiredElement('evidence-panel'),
+    governance: getRequiredElement('governance-panel'),
+    financial: getRequiredElement('financial-panel'),
+    confidence: getRequiredElement('confidence-panel'),
+    recommendation: getRequiredElement('recommendation-panel'),
+    verification: getRequiredElement('verification-panel'),
+    analyzeButton:
+      getRequiredElement<HTMLButtonElement>('analyze-btn'),
+    candidateSelect:
+      getRequiredElement<HTMLSelectElement>('candidate-select'),
+  });
+
+  await dashboard.initialize();
+}
+
+void initializeDashboard().catch((error: unknown) => {
+  if (
+    error instanceof Error &&
+    error.message !== 'Redirecting to sign-in.'
+  ) {
+    console.error('Dashboard initialization failed:', error);
+  }
+});

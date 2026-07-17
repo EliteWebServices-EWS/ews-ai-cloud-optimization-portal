@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
+
 Description: >
   SISU'M Backend — API Gateway HTTP API and Lambda for the Cloud Optimization
-  Decision Platform (Express adapter via @codegenie/serverless-express).
+  Decision Platform using the Express serverless adapter.
 
 Parameters:
   Environment:
@@ -27,9 +28,8 @@ Parameters:
     Type: String
     Default: https://elitewebservices.org
     Description: >
-      Primary CORS origin echoed by the Express app (no trailing slash or path).
-      API Gateway also allows https://elitewebservices.org and
-      https://www.elitewebservices.org.
+      Primary CORS origin echoed by the Express application without a
+      trailing slash or path.
 
   LogLevel:
     Type: String
@@ -41,6 +41,16 @@ Parameters:
       - error
     Description: Structured log level for backend components.
 
+  CognitoUserPoolId:
+    Type: String
+    Default: us-east-1_DARrpLb5p
+    Description: Cognito User Pool ID used to construct the JWT issuer.
+
+  CognitoUserPoolClientId:
+    Type: String
+    Default: 1dc1g0tkflsspjd7uc6n131jft
+    Description: Cognito public SPA app client ID used as the JWT audience.
+
 Globals:
   Function:
     Runtime: nodejs24.x
@@ -48,6 +58,7 @@ Globals:
     MemorySize: 512
     Architectures:
       - arm64
+
   HttpApi:
     CorsConfiguration:
       AllowOrigins:
@@ -67,78 +78,119 @@ Resources:
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
-      Name: !Sub sisum-http-api-${Environment}
+      Name: !Sub "sisum-http-api-${Environment}"
       StageName: $default
       Description: SISU'M Backend HTTP API
+
+      Auth:
+        DefaultAuthorizer: SisumJwtAuthorizer
+        Authorizers:
+          SisumJwtAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              audience:
+                - !Ref CognitoUserPoolClientId
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}"
 
   SisumBackendLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/sisum-backend-${Environment}
+      LogGroupName: !Sub "/aws/lambda/sisum-backend-${Environment}"
       RetentionInDays: 14
 
   SisumBackendFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub sisum-backend-${Environment}
+      FunctionName: !Sub "sisum-backend-${Environment}"
       Description: SISU'M Cloud Optimization Decision Platform API
       CodeUri: .
       Handler: dist/lambda.handler
-      Role: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/SisumLambdaExecutionRole
+      Role: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/SisumLambdaExecutionRole"
+
       Environment:
         Variables:
           NODE_ENV: !Ref Environment
           PROVIDER_MODE: !Ref ProviderMode
           CORS_ORIGIN: !Ref CorsOrigin
           LOG_LEVEL: !Ref LogLevel
-          NODE_OPTIONS: --enable-source-maps
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClientId
+          NODE_OPTIONS: "--enable-source-maps"
+
       Events:
+        PublicHealthRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SisumHttpApi
+            Path: /api/v1/health
+            Method: GET
+            Auth:
+              Authorizer: NONE
+
         RootRoute:
           Type: HttpApi
           Properties:
             ApiId: !Ref SisumHttpApi
             Path: /
             Method: ANY
-        ProxyRoute:
+            Auth:
+              Authorizer: SisumJwtAuthorizer
+
+        ProtectedProxyRoute:
           Type: HttpApi
           Properties:
             ApiId: !Ref SisumHttpApi
             Path: /{proxy+}
             Method: ANY
+            Auth:
+              Authorizer: SisumJwtAuthorizer
 
 Outputs:
   ApiUrl:
-    Description: HTTP API base URL — use with /api/v1/health and other routes.
+    Description: HTTP API base URL. Use with /api/v1/health and other routes.
     Value: !GetAtt SisumHttpApi.ApiEndpoint
     Export:
-      Name: !Sub ${AWS::StackName}-ApiUrl
+      Name: !Sub "${AWS::StackName}-ApiUrl"
 
   ApiId:
-    Description: HTTP API identifier
+    Description: HTTP API identifier.
     Value: !Ref SisumHttpApi
     Export:
-      Name: !Sub ${AWS::StackName}-ApiId
+      Name: !Sub "${AWS::StackName}-ApiId"
 
   LambdaFunctionName:
-    Description: Lambda function name
+    Description: Lambda function name.
     Value: !Ref SisumBackendFunction
     Export:
-      Name: !Sub ${AWS::StackName}-LambdaFunctionName
+      Name: !Sub "${AWS::StackName}-LambdaFunctionName"
 
   LambdaArn:
-    Description: Lambda function ARN
+    Description: Lambda function ARN.
     Value: !GetAtt SisumBackendFunction.Arn
     Export:
-      Name: !Sub ${AWS::StackName}-LambdaArn
+      Name: !Sub "${AWS::StackName}-LambdaArn"
 
   Environment:
-    Description: Deployed environment
+    Description: Deployed environment.
     Value: !Ref Environment
     Export:
-      Name: !Sub ${AWS::StackName}-Environment
+      Name: !Sub "${AWS::StackName}-Environment"
 
   ProviderMode:
-    Description: Active provider mode (mock or aws)
+    Description: Active provider mode.
     Value: !Ref ProviderMode
     Export:
-      Name: !Sub ${AWS::StackName}-ProviderMode
+      Name: !Sub "${AWS::StackName}-ProviderMode"
+
+  CognitoUserPoolId:
+    Description: Cognito User Pool used by the JWT authorizer.
+    Value: !Ref CognitoUserPoolId
+
+  CognitoUserPoolClientId:
+    Description: Cognito app client used as the JWT audience.
+    Value: !Ref CognitoUserPoolClientId
+
+  JwtIssuer:
+    Description: JWT issuer configured on API Gateway.
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}"
+    
