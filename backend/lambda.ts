@@ -22,12 +22,6 @@ interface AuthenticatedHttpApiEvent extends APIGatewayProxyEventV2 {
     AuthenticatedRequestContext;
 }
 
-/**
- * Promise-based serverless-express handler shape used by Node.js 24.
- *
- * Some installed type declarations describe the traditional callback
- * signature even though serverless-express uses Promise resolution by default.
- */
 type PromiseServerlessExpressHandler = (
   event: AuthenticatedHttpApiEvent,
   context: Context
