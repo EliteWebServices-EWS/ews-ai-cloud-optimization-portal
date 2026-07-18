@@ -1,6 +1,7 @@
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
+  Callback,
   Context,
 } from 'aws-lambda';
 import serverlessExpress from '@codegenie/serverless-express';
@@ -26,10 +27,11 @@ const app = createApp();
 const serverlessExpressHandler = serverlessExpress({ app });
 
 /**
- * Copy API Gateway-validated identity claims into internal request headers.
+ * Copy API Gateway-validated Cognito claims into internal request headers.
  *
- * Client-supplied values are always overwritten. Express RBAC middleware
- * must trust only these internally generated headers.
+ * Any client-supplied versions of these headers are deleted first. The values
+ * used by Express RBAC middleware therefore come only from the JWT claims that
+ * API Gateway has already validated.
  */
 function attachValidatedIdentityHeaders(
   event: AuthenticatedHttpApiEvent
@@ -40,7 +42,6 @@ function attachValidatedIdentityHeaders(
     ...(event.headers ?? {}),
   };
 
-  // Always remove or overwrite potentially spoofed client values.
   delete event.headers['x-sisum-authenticated'];
   delete event.headers['x-sisum-user-id'];
   delete event.headers['x-sisum-user-email'];
@@ -54,17 +55,17 @@ function attachValidatedIdentityHeaders(
 
   const groups =
     claims['cognito:groups'] ??
-    claims['groups'] ??
+    claims.groups ??
     '';
 
   const userId =
-    claims['sub'] ??
+    claims.sub ??
     claims['cognito:username'] ??
     '';
 
-  const email = claims['email'] ?? '';
-  const tokenUse = claims['token_use'] ?? '';
-  const clientId = claims['client_id'] ?? claims['aud'] ?? '';
+  const email = claims.email ?? '';
+  const tokenUse = claims.token_use ?? '';
+  const clientId = claims.client_id ?? claims.aud ?? '';
 
   event.headers['x-sisum-authenticated'] = 'true';
   event.headers['x-sisum-user-id'] = userId;
@@ -74,14 +75,22 @@ function attachValidatedIdentityHeaders(
   event.headers['x-sisum-client-id'] = clientId;
 }
 
-export async function handler(
+/**
+ * AWS Lambda entry point.
+ *
+ * The callback is passed through because the serverless-express v5 handler
+ * follows the standard three-argument AWS Lambda handler signature.
+ */
+export function handler(
   event: AuthenticatedHttpApiEvent,
-  context: Context
-): Promise<APIGatewayProxyResultV2> {
+  context: Context,
+  callback: Callback<APIGatewayProxyResultV2>
+): void | Promise<APIGatewayProxyResultV2> {
   attachValidatedIdentityHeaders(event);
 
   return serverlessExpressHandler(
     event,
-    context
-  ) as Promise<APIGatewayProxyResultV2>;
+    context,
+    callback
+  ) as void | Promise<APIGatewayProxyResultV2>;
 }
