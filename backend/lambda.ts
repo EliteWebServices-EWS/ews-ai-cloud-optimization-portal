@@ -42,6 +42,7 @@ function attachValidatedIdentityHeaders(
     ...(event.headers ?? {}),
   };
 
+  // Remove any client-supplied internal identity headers.
   delete event.headers['x-sisum-authenticated'];
   delete event.headers['x-sisum-user-id'];
   delete event.headers['x-sisum-user-email'];
@@ -78,8 +79,8 @@ function attachValidatedIdentityHeaders(
 /**
  * AWS Lambda entry point.
  *
- * The callback is passed through because the serverless-express v5 handler
- * follows the standard three-argument AWS Lambda handler signature.
+ * The callback is passed through because serverless-express v5 uses the
+ * standard three-argument AWS Lambda handler signature.
  */
 export function handler(
   event: AuthenticatedHttpApiEvent,
