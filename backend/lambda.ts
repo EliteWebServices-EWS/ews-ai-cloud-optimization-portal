@@ -1,7 +1,6 @@
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
-  Callback,
   Context,
 } from 'aws-lambda';
 import serverlessExpress from '@codegenie/serverless-express';
@@ -23,15 +22,28 @@ interface AuthenticatedHttpApiEvent extends APIGatewayProxyEventV2 {
     AuthenticatedRequestContext;
 }
 
+/**
+ * Promise-based serverless-express handler shape used by Node.js 24.
+ *
+ * Some installed type declarations describe the traditional callback
+ * signature even though serverless-express uses Promise resolution by default.
+ */
+type PromiseServerlessExpressHandler = (
+  event: AuthenticatedHttpApiEvent,
+  context: Context
+) => Promise<APIGatewayProxyResultV2>;
+
 const app = createApp();
-const serverlessExpressHandler = serverlessExpress({ app });
+
+const serverlessExpressHandler = serverlessExpress({
+  app,
+}) as unknown as PromiseServerlessExpressHandler;
 
 /**
  * Copy API Gateway-validated Cognito claims into internal request headers.
  *
- * Any client-supplied versions of these headers are deleted first. The values
- * used by Express RBAC middleware therefore come only from JWT claims that
- * API Gateway has already validated.
+ * Client-supplied internal identity headers are removed before trusted values
+ * from API Gateway JWT claims are added.
  */
 function attachValidatedIdentityHeaders(
   event: AuthenticatedHttpApiEvent
@@ -65,7 +77,11 @@ function attachValidatedIdentityHeaders(
 
   const email = claims.email ?? '';
   const tokenUse = claims.token_use ?? '';
-  const clientId = claims.client_id ?? claims.aud ?? '';
+
+  const clientId =
+    claims.client_id ??
+    claims.aud ??
+    '';
 
   event.headers['x-sisum-authenticated'] = 'true';
   event.headers['x-sisum-user-id'] = userId;
@@ -76,21 +92,13 @@ function attachValidatedIdentityHeaders(
 }
 
 /**
- * AWS Lambda entry point.
- *
- * serverless-express v5 uses the standard three-argument Lambda handler
- * signature: event, context, and callback.
+ * Node.js 24-compatible asynchronous Lambda entry point.
  */
-export function handler(
+export async function handler(
   event: AuthenticatedHttpApiEvent,
-  context: Context,
-  callback: Callback<APIGatewayProxyResultV2>
-): void | Promise<APIGatewayProxyResultV2> {
+  context: Context
+): Promise<APIGatewayProxyResultV2> {
   attachValidatedIdentityHeaders(event);
 
-  return serverlessExpressHandler(
-    event,
-    context,
-    callback
-  ) as void | Promise<APIGatewayProxyResultV2>;
+  return serverlessExpressHandler(event, context);
 }
