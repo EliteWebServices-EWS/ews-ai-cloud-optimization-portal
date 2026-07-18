@@ -30,7 +30,7 @@ const serverlessExpressHandler = serverlessExpress({ app });
  * Copy API Gateway-validated Cognito claims into internal request headers.
  *
  * Any client-supplied versions of these headers are deleted first. The values
- * used by Express RBAC middleware therefore come only from the JWT claims that
+ * used by Express RBAC middleware therefore come only from JWT claims that
  * API Gateway has already validated.
  */
 function attachValidatedIdentityHeaders(
@@ -42,7 +42,6 @@ function attachValidatedIdentityHeaders(
     ...(event.headers ?? {}),
   };
 
-  // Remove any client-supplied internal identity headers.
   delete event.headers['x-sisum-authenticated'];
   delete event.headers['x-sisum-user-id'];
   delete event.headers['x-sisum-user-email'];
@@ -79,8 +78,8 @@ function attachValidatedIdentityHeaders(
 /**
  * AWS Lambda entry point.
  *
- * The callback is passed through because serverless-express v5 uses the
- * standard three-argument AWS Lambda handler signature.
+ * serverless-express v5 uses the standard three-argument Lambda handler
+ * signature: event, context, and callback.
  */
 export function handler(
   event: AuthenticatedHttpApiEvent,
