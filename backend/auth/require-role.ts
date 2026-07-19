@@ -1,3 +1,4 @@
+
 /**
  * Express middleware for SISU'M role-based access control.
  */
@@ -9,9 +10,13 @@ import type {
   Response,
 } from 'express';
 import {
-  buildErrorResponse,
-  generateRequestId,
-} from '../shared/utils';
+  AUDIT_EVENTS,
+  getAuditActor,
+  getCorrelationId,
+  getRequestId,
+  writeAuditEvent,
+} from '../audit';
+import { buildErrorResponse } from '../shared/utils';
 import { getAuthenticatedIdentity } from './identity';
 import type { SisumRole } from './roles';
 
@@ -23,10 +28,31 @@ export function requireAnyRole(
     res: Response,
     next: NextFunction
   ): void => {
-    const requestId = generateRequestId();
+    const requestId = getRequestId(req);
+    const correlationId = getCorrelationId(
+      req,
+      requestId
+    );
+
     const identity = getAuthenticatedIdentity(req);
+    const actor = getAuditActor(req);
 
     if (!identity.authenticated) {
+      writeAuditEvent({
+        eventName: AUDIT_EVENTS.IDENTITY_MISSING,
+        outcome: 'denied',
+        requestId,
+        correlationId,
+        actor,
+        action: 'authorize.request',
+        method: req.method,
+        path: req.path,
+        statusCode: 401,
+        reason:
+          'No authenticated Cognito identity was available.',
+        errorCode: 'AUTHENTICATION_REQUIRED',
+      });
+
       res.status(401).json(
         buildErrorResponse(
           'AUTHENTICATION_REQUIRED',
@@ -35,14 +61,29 @@ export function requireAnyRole(
           'authorization'
         )
       );
+
       return;
     }
 
-    const hasPermission = identity.groups.some((group) =>
-      allowedRoles.includes(group)
+    const hasPermission = identity.groups.some(
+      (group) => allowedRoles.includes(group)
     );
 
     if (!hasPermission) {
+      writeAuditEvent({
+        eventName: AUDIT_EVENTS.AUTHORIZATION_DENIED,
+        outcome: 'denied',
+        requestId,
+        correlationId,
+        actor,
+        action: 'authorize.request',
+        method: req.method,
+        path: req.path,
+        statusCode: 403,
+        reason: `Required role: ${allowedRoles.join(', ')}`,
+        errorCode: 'FORBIDDEN',
+      });
+
       res.status(403).json(
         buildErrorResponse(
           'FORBIDDEN',
@@ -51,9 +92,11 @@ export function requireAnyRole(
           'authorization'
         )
       );
+
       return;
     }
 
     next();
   };
 }
+
