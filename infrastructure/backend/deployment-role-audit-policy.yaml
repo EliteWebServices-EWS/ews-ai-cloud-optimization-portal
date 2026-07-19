@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Supplemental IAM permissions for SisumBackendDeployRole so GitHub Actions
+  can deploy Sprint 10.5.14 audit DynamoDB resources through CloudFormation.
+  Apply once with an administrator role before re-running backend deployment.
+
+Parameters:
+  BackendDeployRoleName:
+    Type: String
+    Default: SisumBackendDeployRole
+    Description: GitHub OIDC backend deployment role name.
+
+  LambdaExecutionRoleName:
+    Type: String
+    Default: SisumLambdaExecutionRole
+    Description: Lambda execution role that receives the audit table policy.
+
+Resources:
+  SisumBackendDeployAuditPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SisumBackendDeployAuditResources
+      Roles:
+        - !Ref BackendDeployRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ManageAuditDynamoDbTables
+            Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:UpdateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:DescribeTimeToLive
+              - dynamodb:UpdateTimeToLive
+              - dynamodb:TagResource
+              - dynamodb:UntagResource
+              - dynamodb:ListTagsOfResource
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:UpdateContinuousBackups
+            Resource:
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-audit-*
+
+          - Sid: ManageAuditLambdaExecutionPolicy
+            Effect: Allow
+            Action:
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:ListPolicyVersions
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicyVersion
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+            Resource:
+              - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/sisum-audit-dynamodb-*
+              - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${LambdaExecutionRoleName}
+
+Outputs:
+  BackendDeployAuditPolicyName:
+    Description: Supplemental deploy policy attached to SisumBackendDeployRole.
+    Value: SisumBackendDeployAuditResources
