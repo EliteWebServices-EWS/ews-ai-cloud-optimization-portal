@@ -23,6 +23,7 @@
     "index.ts",
     "lambda.ts",
     "api/**/*.ts",
+    "audit/**/*.ts",
     "engines/**/*.ts",
     "execution/**/*.ts",
     "plugins/**/*.ts",
