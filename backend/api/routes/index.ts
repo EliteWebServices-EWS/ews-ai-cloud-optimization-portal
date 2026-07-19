@@ -1,4 +1,11 @@
 import { Router, type Request, type Response } from 'express';
+import {
+  AUDIT_EVENTS,
+  getAuditActor,
+  getCorrelationId,
+  getRequestId,
+  writeAuditEvent,
+} from '../../audit';
 import type { WorkflowOrchestrator } from '../../orchestrator';
 import type { PluginRegistry } from '../../plugins';
 import type { ProviderInterface } from '../../shared/interfaces';
@@ -483,79 +490,254 @@ export function createProviderRoutes(deps: Pick<ApiDependencies, 'activeProvider
 }
 
 /** Workflow routes — Sprint 7 hardened workflow APIs. */
-export function createWorkflowRoutes(deps: Pick<ApiDependencies, 'orchestrator'>): Router {
+export function createWorkflowRoutes(
+  deps: Pick<ApiDependencies, 'orchestrator'>
+): Router {
   const router = Router();
 
   router.post(
     '/workflows/run',
     requireAnyRole(...ANALYSIS_ROLES),
     async (req: Request, res: Response) => {
-    const requestId = generateRequestId();
+      const requestId = getRequestId(req);
+      const correlationId = getCorrelationId(
+        req,
+        requestId
+      );
+      const actor = getAuditActor(req);
+      const startedAt = Date.now();
 
-    try {
+      let workflowId: string | undefined;
+
       const plugin =
-        typeof req.body?.plugin === 'string' ? req.body.plugin : PLUGIN_NAMES.EC2;
-      const mode = req.body?.mode === 'dry-run' ? 'dry-run' : 'full';
+        typeof req.body?.plugin === 'string'
+          ? req.body.plugin
+          : PLUGIN_NAMES.EC2;
+
+      const mode =
+        req.body?.mode === 'dry-run'
+          ? 'dry-run'
+          : 'full';
+
       const resourceId =
-        typeof req.body?.resourceId === 'string' ? req.body.resourceId : undefined;
+        typeof req.body?.resourceId === 'string'
+          ? req.body.resourceId
+          : undefined;
+
       const region =
-        typeof req.body?.region === 'string' ? req.body.region : DEFAULT_REGION;
+        typeof req.body?.region === 'string'
+          ? req.body.region
+          : DEFAULT_REGION;
 
-      if (plugin !== PLUGIN_NAMES.EC2) {
-        throw new AppError('PLUGIN_NOT_FOUND', `Plugin not supported: ${plugin}`, 404);
-      }
-
-      const result = await deps.orchestrator.executeWorkflow({
-        plugin: PLUGIN_NAMES.EC2,
-        resourceId,
-        region,
-        mode,
-        triggerSource: 'api',
+      writeAuditEvent({
+        eventName: AUDIT_EVENTS.WORKFLOW_STARTED,
+        outcome: 'started',
+        requestId,
+        correlationId,
+        actor,
+        action: 'workflow.run',
+        method: req.method,
+        path: req.path,
+        resource: {
+          type: plugin,
+          id: resourceId,
+          region,
+        },
       });
 
-      const statusCode = result.status === 'failed' ? 422 : 201;
-      res.status(statusCode).json(
-        buildSuccessResponse(
-          {
-            workflowId: result.workflowId,
-            status: result.status,
-            executionState: result.executionState,
-            durationMs: result.durationMs,
-            completedStages: result.completedStages,
-            failedStages: result.failedStages,
-            failure: result.failure,
-            candidate: result.candidate
-              ? {
-                  resourceId: result.candidate.resourceId,
-                  resourceType: result.candidate.resourceType,
-                  region: result.candidate.region,
-                }
-              : undefined,
-            recommendation: result.recommendation
-              ? {
-                  status: result.recommendation.status,
-                  summary: result.recommendation.summary,
-                  reason: result.recommendation.reason,
-                }
-              : undefined,
-            financialImpact: result.financialImpact
-              ? {
-                  monthlySavings: result.financialImpact.monthlySavings,
-                  annualSavings: result.financialImpact.annualSavings,
-                  status: result.financialImpact.status,
-                }
-              : undefined,
-            verification: result.verification
-              ? { status: result.verification.status }
-              : undefined,
+      try {
+        if (plugin !== PLUGIN_NAMES.EC2) {
+          throw new AppError(
+            'PLUGIN_NOT_FOUND',
+            `Plugin not supported: ${plugin}`,
+            404
+          );
+        }
+
+        const result =
+          await deps.orchestrator.executeWorkflow({
+            plugin: PLUGIN_NAMES.EC2,
+            resourceId,
+            region,
+            mode,
+            triggerSource: 'api',
+          });
+
+        workflowId = result.workflowId;
+
+        const statusCode =
+          result.status === 'failed' ? 422 : 201;
+
+        const durationMs =
+          Date.now() - startedAt;
+
+        if (result.status === 'failed') {
+          writeAuditEvent({
+            eventName:
+              AUDIT_EVENTS.WORKFLOW_FAILED,
+            outcome: 'failure',
+            requestId,
+            correlationId,
+            actor,
+            action: 'workflow.run',
+            method: req.method,
+            path: req.path,
+            statusCode,
+            durationMs,
+            workflowId,
+            resource: {
+              type: PLUGIN_NAMES.EC2,
+              id:
+                result.candidate?.resourceId ??
+                resourceId,
+              region:
+                result.candidate?.region ??
+                region,
+            },
+            reason:
+              'Workflow completed with a failed status.',
+            errorCode: 'WORKFLOW_FAILED',
+          });
+        } else {
+          writeAuditEvent({
+            eventName:
+              AUDIT_EVENTS.WORKFLOW_COMPLETED,
+            outcome: 'success',
+            requestId,
+            correlationId,
+            actor,
+            action: 'workflow.run',
+            method: req.method,
+            path: req.path,
+            statusCode,
+            durationMs,
+            workflowId,
+            resource: {
+              type: PLUGIN_NAMES.EC2,
+              id:
+                result.candidate?.resourceId ??
+                resourceId,
+              region:
+                result.candidate?.region ??
+                region,
+            },
+          });
+        }
+
+        res.status(statusCode).json(
+          buildSuccessResponse(
+            {
+              workflowId: result.workflowId,
+              status: result.status,
+              executionState:
+                result.executionState,
+              durationMs: result.durationMs,
+              completedStages:
+                result.completedStages,
+              failedStages: result.failedStages,
+              failure: result.failure,
+
+              candidate: result.candidate
+                ? {
+                    resourceId:
+                      result.candidate.resourceId,
+                    resourceType:
+                      result.candidate.resourceType,
+                    region:
+                      result.candidate.region,
+                  }
+                : undefined,
+
+              recommendation:
+                result.recommendation
+                  ? {
+                      status:
+                        result.recommendation
+                          .status,
+                      summary:
+                        result.recommendation
+                          .summary,
+                      reason:
+                        result.recommendation
+                          .reason,
+                    }
+                  : undefined,
+
+              financialImpact:
+                result.financialImpact
+                  ? {
+                      monthlySavings:
+                        result.financialImpact
+                          .monthlySavings,
+                      annualSavings:
+                        result.financialImpact
+                          .annualSavings,
+                      status:
+                        result.financialImpact
+                          .status,
+                    }
+                  : undefined,
+
+              verification:
+                result.verification
+                  ? {
+                      status:
+                        result.verification
+                          .status,
+                    }
+                  : undefined,
+            },
+            requestId
+          )
+        );
+      } catch (error) {
+        const durationMs =
+          Date.now() - startedAt;
+
+        const statusCode = isAppError(error)
+          ? error.statusCode
+          : 500;
+
+        const errorCode = isAppError(error)
+          ? error.code
+          : 'ENGINE_ERROR';
+
+        const reason =
+          error instanceof Error
+            ? error.message
+            : 'Workflow execution failed.';
+
+        writeAuditEvent({
+          eventName:
+            AUDIT_EVENTS.WORKFLOW_FAILED,
+          outcome: 'failure',
+          requestId,
+          correlationId,
+          actor,
+          action: 'workflow.run',
+          method: req.method,
+          path: req.path,
+          statusCode,
+          durationMs,
+          workflowId,
+          resource: {
+            type: plugin,
+            id: resourceId,
+            region,
           },
-          requestId
-        )
-      );
-    } catch (error) {
-      handleRouteError(res, error, requestId, 'workflow');
+          reason,
+          errorCode,
+        });
+
+        handleRouteError(
+          res,
+          error,
+          requestId,
+          'workflow'
+        );
+      }
     }
-  });
+  );
 
   router.get('/workflows/status/:id', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
@@ -877,16 +1059,30 @@ export function createRecommendationRoutes(
 }
 
 /** Execution simulation and verification report routes. */
-export function createVerificationRoutes(deps: Pick<ApiDependencies, 'orchestrator' | 'executionSimulator' | 'learningStore'>): Router {
+export function createVerificationRoutes(
+  deps: Pick<
+    ApiDependencies,
+    'orchestrator' | 'executionSimulator' | 'learningStore'
+  >
+): Router {
   const router = Router();
 
   router.post(
     '/execution/simulate',
     requireAnyRole(...ANALYSIS_ROLES),
     async (req: Request, res: Response) => {
-    const requestId = generateRequestId();
+      const requestId = getRequestId(req);
+      const correlationId = getCorrelationId(
+        req,
+        requestId
+      );
+      const actor = getAuditActor(req);
+      const startedAt = Date.now();
 
-    try {
+      let workflowId: string | undefined;
+      let executionId: string | undefined;
+      let executionRegion = DEFAULT_REGION;
+
       const resourceId =
         typeof req.body?.resourceId === 'string'
           ? req.body.resourceId
@@ -894,78 +1090,215 @@ export function createVerificationRoutes(deps: Pick<ApiDependencies, 'orchestrat
             ? req.query.resourceId
             : undefined;
 
-      const recommendationWorkflow = await deps.orchestrator.runRecommendationWorkflow({
-        plugin: PLUGIN_NAMES.EC2,
-        resourceId,
-      });
+      try {
+        const recommendationWorkflow =
+          await deps.orchestrator.runRecommendationWorkflow({
+            plugin: PLUGIN_NAMES.EC2,
+            resourceId,
+          });
 
-      const executionResult = await deps.executionSimulator.simulate({
-        context: {
-          workflowId: recommendationWorkflow.workflowId,
-          plugin: PLUGIN_NAMES.EC2,
-          provider: PROVIDER_NAMES.MOCK,
-          region: recommendationWorkflow.candidate.region,
-          mode: 'demo',
-          startedAt: new Date().toISOString(),
-          candidate: recommendationWorkflow.candidate,
-        },
-        candidate: recommendationWorkflow.candidate,
-        recommendation: recommendationWorkflow.recommendation,
-      });
+        workflowId =
+          recommendationWorkflow.workflowId;
 
-      res.json(
-        buildSuccessResponse(
-          {
-            execution: executionResult,
-            recommendation: recommendationWorkflow.recommendation,
+        executionRegion =
+          recommendationWorkflow.candidate.region;
+
+        const executionResult =
+          await deps.executionSimulator.simulate({
+            context: {
+              workflowId:
+                recommendationWorkflow.workflowId,
+              plugin: PLUGIN_NAMES.EC2,
+              provider: PROVIDER_NAMES.MOCK,
+              region:
+                recommendationWorkflow.candidate
+                  .region,
+              mode: 'demo',
+              startedAt:
+                new Date().toISOString(),
+              candidate:
+                recommendationWorkflow.candidate,
+            },
+            candidate:
+              recommendationWorkflow.candidate,
+            recommendation:
+              recommendationWorkflow.recommendation,
+          });
+
+        executionId =
+          executionResult.executionId;
+
+        const durationMs =
+          Date.now() - startedAt;
+
+        writeAuditEvent({
+          eventName:
+            AUDIT_EVENTS.EXECUTION_SIMULATED,
+          outcome: 'success',
+          requestId,
+          correlationId,
+          actor,
+          action: 'execution.simulate',
+          method: req.method,
+          path: req.path,
+          statusCode: 200,
+          durationMs,
+          workflowId,
+          executionId,
+          resource: {
+            type: PLUGIN_NAMES.EC2,
+            id:
+              recommendationWorkflow.candidate
+                .resourceId,
+            region:
+              recommendationWorkflow.candidate
+                .region,
           },
-          requestId
-        )
-      );
-    } catch (error) {
-      handleRouteError(res, error, requestId, 'execution');
-    }
-  });
-
-  router.get('/verification/reports', async (req: Request, res: Response) => {
-    const requestId = generateRequestId();
-
-    try {
-      const workflowId =
-        typeof req.query.workflowId === 'string' ? req.query.workflowId : undefined;
-
-      if (workflowId) {
-        const record = deps.learningStore.getByWorkflowId(workflowId);
-        if (!record) {
-          throw new AppError('NOT_FOUND', `No verification report found for workflow ${workflowId}`, 404);
-        }
+        });
 
         res.json(
           buildSuccessResponse(
             {
-              report: deps.learningStore.listReports().find((item) => item.workflowId === workflowId),
-              configuration: DEFAULT_VERIFICATION_CONFIG,
+              execution: executionResult,
+              recommendation:
+                recommendationWorkflow.recommendation,
             },
             requestId
           )
         );
-        return;
-      }
+      } catch (error) {
+        const durationMs =
+          Date.now() - startedAt;
 
-      res.json(
-        buildSuccessResponse(
-          {
-            reports: deps.learningStore.listReports(),
-            total: deps.learningStore.listRecords().length,
-            configuration: DEFAULT_VERIFICATION_CONFIG,
+        const statusCode =
+          isAppError(error)
+            ? error.statusCode
+            : 500;
+
+        const errorCode =
+          isAppError(error)
+            ? error.code
+            : 'ENGINE_ERROR';
+
+        const reason =
+          error instanceof Error
+            ? error.message
+            : 'Execution simulation failed.';
+
+        writeAuditEvent({
+          eventName:
+            AUDIT_EVENTS
+              .EXECUTION_SIMULATION_FAILED,
+          outcome: 'failure',
+          requestId,
+          correlationId,
+          actor,
+          action: 'execution.simulate',
+          method: req.method,
+          path: req.path,
+          statusCode,
+          durationMs,
+          ...(workflowId
+            ? { workflowId }
+            : {}),
+          ...(executionId
+            ? { executionId }
+            : {}),
+          resource: {
+            type: PLUGIN_NAMES.EC2,
+            region: executionRegion,
+            ...(resourceId
+              ? { id: resourceId }
+              : {}),
           },
-          requestId
-        )
-      );
-    } catch (error) {
-      handleRouteError(res, error, requestId, 'verification');
+          reason,
+          errorCode,
+        });
+
+        handleRouteError(
+          res,
+          error,
+          requestId,
+          'execution'
+        );
+      }
     }
-  });
+  );
+
+  router.get(
+    '/verification/reports',
+    async (req: Request, res: Response) => {
+      const requestId = generateRequestId();
+
+      try {
+        const workflowId =
+          typeof req.query.workflowId === 'string'
+            ? req.query.workflowId
+            : undefined;
+
+        if (workflowId) {
+          const record =
+            deps.learningStore.getByWorkflowId(
+              workflowId
+            );
+
+          if (!record) {
+            throw new AppError(
+              'NOT_FOUND',
+              `No verification report found for workflow ${workflowId}`,
+              404
+            );
+          }
+
+          const report =
+            deps.learningStore
+              .listReports()
+              .find(
+                (item) =>
+                  item.workflowId === workflowId
+              );
+
+          res.json(
+            buildSuccessResponse(
+              {
+                report,
+                configuration:
+                  DEFAULT_VERIFICATION_CONFIG,
+              },
+              requestId
+            )
+          );
+
+          return;
+        }
+
+        const reports =
+          deps.learningStore.listReports();
+
+        const total =
+          deps.learningStore.listRecords().length;
+
+        res.json(
+          buildSuccessResponse(
+            {
+              reports,
+              total,
+              configuration:
+                DEFAULT_VERIFICATION_CONFIG,
+            },
+            requestId
+          )
+        );
+      } catch (error) {
+        handleRouteError(
+          res,
+          error,
+          requestId,
+          'verification'
+        );
+      }
+    }
+  );
 
   return router;
 }
@@ -993,117 +1326,313 @@ export function createGovernanceRoutes(): Router {
 
 /** Optimization report routes — Sprint 9 Reporting Layer. */
 export function createReportRoutes(
-  deps: Pick<ApiDependencies, 'orchestrator' | 'reportingEngine'>
+  deps: Pick<
+    ApiDependencies,
+    'orchestrator' | 'reportingEngine'
+  >
 ): Router {
   const router = Router();
 
-  router.get('/reports', (req: Request, res: Response) => {
-    const requestId = generateRequestId();
+  router.get(
+    '/reports',
+    (req: Request, res: Response) => {
+      const requestId = generateRequestId();
 
-    try {
-      const filters = parseReportFilters(req.query as Record<string, unknown>);
-      const allReports = deps.reportingEngine.listReports();
-      const reports = filterReports(allReports, filters);
+      try {
+        const filters = parseReportFilters(
+          req.query as Record<string, unknown>
+        );
 
-      res.json(
-        buildSuccessResponse(
-          {
-            reports: reports.map((report) => ({
-              reportId: report.reportId,
-              workflowId: report.workflowId,
-              plugin: report.plugin,
-              status: report.status,
-              workflowStatus: report.workflowStatus,
-              createdAt: report.createdAt,
-              region: report.region,
-              summary: {
-                headline: report.summary.headline,
-                opportunityCount: report.summary.opportunityCount,
-                estimatedMonthlySavings: report.summary.estimatedMonthlySavings,
-                verifiedMonthlySavings: report.summary.verifiedMonthlySavings,
-                verifiedCount: report.summary.verifiedCount,
-                currency: report.summary.currency,
-                optimizationStatus: report.summary.optimizationStatus,
-                executiveSummary: report.summary.executiveSummary,
-              },
-              resourceCount: report.resources.length,
-              confidenceStatus: report.recommendations[0]?.decision.confidenceStatus,
-              verificationStatus: report.verification?.status,
-            })),
-            total: reports.length,
-            filters,
-          },
-          requestId
-        )
-      );
-    } catch (error) {
-      handleRouteError(res, error, requestId, 'reports');
-    }
-  });
+        const allReports =
+          deps.reportingEngine.listReports();
 
-  router.get('/reports/:id', (req: Request, res: Response) => {
-    const requestId = generateRequestId();
+        const reports = filterReports(
+          allReports,
+          filters
+        );
 
-    try {
-      const reportId = req.params.id;
-      const report = deps.reportingEngine.getReport(reportId);
-
-      if (!report) {
-        throw new AppError('NOT_FOUND', `Report not found: ${reportId}`, 404);
+        res.json(
+          buildSuccessResponse(
+            {
+              reports: reports.map((report) => ({
+                reportId: report.reportId,
+                workflowId: report.workflowId,
+                plugin: report.plugin,
+                status: report.status,
+                workflowStatus:
+                  report.workflowStatus,
+                createdAt: report.createdAt,
+                region: report.region,
+                summary: {
+                  headline:
+                    report.summary.headline,
+                  opportunityCount:
+                    report.summary
+                      .opportunityCount,
+                  estimatedMonthlySavings:
+                    report.summary
+                      .estimatedMonthlySavings,
+                  verifiedMonthlySavings:
+                    report.summary
+                      .verifiedMonthlySavings,
+                  verifiedCount:
+                    report.summary
+                      .verifiedCount,
+                  currency:
+                    report.summary.currency,
+                  optimizationStatus:
+                    report.summary
+                      .optimizationStatus,
+                  executiveSummary:
+                    report.summary
+                      .executiveSummary,
+                },
+                resourceCount:
+                  report.resources.length,
+                confidenceStatus:
+                  report.recommendations[0]
+                    ?.decision.confidenceStatus,
+                verificationStatus:
+                  report.verification?.status,
+              })),
+              total: reports.length,
+              filters,
+            },
+            requestId
+          )
+        );
+      } catch (error) {
+        handleRouteError(
+          res,
+          error,
+          requestId,
+          'reports'
+        );
       }
-
-      res.json(buildSuccessResponse(report, requestId));
-    } catch (error) {
-      handleRouteError(res, error, requestId, 'reports');
     }
-  });
+  );
+
+  router.get(
+    '/reports/:id',
+    (req: Request, res: Response) => {
+      const requestId = generateRequestId();
+
+      try {
+        const reportId = req.params.id;
+
+        const report =
+          deps.reportingEngine.getReport(
+            reportId
+          );
+
+        if (!report) {
+          throw new AppError(
+            'NOT_FOUND',
+            `Report not found: ${reportId}`,
+            404
+          );
+        }
+
+        res.json(
+          buildSuccessResponse(
+            report,
+            requestId
+          )
+        );
+      } catch (error) {
+        handleRouteError(
+          res,
+          error,
+          requestId,
+          'reports'
+        );
+      }
+    }
+  );
 
   router.post(
     '/reports/generate',
     requireAnyRole(...ANALYSIS_ROLES),
     (req: Request, res: Response) => {
-    const requestId = generateRequestId();
+      const requestId = getRequestId(req);
+      const correlationId = getCorrelationId(
+        req,
+        requestId
+      );
+      const actor = getAuditActor(req);
+      const startedAt = Date.now();
 
-    try {
       const workflowId =
-        typeof req.body?.workflowId === 'string' ? req.body.workflowId : undefined;
+        typeof req.body?.workflowId === 'string'
+          ? req.body.workflowId
+          : undefined;
 
-      if (!workflowId) {
-        throw new AppError('INVALID_REQUEST', 'workflowId is required', 400);
-      }
+      let reportId: string | undefined;
 
-      const existing = deps.reportingEngine.getReportByWorkflowId(workflowId);
-      if (existing) {
-        res.json(buildSuccessResponse({ report: existing, cached: true }, requestId));
-        return;
-      }
+      try {
+        if (!workflowId) {
+          throw new AppError(
+            'INVALID_REQUEST',
+            'workflowId is required',
+            400
+          );
+        }
 
-      const record = deps.orchestrator.getWorkflow(workflowId);
-      if (!record) {
-        throw new AppError(
-          'NOT_FOUND',
-          `Workflow not found: ${workflowId}`,
-          404,
+        const existing =
+          deps.reportingEngine
+            .getReportByWorkflowId(
+              workflowId
+            );
+
+        if (existing) {
+          reportId = existing.reportId;
+
+          writeAuditEvent({
+            eventName:
+              AUDIT_EVENTS.REPORT_GENERATED,
+            outcome: 'success',
+            requestId,
+            correlationId,
+            actor,
+            action: 'report.generate',
+            method: req.method,
+            path: req.path,
+            statusCode: 200,
+            durationMs:
+              Date.now() - startedAt,
+            workflowId,
+            reportId,
+            reason:
+              'Existing report returned from cache.',
+          });
+
+          res.json(
+            buildSuccessResponse(
+              {
+                report: existing,
+                cached: true,
+              },
+              requestId
+            )
+          );
+
+          return;
+        }
+
+        const record =
+          deps.orchestrator.getWorkflow(
+            workflowId
+          );
+
+        if (!record) {
+          throw new AppError(
+            'NOT_FOUND',
+            `Workflow not found: ${workflowId}`,
+            404,
+            'reports'
+          );
+        }
+
+        const input =
+          toReportGenerationInput(record);
+
+        const result =
+          deps.reportingEngine.execute(input);
+
+        if (!result.success || !result.data) {
+          const code =
+            result.error?.code ??
+            'REPORT_GENERATION_FAILED';
+
+          const message =
+            result.error?.reason ??
+            'Report generation failed';
+
+          throw new AppError(
+            code,
+            message,
+            422,
+            'reports'
+          );
+        }
+
+        reportId = result.data.reportId;
+
+        writeAuditEvent({
+          eventName:
+            AUDIT_EVENTS.REPORT_GENERATED,
+          outcome: 'success',
+          requestId,
+          correlationId,
+          actor,
+          action: 'report.generate',
+          method: req.method,
+          path: req.path,
+          statusCode: 201,
+          durationMs:
+            Date.now() - startedAt,
+          workflowId,
+          reportId,
+        });
+
+        res.status(201).json(
+          buildSuccessResponse(
+            {
+              report: result.data,
+              cached: false,
+            },
+            requestId
+          )
+        );
+      } catch (error) {
+        const statusCode =
+          isAppError(error)
+            ? error.statusCode
+            : 500;
+
+        const errorCode =
+          isAppError(error)
+            ? error.code
+            : 'ENGINE_ERROR';
+
+        const reason =
+          error instanceof Error
+            ? error.message
+            : 'Report generation failed.';
+
+        writeAuditEvent({
+          eventName:
+            AUDIT_EVENTS
+              .REPORT_GENERATION_FAILED,
+          outcome: 'failure',
+          requestId,
+          correlationId,
+          actor,
+          action: 'report.generate',
+          method: req.method,
+          path: req.path,
+          statusCode,
+          durationMs:
+            Date.now() - startedAt,
+          ...(workflowId
+            ? { workflowId }
+            : {}),
+          ...(reportId
+            ? { reportId }
+            : {}),
+          reason,
+          errorCode,
+        });
+
+        handleRouteError(
+          res,
+          error,
+          requestId,
           'reports'
         );
       }
-
-      const input = toReportGenerationInput(record);
-      const result = deps.reportingEngine.execute(input);
-
-      if (!result.success || !result.data) {
-        const code = result.error?.code ?? 'REPORT_GENERATION_FAILED';
-        const message = result.error?.reason ?? 'Report generation failed';
-        throw new AppError(code, message, 422, 'reports');
-      }
-
-      res.status(201).json(
-        buildSuccessResponse({ report: result.data, cached: false }, requestId)
-      );
-    } catch (error) {
-      handleRouteError(res, error, requestId, 'reports');
     }
-  });
+  );
 
   return router;
 }
