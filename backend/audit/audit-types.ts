@@ -7,6 +7,14 @@ export type AuditOutcome =
   | 'failure'
   | 'denied';
 
+export type AuditSource =
+  | 'api'
+  | 'authorization'
+  | 'workflow'
+  | 'reporting'
+  | 'execution'
+  | 'audit';
+
 export interface AuditActor {
   authenticated: boolean;
   userId: string | null;
@@ -22,6 +30,7 @@ export interface AuditResource {
 }
 
 export interface AuditEvent {
+  eventId?: string;
   timestamp: string;
   level: 'info' | 'warn' | 'error';
   category: 'audit';
@@ -29,6 +38,11 @@ export interface AuditEvent {
   environment: string;
   eventName: AuditEventName;
   outcome: AuditOutcome;
+
+  tenantId?: string;
+  schemaVersion?: number;
+  source?: AuditSource;
+  expiresAt?: number;
 
   requestId: string;
   correlationId: string;

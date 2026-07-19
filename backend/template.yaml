@@ -51,6 +51,28 @@ Parameters:
     Default: 1dc1g0tkflsspjd7uc6n131jft
     Description: Cognito public SPA app client ID used as the JWT audience.
 
+  AuditRetentionDays:
+    Type: Number
+    Default: 365
+    MinValue: 1
+    MaxValue: 2555
+    Description: Audit record retention in days before DynamoDB TTL expiration.
+
+  AuditPersistenceEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Enables DynamoDB audit persistence in addition to CloudWatch logging.
+
+  DefaultTenantId:
+    Type: String
+    Default: sisum-default
+    Description: >
+      Default tenant identifier for audit records in the single-tenant MVP.
+
 Globals:
   Function:
     Runtime: nodejs24.x
@@ -75,6 +97,56 @@ Globals:
         - OPTIONS
 
 Resources:
+  SisumAuditTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-audit-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: AuditPersistence
+
+  SisumAuditTablePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "sisum-audit-dynamodb-${Environment}"
+      Roles:
+        - SisumLambdaExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AuditTableWriteRead
+            Effect: Allow
+            Action:
+              - dynamodb:PutItem
+              - dynamodb:GetItem
+              - dynamodb:Query
+            Resource:
+              - !GetAtt SisumAuditTable.Arn
+
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -110,12 +182,17 @@ Resources:
       Environment:
         Variables:
           NODE_ENV: !Ref Environment
+          ENVIRONMENT: !Ref Environment
           PROVIDER_MODE: !Ref ProviderMode
           CORS_ORIGIN: !Ref CorsOrigin
           LOG_LEVEL: !Ref LogLevel
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           COGNITO_USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClientId
           NODE_OPTIONS: "--enable-source-maps"
+          AUDIT_TABLE_NAME: !Ref SisumAuditTable
+          AUDIT_RETENTION_DAYS: !Ref AuditRetentionDays
+          AUDIT_PERSISTENCE_ENABLED: !Ref AuditPersistenceEnabled
+          DEFAULT_TENANT_ID: !Ref DefaultTenantId
 
       Events:
         PublicHealthRoute:
@@ -207,6 +284,18 @@ Outputs:
   CognitoUserPoolClientId:
     Description: Cognito app client used as the JWT audience.
     Value: !Ref CognitoUserPoolClientId
+
+  AuditTableName:
+    Description: DynamoDB audit table name.
+    Value: !Ref SisumAuditTable
+    Export:
+      Name: !Sub "${AWS::StackName}-AuditTableName"
+
+  AuditTableArn:
+    Description: DynamoDB audit table ARN.
+    Value: !GetAtt SisumAuditTable.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AuditTableArn"
 
   JwtIssuer:
     Description: JWT issuer configured on API Gateway.

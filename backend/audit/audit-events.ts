@@ -22,6 +22,9 @@ export const AUDIT_EVENTS = {
 
   EXECUTION_SIMULATED: 'execution.simulated',
   EXECUTION_SIMULATION_FAILED: 'execution.simulation_failed',
+
+  AUDIT_SEARCH_PERFORMED: 'audit.search_performed',
+  AUDIT_PERSISTENCE_FAILED: 'audit.persistence_failed',
 } as const;
 
 export type AuditEventName =

@@ -2,60 +2,29 @@ import type {
   AuditEvent,
   WriteAuditEventInput,
 } from './audit-types';
+import {
+  buildAuditEvent,
+  logAuditEventToConsole,
+} from './audit-console';
 
-const DEFAULT_ENVIRONMENT = 'development';
-
-function resolveEnvironment(): string {
-  const environment = process.env.ENVIRONMENT?.trim();
-
-  return environment && environment.length > 0
-    ? environment
-    : DEFAULT_ENVIRONMENT;
-}
+export { buildAuditEvent } from './audit-console';
 
 /**
- * Converts an audit event to one-line JSON suitable for CloudWatch Logs.
+ * Writes a structured audit event to CloudWatch via console output.
  *
- * Do not add request bodies, authorization headers, cookies, passwords,
- * JWTs, AWS credentials, or other secrets to this structure.
+ * DynamoDB persistence is scheduled separately through
+ * {@link writeAuditEventWithPersistence} when a request context is available.
  */
-export function buildAuditEvent(
-  input: WriteAuditEventInput
-): AuditEvent {
-  let level: AuditEvent['level'];
-
-  if (input.outcome === 'failure') {
-    level = 'error';
-  } else if (input.outcome === 'denied') {
-    level = 'warn';
-  } else {
-    level = 'info';
-  }
-
-  return {
-    timestamp: new Date().toISOString(),
-    level,
-    category: 'audit',
-    service: 'sisum-backend',
-    environment: resolveEnvironment(),
-
-    ...input,
-  };
-}
-
 export function writeAuditEvent(
   input: WriteAuditEventInput
 ): AuditEvent {
   const event = buildAuditEvent(input);
-  const serializedEvent = JSON.stringify(event);
 
-  if (event.level === 'error') {
-    console.error(serializedEvent);
-  } else if (event.level === 'warn') {
-    console.warn(serializedEvent);
-  } else {
-    console.info(serializedEvent);
-  }
+  return logAuditEventToConsole(event);
+}
 
-  return event;
+export function writeAuditEventFromBuilt(
+  event: AuditEvent
+): AuditEvent {
+  return logAuditEventToConsole(event);
 }
