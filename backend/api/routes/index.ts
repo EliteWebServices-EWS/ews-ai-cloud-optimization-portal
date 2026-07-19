@@ -1,10 +1,18 @@
 import { Router, type Request, type Response } from 'express';
 import {
   AUDIT_EVENTS,
+  AuditPersistenceUnavailableError,
+  AuditQueryValidationError,
   getAuditActor,
   getCorrelationId,
   getRequestId,
+  isAuditPersistenceEnabled,
+  parseAuditQueryFilters,
+  queryAuditEvents,
+  resolveTenantId,
+  scheduleAuditPersistence,
   writeAuditEvent,
+  type WriteAuditEventInput,
 } from '../../audit';
 import type { WorkflowOrchestrator } from '../../orchestrator';
 import type { PluginRegistry } from '../../plugins';
@@ -35,6 +43,7 @@ import { listProviders } from '../../providers';
 import {
   ALL_AUTHENTICATED_ROLES,
   ANALYSIS_ROLES,
+  ADMIN_ROLES,
   requireAnyRole,
 } from '../../auth';
 
@@ -46,6 +55,15 @@ export interface ApiDependencies {
   executionSimulator: ExecutionSimulatorInterface;
   learningStore: LearningStoreInterface;
   reportingEngine: ReportingEngine;
+}
+
+function recordAuditEvent(
+  req: Request,
+  input: WriteAuditEventInput
+): void {
+  const event = writeAuditEvent(input);
+
+  scheduleAuditPersistence(req, event);
 }
 
 function handleRouteError(
@@ -529,7 +547,7 @@ export function createWorkflowRoutes(
           ? req.body.region
           : DEFAULT_REGION;
 
-      writeAuditEvent({
+      recordAuditEvent(req, {
         eventName: AUDIT_EVENTS.WORKFLOW_STARTED,
         outcome: 'started',
         requestId,
@@ -572,7 +590,7 @@ export function createWorkflowRoutes(
           Date.now() - startedAt;
 
         if (result.status === 'failed') {
-          writeAuditEvent({
+          recordAuditEvent(req, {
             eventName:
               AUDIT_EVENTS.WORKFLOW_FAILED,
             outcome: 'failure',
@@ -599,7 +617,7 @@ export function createWorkflowRoutes(
             errorCode: 'WORKFLOW_FAILED',
           });
         } else {
-          writeAuditEvent({
+          recordAuditEvent(req, {
             eventName:
               AUDIT_EVENTS.WORKFLOW_COMPLETED,
             outcome: 'success',
@@ -707,7 +725,7 @@ export function createWorkflowRoutes(
             ? error.message
             : 'Workflow execution failed.';
 
-        writeAuditEvent({
+        recordAuditEvent(req, {
           eventName:
             AUDIT_EVENTS.WORKFLOW_FAILED,
           outcome: 'failure',
@@ -1131,7 +1149,7 @@ export function createVerificationRoutes(
         const durationMs =
           Date.now() - startedAt;
 
-        writeAuditEvent({
+        recordAuditEvent(req, {
           eventName:
             AUDIT_EVENTS.EXECUTION_SIMULATED,
           outcome: 'success',
@@ -1185,7 +1203,7 @@ export function createVerificationRoutes(
             ? error.message
             : 'Execution simulation failed.';
 
-        writeAuditEvent({
+        recordAuditEvent(req, {
           eventName:
             AUDIT_EVENTS
               .EXECUTION_SIMULATION_FAILED,
@@ -1487,7 +1505,7 @@ export function createReportRoutes(
         if (existing) {
           reportId = existing.reportId;
 
-          writeAuditEvent({
+          recordAuditEvent(req, {
             eventName:
               AUDIT_EVENTS.REPORT_GENERATED,
             outcome: 'success',
@@ -1558,7 +1576,7 @@ export function createReportRoutes(
 
         reportId = result.data.reportId;
 
-        writeAuditEvent({
+        recordAuditEvent(req, {
           eventName:
             AUDIT_EVENTS.REPORT_GENERATED,
           outcome: 'success',
@@ -1600,7 +1618,7 @@ export function createReportRoutes(
             ? error.message
             : 'Report generation failed.';
 
-        writeAuditEvent({
+        recordAuditEvent(req, {
           eventName:
             AUDIT_EVENTS
               .REPORT_GENERATION_FAILED,
@@ -1637,6 +1655,177 @@ export function createReportRoutes(
   return router;
 }
 
+/** Admin audit retrieval routes — Sprint 10.5.14. */
+export function createAdminAuditRoutes(): Router {
+  const router = Router();
+
+  router.get(
+    '/admin/audit-events',
+    requireAnyRole(...ADMIN_ROLES),
+    async (req: Request, res: Response) => {
+      const requestId = getRequestId(req);
+      const correlationId = getCorrelationId(
+        req,
+        requestId
+      );
+      const actor = getAuditActor(req);
+      const startedAt = Date.now();
+
+      if (!isAuditPersistenceEnabled()) {
+        res.status(503).json(
+          buildErrorResponse(
+            'AUDIT_PERSISTENCE_DISABLED',
+            'Audit persistence is disabled in this environment.',
+            requestId,
+            'audit'
+          )
+        );
+        return;
+      }
+
+      try {
+        const tenantId = resolveTenantId(actor);
+
+        const filters = parseAuditQueryFilters(
+          req.query as Record<string, unknown>,
+          tenantId
+        );
+
+        const result = await queryAuditEvents(filters);
+
+        writeAuditEvent({
+          eventName:
+            AUDIT_EVENTS.AUDIT_SEARCH_PERFORMED,
+          outcome: 'success',
+          requestId,
+          correlationId,
+          actor,
+          action: 'audit.search',
+          method: req.method,
+          path: req.path,
+          statusCode: 200,
+          durationMs: Date.now() - startedAt,
+          reason: JSON.stringify({
+            filters: {
+              eventName: filters.eventName,
+              outcome: filters.outcome,
+              actorUserId: filters.actorUserId,
+              workflowId: filters.workflowId,
+              requestId: filters.requestId,
+              correlationId: filters.correlationId,
+              from: filters.from,
+              to: filters.to,
+              limit: filters.limit,
+            },
+            resultCount: result.items.length,
+          }),
+        });
+
+        res.json(
+          buildSuccessResponse(
+            {
+              items: result.items,
+              count: result.items.length,
+              nextToken: result.nextToken,
+              tenantId,
+            },
+            requestId
+          )
+        );
+      } catch (error) {
+        const durationMs = Date.now() - startedAt;
+
+        if (error instanceof AuditQueryValidationError) {
+          writeAuditEvent({
+            eventName:
+              AUDIT_EVENTS.AUDIT_SEARCH_PERFORMED,
+            outcome: 'failure',
+            requestId,
+            correlationId,
+            actor,
+            action: 'audit.search',
+            method: req.method,
+            path: req.path,
+            statusCode: 400,
+            durationMs,
+            errorCode: error.code,
+            reason: error.message,
+          });
+
+          res.status(400).json(
+            buildErrorResponse(
+              error.code,
+              error.message,
+              requestId,
+              'audit'
+            )
+          );
+          return;
+        }
+
+        if (
+          error instanceof
+          AuditPersistenceUnavailableError
+        ) {
+          writeAuditEvent({
+            eventName:
+              AUDIT_EVENTS.AUDIT_SEARCH_PERFORMED,
+            outcome: 'failure',
+            requestId,
+            correlationId,
+            actor,
+            action: 'audit.search',
+            method: req.method,
+            path: req.path,
+            statusCode: 503,
+            durationMs,
+            errorCode: 'AUDIT_PERSISTENCE_UNAVAILABLE',
+            reason: error.message,
+          });
+
+          res.status(503).json(
+            buildErrorResponse(
+              'AUDIT_PERSISTENCE_UNAVAILABLE',
+              error.message,
+              requestId,
+              'audit'
+            )
+          );
+          return;
+        }
+
+        writeAuditEvent({
+          eventName:
+            AUDIT_EVENTS.AUDIT_SEARCH_PERFORMED,
+          outcome: 'failure',
+          requestId,
+          correlationId,
+          actor,
+          action: 'audit.search',
+          method: req.method,
+          path: req.path,
+          statusCode: 500,
+          durationMs,
+          errorCode: 'AUDIT_QUERY_FAILED',
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Audit query failed.',
+        });
+
+        handleRouteError(
+          res,
+          error,
+          requestId,
+          'audit'
+        );
+      }
+    }
+  );
+
+  return router;
+}
+
 /** Compose all API v1 routes. */
 export function createApiRoutes(deps: ApiDependencies): Router {
   const router = Router();
@@ -1655,6 +1844,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createRecommendationRoutes(deps));
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
+  router.use(createAdminAuditRoutes());
 
   return router;
 }

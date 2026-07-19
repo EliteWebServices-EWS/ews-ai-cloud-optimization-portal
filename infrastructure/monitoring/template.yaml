@@ -38,6 +38,11 @@ Parameters:
     Default: sisum-frontend-production-739275446782
     Description: Production frontend S3 bucket name.
 
+  AuditTableName:
+    Type: String
+    Default: sisum-audit-production
+    Description: DynamoDB audit table name for throttling alarms.
+
   NotificationEmail:
     Type: String
     Default: ""
@@ -236,6 +241,70 @@ Resources:
       DatapointsToAlarm: 1
       Threshold: 1
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  AuditPersistenceFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LambdaFunctionName}"
+      FilterPattern: '{ $.eventName = "audit.persistence_failed" }'
+      MetricTransformations:
+        - MetricName: AuditPersistenceFailures
+          MetricNamespace: SISUM/Audit
+          MetricValue: "1"
+          DefaultValue: 0
+
+  AuditPersistenceFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-audit-persistence-failures
+      AlarmDescription: >
+        One or more audit persistence failures were logged within five minutes.
+      Namespace: SISUM/Audit
+      MetricName: AuditPersistenceFailures
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  AuditTableThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-audit-table-throttles
+      AlarmDescription: >
+        DynamoDB audit table reported throttled requests within five minutes.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref AuditTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions:
         - !Ref MonitoringAlarmTopic
@@ -585,9 +654,10 @@ Resources:
                   "${LambdaErrorsAlarm.Arn}",
                   "${LambdaThrottlesAlarm.Arn}",
                   "${LambdaDurationAlarm.Arn}",
-                  "${ApiGateway5xxAlarm.Arn}",
                   "${ApiGatewayLatencyAlarm.Arn}",
-                  "${CloudFront5xxErrorRateAlarm.Arn}"
+                  "${CloudFront5xxErrorRateAlarm.Arn}",
+                  "${AuditPersistenceFailureAlarm.Arn}",
+                  "${AuditTableThrottleAlarm.Arn}"
                 ]
               }
             }

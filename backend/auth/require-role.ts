@@ -14,6 +14,7 @@ import {
   getAuditActor,
   getCorrelationId,
   getRequestId,
+  scheduleAuditPersistence,
   writeAuditEvent,
 } from '../audit';
 import { buildErrorResponse } from '../shared/utils';
@@ -38,7 +39,7 @@ export function requireAnyRole(
     const actor = getAuditActor(req);
 
     if (!identity.authenticated) {
-      writeAuditEvent({
+      const event = writeAuditEvent({
         eventName: AUDIT_EVENTS.IDENTITY_MISSING,
         outcome: 'denied',
         requestId,
@@ -52,6 +53,8 @@ export function requireAnyRole(
           'No authenticated Cognito identity was available.',
         errorCode: 'AUTHENTICATION_REQUIRED',
       });
+
+      scheduleAuditPersistence(req, event);
 
       res.status(401).json(
         buildErrorResponse(
@@ -70,7 +73,7 @@ export function requireAnyRole(
     );
 
     if (!hasPermission) {
-      writeAuditEvent({
+      const event = writeAuditEvent({
         eventName: AUDIT_EVENTS.AUTHORIZATION_DENIED,
         outcome: 'denied',
         requestId,
@@ -83,6 +86,8 @@ export function requireAnyRole(
         reason: `Required role: ${allowedRoles.join(', ')}`,
         errorCode: 'FORBIDDEN',
       });
+
+      scheduleAuditPersistence(req, event);
 
       res.status(403).json(
         buildErrorResponse(

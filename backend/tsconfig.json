@@ -24,6 +24,7 @@
     "lambda.ts",
     "api/**/*.ts",
     "audit/**/*.ts",
+    "auth/**/*.ts",
     "engines/**/*.ts",
     "execution/**/*.ts",
     "plugins/**/*.ts",

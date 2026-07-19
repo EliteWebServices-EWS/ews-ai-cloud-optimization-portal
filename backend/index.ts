@@ -1,9 +1,11 @@
 import express from 'express';
 import {
   AUDIT_EVENTS,
+  auditPersistenceFlushMiddleware,
   getAuditActor,
   getCorrelationId,
   getRequestId,
+  scheduleAuditPersistence,
   writeAuditEvent,
 } from './audit';
 import { createApiRoutes } from './api/routes';
@@ -118,6 +120,8 @@ export function createApp(): express.Application {
 
   app.use(express.json());
 
+  app.use(auditPersistenceFlushMiddleware);
+
   app.use((req, res, next) => {
     const startedAt = Date.now();
 
@@ -138,7 +142,7 @@ export function createApp(): express.Application {
       correlationId
     );
 
-    writeAuditEvent({
+    const startedEvent = writeAuditEvent({
       eventName: AUDIT_EVENTS.REQUEST_STARTED,
       outcome: 'started',
       requestId,
@@ -149,11 +153,13 @@ export function createApp(): express.Application {
       path: req.path,
     });
 
+    scheduleAuditPersistence(req, startedEvent);
+
     res.on('finish', () => {
       const durationMs = Date.now() - startedAt;
       const successful = res.statusCode < 400;
 
-      writeAuditEvent({
+      const completedEvent = writeAuditEvent({
         eventName: successful
           ? AUDIT_EVENTS.REQUEST_COMPLETED
           : AUDIT_EVENTS.REQUEST_FAILED,
@@ -169,6 +175,8 @@ export function createApp(): express.Application {
         statusCode: res.statusCode,
         durationMs,
       });
+
+      scheduleAuditPersistence(req, completedEvent);
     });
 
     next();
