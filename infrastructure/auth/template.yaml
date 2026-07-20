@@ -53,7 +53,10 @@ Resources:
       AutoVerifiedAttributes:
         - email
 
-      MfaConfiguration: "OFF"
+      MfaConfiguration: OPTIONAL
+
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
 
       AccountRecoverySetting:
         RecoveryMechanisms:

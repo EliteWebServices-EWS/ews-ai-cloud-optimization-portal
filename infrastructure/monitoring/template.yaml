@@ -316,6 +316,73 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  AuthorizationDenialMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LambdaFunctionName}"
+      FilterPattern: '{ ($.eventName = "authorization.denied") || ($.eventName = "identity.missing") || ($.eventName = "role.unrecognized") }'
+      MetricTransformations:
+        - MetricName: AuthorizationDenials
+          MetricNamespace: SISUM/Security
+          MetricValue: "1"
+          DefaultValue: 0
+
+  AuthorizationDenialAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-authorization-denials
+      AlarmDescription: >
+        Repeated authorization denials were logged within five minutes.
+      Namespace: SISUM/Security
+      MetricName: AuthorizationDenials
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 25
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  ApiGatewayHigh4xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-api-high-4xx
+      AlarmDescription: >
+        SISUM HTTP API returned a sustained volume of 4xx responses, which may
+        include throttling (429) and authentication failures.
+      Namespace: AWS/ApiGateway
+      MetricName: 4xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApiId
+        - Name: Stage
+          Value: !Ref HttpApiStage
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
   ProductionMonitoringDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
@@ -654,10 +721,13 @@ Resources:
                   "${LambdaErrorsAlarm.Arn}",
                   "${LambdaThrottlesAlarm.Arn}",
                   "${LambdaDurationAlarm.Arn}",
+                  "${ApiGateway5xxAlarm.Arn}",
                   "${ApiGatewayLatencyAlarm.Arn}",
+                  "${ApiGatewayHigh4xxAlarm.Arn}",
                   "${CloudFront5xxErrorRateAlarm.Arn}",
                   "${AuditPersistenceFailureAlarm.Arn}",
-                  "${AuditTableThrottleAlarm.Arn}"
+                  "${AuditTableThrottleAlarm.Arn}",
+                  "${AuthorizationDenialAlarm.Arn}"
                 ]
               }
             }
