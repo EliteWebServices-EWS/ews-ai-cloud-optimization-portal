@@ -13,10 +13,11 @@ import type {
 } from 'express';
 
 /** Production frontend origins required for the dashboard. */
-export const PRODUCTION_CORS_ORIGINS = [
-  'https://elitewebservices.org',
-  'https://www.elitewebservices.org',
-] as const;
+export const PRODUCTION_CORS_ORIGINS:
+  readonly string[] = [
+    'https://elitewebservices.org',
+    'https://www.elitewebservices.org',
+  ];
 
 /** CloudFront distribution retained as a documented fallback origin. */
 export const CLOUDFRONT_FALLBACK_ORIGIN =

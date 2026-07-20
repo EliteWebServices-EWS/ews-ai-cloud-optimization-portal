@@ -531,16 +531,24 @@ export function createWorkflowRoutes(
 
       let workflowId: string | undefined;
 
+      // Hoisted so they're visible in both the try block and the
+      // catch block below — validateWorkflowRunBody can throw before
+      // these are ever assigned, so they need safe defaults up front.
+      let plugin: string = PLUGIN_NAMES.EC2;
+      let mode: 'full' | 'dry-run' = 'full';
+      let resourceId: string | undefined;
+      let region: string = DEFAULT_REGION;
+
       try {
-        const validated = validateWorkflowRunBody(
+        const validatedInput = validateWorkflowRunBody(
           req.body,
           DEFAULT_REGION
         );
 
-        const plugin = validated.plugin;
-        const mode = validated.mode;
-        const resourceId = validated.resourceId;
-        const region = validated.region;
+        plugin = validatedInput.plugin;
+        mode = validatedInput.mode;
+        resourceId = validatedInput.resourceId;
+        region = validatedInput.region;
 
         recordAuditEvent(req, {
           eventName: AUDIT_EVENTS.WORKFLOW_STARTED,
@@ -726,8 +734,10 @@ export function createWorkflowRoutes(
           workflowId,
           resource: {
             type: plugin,
-            id: resourceId,
             region,
+            ...(resourceId
+              ? { id: resourceId }
+              : {}),
           },
           reason,
           errorCode,
