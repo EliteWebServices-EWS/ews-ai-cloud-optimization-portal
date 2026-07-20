@@ -79,6 +79,25 @@ Parameters:
     Description: >
       Default tenant identifier for audit records in the single-tenant MVP.
 
+  TenantEnforcementMode:
+    Type: String
+    Default: compatibility
+    AllowedValues:
+      - strict
+      - compatibility
+    Description: >
+      strict requires custom:tenantId on authenticated requests unless
+      TENANT_FALLBACK_ENABLED=true. compatibility falls back to DefaultTenantId.
+
+  TenantFallbackEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Allows DEFAULT_TENANT_ID fallback when strict mode is enabled.
+
 Globals:
   Function:
     Runtime: nodejs24.x
@@ -204,6 +223,8 @@ Resources:
           AUDIT_RETENTION_DAYS: !Ref AuditRetentionDays
           AUDIT_PERSISTENCE_ENABLED: !Ref AuditPersistenceEnabled
           DEFAULT_TENANT_ID: !Ref DefaultTenantId
+          TENANT_ENFORCEMENT_MODE: !Ref TenantEnforcementMode
+          TENANT_FALLBACK_ENABLED: !Ref TenantFallbackEnabled
 
       Events:
         PublicHealthRoute:

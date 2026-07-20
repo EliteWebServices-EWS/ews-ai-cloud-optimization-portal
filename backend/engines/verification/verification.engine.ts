@@ -112,6 +112,7 @@ export class VerificationEngine implements VerificationEngineInterface {
   buildReport(request: VerificationRequest, result: VerificationResult) {
     const expectation = this.buildExpectation(request);
     return buildVerificationReport({
+      tenantId: request.context.tenantId,
       workflowId: request.context.workflowId,
       executionId: request.executionResult.executionId,
       expectation,

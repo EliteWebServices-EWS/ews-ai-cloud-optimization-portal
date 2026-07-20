@@ -38,6 +38,8 @@ import type {
   VerificationResult,
 } from '../../shared/types';
 
+const TENANT_ID = 'sisum-default';
+
 function buildOrchestrator(overrides: Partial<WorkflowOrchestratorDependencies> = {}) {
   const provider = createProvider(PROVIDER_NAMES.MOCK);
   const pluginRegistry = createPluginRegistry(provider);
@@ -86,6 +88,7 @@ describe('WorkflowOrchestrator', () => {
 
   it('executes a successful full workflow lifecycle', async () => {
     const result = await orchestrator.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       triggerSource: 'api',
       mode: 'full',
@@ -101,18 +104,19 @@ describe('WorkflowOrchestrator', () => {
     assert.ok(result.completedStages.includes(WORKFLOW_STAGES.VERIFICATION));
     assert.equal(result.failedStages.length, 0);
 
-    const record = orchestrator.getWorkflow(result.workflowId);
+    const record = orchestrator.getWorkflow(TENANT_ID, result.workflowId);
     assert.ok(record);
     assert.equal(record.metadata.status, WORKFLOW_STATES.COMPLETED);
   });
 
   it('tracks workflow status via getWorkflowStatus', async () => {
     const result = await orchestrator.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
 
-    const status = orchestrator.getWorkflowStatus(result.workflowId);
+    const status = orchestrator.getWorkflowStatus(TENANT_ID, result.workflowId);
     assert.ok(status);
     assert.equal(status.metadata.workflowId, result.workflowId);
     assert.equal(status.metadata.status, WORKFLOW_STATES.COMPLETED);
@@ -129,6 +133,7 @@ describe('WorkflowOrchestrator', () => {
     });
 
     const result = await failing.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
@@ -151,6 +156,7 @@ describe('WorkflowOrchestrator', () => {
     });
 
     const result = await failing.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
@@ -171,6 +177,7 @@ describe('WorkflowOrchestrator', () => {
     });
 
     const result = await failing.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
@@ -190,6 +197,7 @@ describe('WorkflowOrchestrator', () => {
     });
 
     const result = await failing.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
@@ -217,6 +225,7 @@ describe('WorkflowOrchestrator', () => {
     });
 
     const result = await failing.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
@@ -228,6 +237,7 @@ describe('WorkflowOrchestrator', () => {
 
   it('supports dry-run mode without execution stages', async () => {
     const result = await orchestrator.executeWorkflow({
+      tenantId: TENANT_ID,
       plugin: PLUGIN_NAMES.EC2,
       mode: 'dry-run',
     });
@@ -250,7 +260,7 @@ describe('Workflow retry structure', () => {
       ),
     });
 
-    const result = await failing.executeWorkflow({ plugin: PLUGIN_NAMES.EC2, mode: 'full' });
+    const result = await failing.executeWorkflow({ tenantId: TENANT_ID, plugin: PLUGIN_NAMES.EC2, mode: 'full' });
 
     assert.equal(result.retry.maxRetries, 3);
     assert.equal(result.retry.attemptCount, 1);
@@ -269,7 +279,7 @@ describe('Workflow confidence failure', () => {
       ),
     });
 
-    const result = await failing.executeWorkflow({ plugin: PLUGIN_NAMES.EC2, mode: 'full' });
+    const result = await failing.executeWorkflow({ tenantId: TENANT_ID, plugin: PLUGIN_NAMES.EC2, mode: 'full' });
 
     assert.equal(result.status, WORKFLOW_STATES.FAILED);
     assert.equal(result.failure?.failedStage, WORKFLOW_STAGES.CONFIDENCE);

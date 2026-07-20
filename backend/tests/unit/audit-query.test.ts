@@ -9,6 +9,19 @@ import {
 
 const tenantId = 'sisum-default';
 
+test('parseAuditQueryFilters rejects client tenantId query parameter', () => {
+  assert.throws(
+    () =>
+      parseAuditQueryFilters(
+        { tenantId: 'tenant-b' },
+        tenantId
+      ),
+    (error: unknown) =>
+      error instanceof AuditQueryValidationError &&
+      error.code === 'TENANT_QUERY_FORBIDDEN'
+  );
+});
+
 test('parseAuditQueryFilters applies defaults and limit cap', () => {
   const filters = parseAuditQueryFilters({}, tenantId);
 

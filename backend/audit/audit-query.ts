@@ -155,7 +155,8 @@ export function inferAuditSource(
 ): AuditSource {
   if (eventName.startsWith('authorization.') ||
       eventName.startsWith('identity.') ||
-      eventName.startsWith('role.')) {
+      eventName.startsWith('role.') ||
+      eventName.startsWith('tenant.')) {
     return 'authorization';
   }
 
@@ -353,6 +354,16 @@ export function parseAuditQueryFilters(
   query: Record<string, unknown>,
   tenantId: string
 ): AuditQueryFilters {
+  if (
+    typeof query.tenantId === 'string' &&
+    query.tenantId.trim().length > 0
+  ) {
+    throw new AuditQueryValidationError(
+      'TENANT_QUERY_FORBIDDEN',
+      'tenantId query parameter is not accepted. Audit queries are scoped to the authenticated tenant.'
+    );
+  }
+
   const eventName = normalizeOptionalString(
     query.eventName,
     64

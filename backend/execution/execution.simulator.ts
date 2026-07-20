@@ -155,6 +155,7 @@ export class ExecutionSimulator implements ExecutionSimulatorInterface {
       beforeState: previousState,
       afterState: newState,
       metadata: {
+        tenantId: input.request.context.tenantId,
         workflowId: input.request.context.workflowId,
         plugin: input.request.context.plugin,
         region: input.request.candidate.region,

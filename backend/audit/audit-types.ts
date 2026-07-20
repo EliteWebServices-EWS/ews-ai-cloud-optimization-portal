@@ -74,6 +74,9 @@ export interface WriteAuditEventInput {
 
   actor: AuditActor;
 
+  /** Trusted tenant from request security context — never from client input. */
+  tenantId?: string;
+
   action?: string;
   method?: string;
   path?: string;

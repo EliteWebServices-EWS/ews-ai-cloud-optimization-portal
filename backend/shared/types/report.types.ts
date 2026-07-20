@@ -136,6 +136,7 @@ export interface ReportRecommendationEntry {
 /** Complete optimization report produced by the Reporting Engine. */
 export interface OptimizationReport {
   reportId: string;
+  tenantId: string;
   workflowId: string;
   plugin: PluginName;
   status: ReportStatus;
@@ -155,6 +156,7 @@ export interface OptimizationReport {
 
 /** Input for report generation — aggregated workflow outcome data. */
 export interface ReportGenerationInput {
+  tenantId: string;
   workflowId: string;
   plugin: PluginName;
   status: WorkflowState;

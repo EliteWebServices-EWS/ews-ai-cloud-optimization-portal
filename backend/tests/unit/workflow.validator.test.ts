@@ -23,6 +23,7 @@ import { WorkflowValidationError } from '../../orchestrator/workflow.errors';
 function baseContext(): WorkflowContext {
   return {
     workflowId: 'wf-test',
+    tenantId: 'sisum-default',
     plugin: PLUGIN_NAMES.EC2,
     provider: PROVIDER_NAMES.MOCK,
     region: 'us-east-1',

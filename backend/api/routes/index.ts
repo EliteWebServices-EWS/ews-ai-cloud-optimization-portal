@@ -9,7 +9,6 @@ import {
   isAuditPersistenceEnabled,
   parseAuditQueryFilters,
   queryAuditEvents,
-  resolveTenantId,
   scheduleAuditPersistence,
   writeAuditEvent,
   type WriteAuditEventInput,
@@ -44,8 +43,14 @@ import {
   ALL_AUTHENTICATED_ROLES,
   ANALYSIS_ROLES,
   ADMIN_ROLES,
+  getRequestSecurityContext,
   requireAnyRole,
+  requireTenantContext,
 } from '../../auth';
+import {
+  assertTenantResourceAccess,
+  resolveRouteTenantContext,
+} from '../tenant-route-helpers';
 import {
   validateReportGenerateBody,
   validateWorkflowRunBody,
@@ -65,7 +70,14 @@ function recordAuditEvent(
   req: Request,
   input: WriteAuditEventInput
 ): void {
-  const event = writeAuditEvent(input);
+  const tenantId =
+    input.tenantId ??
+    getRequestSecurityContext(req).tenantId;
+
+  const event = writeAuditEvent({
+    ...input,
+    tenantId,
+  });
 
   scheduleAuditPersistence(req, event);
 }
@@ -365,10 +377,12 @@ export function createPluginRoutes(deps: Pick<ApiDependencies, 'pluginRegistry' 
 
   router.get('/plugins/ec2/evidence', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const evidencePackage = await deps.orchestrator.runEvidenceWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -398,10 +412,12 @@ export function createPluginRoutes(deps: Pick<ApiDependencies, 'pluginRegistry' 
 
   router.get('/plugins/ec2/governance', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runGovernanceWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -416,10 +432,12 @@ export function createPluginRoutes(deps: Pick<ApiDependencies, 'pluginRegistry' 
 
   router.get('/plugins/ec2/financial', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runFinancialWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -434,10 +452,12 @@ export function createPluginRoutes(deps: Pick<ApiDependencies, 'pluginRegistry' 
 
   router.get('/plugins/ec2/recommendation', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runRecommendationWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -527,6 +547,7 @@ export function createWorkflowRoutes(
         requestId
       );
       const actor = getAuditActor(req);
+      const tenantId = resolveRouteTenantContext(req).tenantId;
       const startedAt = Date.now();
 
       let workflowId: string | undefined;
@@ -568,6 +589,7 @@ export function createWorkflowRoutes(
 
         const result =
           await deps.orchestrator.executeWorkflow({
+            tenantId,
             plugin: PLUGIN_NAMES.EC2,
             resourceId,
             region,
@@ -755,10 +777,11 @@ export function createWorkflowRoutes(
 
   router.get('/workflows/status/:id', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const workflowId = req.params.id;
-      const status = deps.orchestrator.getWorkflowStatus(workflowId);
+      const status = deps.orchestrator.getWorkflowStatus(tenantId, workflowId);
 
       if (!status) {
         throw new AppError('NOT_FOUND', `Workflow not found: ${workflowId}`, 404);
@@ -789,10 +812,11 @@ export function createWorkflowRoutes(
 
   router.get('/workflows/:id', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const workflowId = req.params.id;
-      const record = deps.orchestrator.getWorkflow(workflowId);
+      const record = deps.orchestrator.getWorkflow(tenantId, workflowId);
 
       if (!record) {
         throw new AppError('NOT_FOUND', `Workflow not found: ${workflowId}`, 404);
@@ -808,10 +832,12 @@ export function createWorkflowRoutes(
 
   router.get('/workflow/evidence', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const evidencePackage = await deps.orchestrator.runEvidenceWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -841,10 +867,12 @@ export function createWorkflowRoutes(
 
   router.get('/workflow/governance', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runGovernanceWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -859,10 +887,12 @@ export function createWorkflowRoutes(
 
   router.get('/workflow/financial', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runFinancialWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -877,10 +907,12 @@ export function createWorkflowRoutes(
 
   router.get('/workflow/recommendation', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runRecommendationWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -895,10 +927,12 @@ export function createWorkflowRoutes(
 
   router.get('/workflow/verification', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runVerificationWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -913,10 +947,12 @@ export function createWorkflowRoutes(
 
   router.get('/workflow/complete', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runCompleteWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -929,11 +965,13 @@ export function createWorkflowRoutes(
     }
   });
 
-  router.get('/workflow/demo', async (_req: Request, res: Response) => {
+  router.get('/workflow/demo', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const result = await deps.orchestrator.runDemoWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
       });
 
@@ -982,10 +1020,12 @@ export function createFinancialRoutes(
 
   router.get('/financial/summary', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runFinancialWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -1023,10 +1063,12 @@ export function createRecommendationRoutes(
 
   router.get('/recommendations', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runRecommendationWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -1047,10 +1089,12 @@ export function createRecommendationRoutes(
 
   router.get('/confidence', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
 
     try {
       const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId : undefined;
       const result = await deps.orchestrator.runRecommendationWorkflow({
+        tenantId,
         plugin: PLUGIN_NAMES.EC2,
         resourceId,
       });
@@ -1091,6 +1135,7 @@ export function createVerificationRoutes(
         requestId
       );
       const actor = getAuditActor(req);
+      const tenantId = resolveRouteTenantContext(req).tenantId;
       const startedAt = Date.now();
 
       let workflowId: string | undefined;
@@ -1107,6 +1152,7 @@ export function createVerificationRoutes(
       try {
         const recommendationWorkflow =
           await deps.orchestrator.runRecommendationWorkflow({
+            tenantId,
             plugin: PLUGIN_NAMES.EC2,
             resourceId,
           });
@@ -1120,6 +1166,7 @@ export function createVerificationRoutes(
         const executionResult =
           await deps.executionSimulator.simulate({
             context: {
+              tenantId,
               workflowId:
                 recommendationWorkflow.workflowId,
               plugin: PLUGIN_NAMES.EC2,
@@ -1243,6 +1290,7 @@ export function createVerificationRoutes(
     '/verification/reports',
     async (req: Request, res: Response) => {
       const requestId = generateRequestId();
+      const tenantId = resolveRouteTenantContext(req).tenantId;
 
       try {
         const workflowId =
@@ -1253,6 +1301,7 @@ export function createVerificationRoutes(
         if (workflowId) {
           const record =
             deps.learningStore.getByWorkflowId(
+              tenantId,
               workflowId
             );
 
@@ -1266,7 +1315,7 @@ export function createVerificationRoutes(
 
           const report =
             deps.learningStore
-              .listReports()
+              .listReports(tenantId)
               .find(
                 (item) =>
                   item.workflowId === workflowId
@@ -1287,10 +1336,10 @@ export function createVerificationRoutes(
         }
 
         const reports =
-          deps.learningStore.listReports();
+          deps.learningStore.listReports(tenantId);
 
         const total =
-          deps.learningStore.listRecords().length;
+          deps.learningStore.listRecords(tenantId).length;
 
         res.json(
           buildSuccessResponse(
@@ -1351,6 +1400,7 @@ export function createReportRoutes(
     '/reports',
     (req: Request, res: Response) => {
       const requestId = generateRequestId();
+      const tenantId = resolveRouteTenantContext(req).tenantId;
 
       try {
         const filters = parseReportFilters(
@@ -1358,7 +1408,7 @@ export function createReportRoutes(
         );
 
         const allReports =
-          deps.reportingEngine.listReports();
+          deps.reportingEngine.listReports(tenantId);
 
         const reports = filterReports(
           allReports,
@@ -1430,12 +1480,14 @@ export function createReportRoutes(
     '/reports/:id',
     (req: Request, res: Response) => {
       const requestId = generateRequestId();
+      const tenantId = resolveRouteTenantContext(req).tenantId;
 
       try {
         const reportId = req.params.id;
 
         const report =
           deps.reportingEngine.getReport(
+            tenantId,
             reportId
           );
 
@@ -1446,6 +1498,13 @@ export function createReportRoutes(
             404
           );
         }
+
+        assertTenantResourceAccess(req, {
+          recordTenantId: report.tenantId,
+          resourceType: 'report',
+          resourceId: reportId,
+          label: 'Report',
+        });
 
         res.json(
           buildSuccessResponse(
@@ -1474,6 +1533,7 @@ export function createReportRoutes(
         requestId
       );
       const actor = getAuditActor(req);
+      const tenantId = resolveRouteTenantContext(req).tenantId;
       const startedAt = Date.now();
 
       let reportId: string | undefined;
@@ -1487,6 +1547,7 @@ export function createReportRoutes(
         const existing =
           deps.reportingEngine
             .getReportByWorkflowId(
+              tenantId,
               workflowId
             );
 
@@ -1527,6 +1588,7 @@ export function createReportRoutes(
 
         const record =
           deps.orchestrator.getWorkflow(
+            tenantId,
             workflowId
           );
 
@@ -1538,6 +1600,13 @@ export function createReportRoutes(
             'reports'
           );
         }
+
+        assertTenantResourceAccess(req, {
+          recordTenantId: record.metadata.tenantId,
+          resourceType: 'workflow',
+          resourceId: workflowId,
+          label: 'Workflow',
+        });
 
         const input =
           toReportGenerationInput(record);
@@ -1672,7 +1741,7 @@ export function createAdminAuditRoutes(): Router {
       }
 
       try {
-        const tenantId = resolveTenantId(actor);
+        const tenantId = getRequestSecurityContext(req).tenantId;
 
         const filters = parseAuditQueryFilters(
           req.query as Record<string, unknown>,
@@ -1688,6 +1757,7 @@ export function createAdminAuditRoutes(): Router {
           requestId,
           correlationId,
           actor,
+          tenantId,
           action: 'audit.search',
           method: req.method,
           path: req.path,
@@ -1823,6 +1893,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
 
   // All routes below this point require a recognized Cognito role.
   router.use(requireAnyRole(...ALL_AUTHENTICATED_ROLES));
+  router.use(requireTenantContext());
 
   router.use(createPluginRoutes(deps));
   router.use(createProviderRoutes(deps));

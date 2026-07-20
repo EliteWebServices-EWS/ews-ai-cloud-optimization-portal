@@ -7,6 +7,7 @@ import type {
 
 /** Build a human-readable verification report from comparison output. */
 export function buildVerificationReport(input: {
+  tenantId: string;
   workflowId: string;
   executionId: string;
   expectation: VerificationExpectation;
@@ -16,6 +17,7 @@ export function buildVerificationReport(input: {
   const summary = `${input.result.status.toUpperCase()}: ${input.result.message ?? 'Verification complete'}`;
 
   return {
+    tenantId: input.tenantId,
     workflowId: input.workflowId,
     executionId: input.executionId,
     status: input.result.status,

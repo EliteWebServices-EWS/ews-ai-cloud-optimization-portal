@@ -37,6 +37,8 @@ Parameters:
 Resources:
   SisumUserPool:
     Type: AWS::Cognito::UserPool
+    DependsOn:
+      - SisumPreTokenGenerationPermission
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -85,6 +87,13 @@ Resources:
           AttributeDataType: String
           Mutable: true
           Required: true
+        - Name: tenantId
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: "1"
+            MaxLength: "64"
 
       UserAttributeUpdateSettings:
         AttributesRequireVerificationBeforeUpdate:
@@ -94,6 +103,83 @@ Resources:
         Project: SISUM
         Environment: !Ref Environment
         ManagedBy: CloudFormation
+
+      LambdaConfig:
+        PreTokenGenerationConfig:
+          LambdaArn: !GetAtt SisumPreTokenGenerationFunction.Arn
+          LambdaVersion: V2_0
+
+  SisumPreTokenGenerationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ApplicationName}-${Environment}-pre-token-generation
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  SisumPreTokenGenerationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ApplicationName}-${Environment}-pre-token-generation
+      Description: >
+        Injects tenant_id into Cognito access tokens from custom:tenantId profile attribute.
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role: !GetAtt SisumPreTokenGenerationRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          const TENANT_ID_PATTERN =
+            /^(?:[a-z0-9]|[a-z0-9][a-z0-9-]{0,62}[a-z0-9])$/;
+
+          exports.handler = async (event) => {
+            const tenantAttribute =
+              event.request.userAttributes['custom:tenantId']?.trim() ?? '';
+
+            if (tenantAttribute.length === 0) {
+              return event;
+            }
+
+            if (
+              tenantAttribute.length > 64 ||
+              !TENANT_ID_PATTERN.test(tenantAttribute)
+            ) {
+              return event;
+            }
+
+            event.response = {
+              ...event.response,
+              claimsAndScopeOverrideDetails: {
+                ...event.response?.claimsAndScopeOverrideDetails,
+                accessTokenGeneration: {
+                  ...event.response?.claimsAndScopeOverrideDetails
+                    ?.accessTokenGeneration,
+                  claimsToAddOrOverride: {
+                    ...event.response?.claimsAndScopeOverrideDetails
+                      ?.accessTokenGeneration?.claimsToAddOrOverride,
+                    tenant_id: tenantAttribute,
+                  },
+                },
+              },
+            };
+
+            return event;
+          };
+
+  SisumPreTokenGenerationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SisumPreTokenGenerationFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
 
   SisumUserPoolClient:
     Type: AWS::Cognito::UserPoolClient

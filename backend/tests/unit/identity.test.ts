@@ -164,6 +164,41 @@ test('lambda attachValidatedIdentityHeaders copies trusted access-token claims',
   assert.equal(event.headers['x-sisum-user-groups'], 'viewer');
 });
 
+test('lambda attachValidatedIdentityHeaders omits tenant header when claim missing', async () => {
+  const event = {
+    headers: {},
+    requestContext: {
+      authorizer: {
+        jwt: {
+          claims: {
+            sub: 'cognito-user',
+            email: 'viewer@elitewebservices.org',
+            'cognito:groups': 'viewer',
+            token_use: 'access',
+            client_id: 'public-client',
+          },
+        },
+      },
+    },
+  } as unknown as Parameters<typeof attachValidatedIdentityHeaders>[0];
+
+  attachValidatedIdentityHeaders(event);
+
+  assert.equal(event.headers['x-sisum-tenant-id'], undefined);
+});
+
+test('auth template defines custom tenantId attribute', () => {
+  const templatePath = path.resolve(
+    __dirname,
+    '../../../infrastructure/auth/template.yaml'
+  );
+  const template = readFileSync(templatePath, 'utf8');
+
+  assert.match(template, /Name: tenantId/);
+  assert.match(template, /MinLength: "1"/);
+  assert.match(template, /MaxLength: "64"/);
+});
+
 test('auth template enables optional TOTP MFA', () => {
   const templatePath = path.resolve(
     __dirname,

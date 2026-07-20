@@ -21,8 +21,11 @@ import {
 } from '../../shared/constants';
 import type { ReportGenerationInput } from '../../shared/types';
 
+const TENANT_ID = 'sisum-default';
+
 function buildCompleteInput(overrides: Partial<ReportGenerationInput> = {}): ReportGenerationInput {
   return {
+    tenantId: TENANT_ID,
     workflowId: 'wf-test-001',
     plugin: PLUGIN_NAMES.EC2,
     status: WORKFLOW_STATES.COMPLETED,
@@ -141,6 +144,7 @@ function buildCompleteInput(overrides: Partial<ReportGenerationInput> = {}): Rep
       previousState: { instanceType: 't3.large' },
       newState: { instanceType: 't3.medium' },
       metadata: {
+        tenantId: TENANT_ID,
         workflowId: 'wf-test-001',
         plugin: PLUGIN_NAMES.EC2,
         region: 'us-east-1',
@@ -263,7 +267,7 @@ describe('ReportingEngine', () => {
     engine.execute(highInput);
     engine.execute(lowInput);
 
-    const filtered = filterReports(engine.listReports(), { confidenceLevel: 'HIGH' });
+    const filtered = filterReports(engine.listReports(TENANT_ID), { confidenceLevel: 'HIGH' });
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0].workflowId, 'wf-high');
   });

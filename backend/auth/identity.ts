@@ -20,6 +20,8 @@ export interface AuthenticatedIdentity {
   rawGroups: string[];
   tokenUse: string | null;
   clientId: string | null;
+  /** Trusted tenant_id access-token claim — never from client headers or body. */
+  tenantId: string | null;
 }
 
 function normalizeClaim(value: string | undefined): string | null {
@@ -89,5 +91,8 @@ export function getAuthenticatedIdentity(
 
     clientId:
       normalizeClaim(req.header('x-sisum-client-id')),
+
+    tenantId:
+      normalizeClaim(req.header('x-sisum-tenant-id')),
   };
 }
