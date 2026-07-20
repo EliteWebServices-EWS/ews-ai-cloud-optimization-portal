@@ -18,7 +18,10 @@ import {
   writeAuditEvent,
 } from '../audit';
 import { buildErrorResponse } from '../shared/utils';
-import { getAuthenticatedIdentity } from './identity';
+import {
+  getAuthenticatedIdentity,
+  hasRecognizedRole,
+} from './identity';
 import type { SisumRole } from './roles';
 
 export function requireAnyRole(
@@ -68,6 +71,36 @@ export function requireAnyRole(
       return;
     }
 
+    if (!hasRecognizedRole(identity.groups)) {
+      const event = writeAuditEvent({
+        eventName: AUDIT_EVENTS.ROLE_UNRECOGNIZED,
+        outcome: 'denied',
+        requestId,
+        correlationId,
+        actor,
+        action: 'authorize.request',
+        method: req.method,
+        path: req.path,
+        statusCode: 403,
+        reason:
+          'Authenticated identity does not include a recognized SISUM role.',
+        errorCode: 'ROLE_UNRECOGNIZED',
+      });
+
+      scheduleAuditPersistence(req, event);
+
+      res.status(403).json(
+        buildErrorResponse(
+          'ROLE_UNRECOGNIZED',
+          'Your account does not have a recognized SISUM role.',
+          requestId,
+          'authorization'
+        )
+      );
+
+      return;
+    }
+
     const hasPermission = identity.groups.some(
       (group) => allowedRoles.includes(group)
     );
@@ -104,4 +137,3 @@ export function requireAnyRole(
     next();
   };
 }
-

@@ -39,7 +39,7 @@ const serverlessExpressHandler = serverlessExpress({
  * Client-supplied internal identity headers are removed before trusted values
  * from API Gateway JWT claims are added.
  */
-function attachValidatedIdentityHeaders(
+export function attachValidatedIdentityHeaders(
   event: AuthenticatedHttpApiEvent
 ): void {
   const claims = event.requestContext.authorizer?.jwt?.claims;
@@ -59,6 +59,16 @@ function attachValidatedIdentityHeaders(
     return;
   }
 
+  const tokenUse = (claims.token_use ?? '').trim();
+
+  /*
+   * API Gateway validates access tokens. Reject other token_use values
+   * before copying identity headers into the Express request context.
+   */
+  if (tokenUse && tokenUse !== 'access') {
+    return;
+  }
+
   const groups =
     claims['cognito:groups'] ??
     claims.groups ??
@@ -69,19 +79,26 @@ function attachValidatedIdentityHeaders(
     claims['cognito:username'] ??
     '';
 
-  const email = claims.email ?? '';
-  const tokenUse = claims.token_use ?? '';
-
-  const clientId =
+  const email = (claims.email ?? '').trim();
+  const normalizedClientId =
     claims.client_id ??
     claims.aud ??
     '';
 
+  const clientId =
+    typeof normalizedClientId === 'string'
+      ? normalizedClientId.trim()
+      : '';
+
+  if (!userId.trim()) {
+    return;
+  }
+
   event.headers['x-sisum-authenticated'] = 'true';
-  event.headers['x-sisum-user-id'] = userId;
+  event.headers['x-sisum-user-id'] = userId.trim();
   event.headers['x-sisum-user-email'] = email;
   event.headers['x-sisum-user-groups'] = groups;
-  event.headers['x-sisum-token-use'] = tokenUse;
+  event.headers['x-sisum-token-use'] = tokenUse || 'access';
   event.headers['x-sisum-client-id'] = clientId;
 }
 

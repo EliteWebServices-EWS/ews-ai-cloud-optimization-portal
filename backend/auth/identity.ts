@@ -17,11 +17,24 @@ export interface AuthenticatedIdentity {
   userId: string | null;
   email: string | null;
   groups: SisumRole[];
+  rawGroups: string[];
   tokenUse: string | null;
   clientId: string | null;
 }
 
-function parseGroups(rawGroups: string | undefined): SisumRole[] {
+function normalizeClaim(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed;
+}
+
+export function parseRawGroups(
+  rawGroups: string | undefined
+): string[] {
   if (!rawGroups) {
     return [];
   }
@@ -32,32 +45,49 @@ function parseGroups(rawGroups: string | undefined): SisumRole[] {
     .replace(/\]$/, '')
     .replace(/"/g, '');
 
+  if (normalized.length === 0) {
+    return [];
+  }
+
   return normalized
     .split(',')
     .map((group) => group.trim())
-    .filter(isSisumRole);
+    .filter((group) => group.length > 0);
+}
+
+export function parseGroups(rawGroups: string | undefined): SisumRole[] {
+  return parseRawGroups(rawGroups).filter(isSisumRole);
+}
+
+export function hasRecognizedRole(groups: SisumRole[]): boolean {
+  return groups.length > 0;
 }
 
 export function getAuthenticatedIdentity(
   req: Request
 ): AuthenticatedIdentity {
+  const rawGroupHeader = req.header('x-sisum-user-groups');
+  const rawGroups = parseRawGroups(rawGroupHeader ?? undefined);
+
   return {
     authenticated:
       req.header('x-sisum-authenticated') === 'true',
 
     userId:
-      req.header('x-sisum-user-id') ?? null,
+      normalizeClaim(req.header('x-sisum-user-id')),
 
     email:
-      req.header('x-sisum-user-email') ?? null,
+      normalizeClaim(req.header('x-sisum-user-email')),
 
     groups:
-      parseGroups(req.header('x-sisum-user-groups')),
+      rawGroups.filter(isSisumRole),
+
+    rawGroups,
 
     tokenUse:
-      req.header('x-sisum-token-use') ?? null,
+      normalizeClaim(req.header('x-sisum-token-use')),
 
     clientId:
-      req.header('x-sisum-client-id') ?? null,
+      normalizeClaim(req.header('x-sisum-client-id')),
   };
 }

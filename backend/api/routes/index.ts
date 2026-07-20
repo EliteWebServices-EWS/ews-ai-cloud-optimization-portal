@@ -46,6 +46,10 @@ import {
   ADMIN_ROLES,
   requireAnyRole,
 } from '../../auth';
+import {
+  validateReportGenerateBody,
+  validateWorkflowRunBody,
+} from '../../security';
 
 export interface ApiDependencies {
   orchestrator: WorkflowOrchestrator;
@@ -527,50 +531,32 @@ export function createWorkflowRoutes(
 
       let workflowId: string | undefined;
 
-      const plugin =
-        typeof req.body?.plugin === 'string'
-          ? req.body.plugin
-          : PLUGIN_NAMES.EC2;
-
-      const mode =
-        req.body?.mode === 'dry-run'
-          ? 'dry-run'
-          : 'full';
-
-      const resourceId =
-        typeof req.body?.resourceId === 'string'
-          ? req.body.resourceId
-          : undefined;
-
-      const region =
-        typeof req.body?.region === 'string'
-          ? req.body.region
-          : DEFAULT_REGION;
-
-      recordAuditEvent(req, {
-        eventName: AUDIT_EVENTS.WORKFLOW_STARTED,
-        outcome: 'started',
-        requestId,
-        correlationId,
-        actor,
-        action: 'workflow.run',
-        method: req.method,
-        path: req.path,
-        resource: {
-          type: plugin,
-          id: resourceId,
-          region,
-        },
-      });
-
       try {
-        if (plugin !== PLUGIN_NAMES.EC2) {
-          throw new AppError(
-            'PLUGIN_NOT_FOUND',
-            `Plugin not supported: ${plugin}`,
-            404
-          );
-        }
+        const validated = validateWorkflowRunBody(
+          req.body,
+          DEFAULT_REGION
+        );
+
+        const plugin = validated.plugin;
+        const mode = validated.mode;
+        const resourceId = validated.resourceId;
+        const region = validated.region;
+
+        recordAuditEvent(req, {
+          eventName: AUDIT_EVENTS.WORKFLOW_STARTED,
+          outcome: 'started',
+          requestId,
+          correlationId,
+          actor,
+          action: 'workflow.run',
+          method: req.method,
+          path: req.path,
+          resource: {
+            type: plugin,
+            id: resourceId,
+            region,
+          },
+        });
 
         const result =
           await deps.orchestrator.executeWorkflow({
@@ -1480,21 +1466,13 @@ export function createReportRoutes(
       const actor = getAuditActor(req);
       const startedAt = Date.now();
 
-      const workflowId =
-        typeof req.body?.workflowId === 'string'
-          ? req.body.workflowId
-          : undefined;
-
       let reportId: string | undefined;
+      let workflowId: string | undefined;
 
       try {
-        if (!workflowId) {
-          throw new AppError(
-            'INVALID_REQUEST',
-            'workflowId is required',
-            400
-          );
-        }
+        workflowId = validateReportGenerateBody(
+          req.body
+        ).workflowId;
 
         const existing =
           deps.reportingEngine

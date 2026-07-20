@@ -10,6 +10,12 @@ import {
 } from './audit';
 import { createApiRoutes } from './api/routes';
 import {
+  createCorsMiddleware,
+  createJsonBodyParser,
+  createJsonErrorHandler,
+  createSecurityHeadersMiddleware,
+} from './security';
+import {
   createEvidenceEngine,
   createFinancialEngine,
   createGovernanceEngine,
@@ -49,16 +55,6 @@ export function resolveProviderName(): ProviderName {
 }
 
 /**
- * Resolve the CORS allow-origin header.
- * Defaults to * for local development.
- */
-export function resolveCorsOrigin(): string {
-  const origin = process.env.CORS_ORIGIN?.trim();
-
-  return origin && origin.length > 0 ? origin : '*';
-}
-
-/**
  * Bootstrap and configure the SISU'M backend API server.
  */
 export function createApp(): express.Application {
@@ -85,40 +81,11 @@ export function createApp(): express.Application {
   });
 
   const app = express();
-  const corsOrigin = resolveCorsOrigin();
 
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', corsOrigin);
-
-    res.header(
-      'Access-Control-Allow-Methods',
-      'GET, POST, OPTIONS'
-    );
-
-    res.header(
-      'Access-Control-Allow-Headers',
-      [
-        'Content-Type',
-        'Authorization',
-        'X-Request-Id',
-        'X-Correlation-Id',
-      ].join(', ')
-    );
-
-    res.header(
-      'Access-Control-Expose-Headers',
-      'X-Request-Id, X-Correlation-Id'
-    );
-
-    if (req.method === 'OPTIONS') {
-      res.sendStatus(204);
-      return;
-    }
-
-    next();
-  });
-
-  app.use(express.json());
+  app.use(createSecurityHeadersMiddleware());
+  app.use(createCorsMiddleware());
+  app.use(createJsonBodyParser());
+  app.use(createJsonErrorHandler());
 
   app.use(auditPersistenceFlushMiddleware);
 
@@ -218,3 +185,5 @@ export function startServer(): void {
 if (require.main === module) {
   startServer();
 }
+
+export { resolveCorsOrigin } from './security';
