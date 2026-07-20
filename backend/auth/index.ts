@@ -9,6 +9,9 @@ export {
 
 export {
   getAuthenticatedIdentity,
+  parseGroups,
+  parseRawGroups,
+  hasRecognizedRole,
   type AuthenticatedIdentity,
 } from './identity';
 
