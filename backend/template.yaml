@@ -206,7 +206,7 @@ Resources:
       CodeUri: .
       Handler: dist/lambda.handler
       Role: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/SisumLambdaExecutionRole"
-      ReservedConcurrentExecutions: 25
+      
 
       Environment:
         Variables:
