@@ -4,6 +4,7 @@ import type {
   Context,
 } from 'aws-lambda';
 import serverlessExpress from '@codegenie/serverless-express';
+import { extractTrustedTenantClaim } from './auth/tenant-claims';
 import { createApp } from './index';
 
 interface JwtAuthorizerContext {
@@ -54,6 +55,8 @@ export function attachValidatedIdentityHeaders(
   delete event.headers['x-sisum-user-groups'];
   delete event.headers['x-sisum-token-use'];
   delete event.headers['x-sisum-client-id'];
+  delete event.headers['x-sisum-tenant-id'];
+  delete event.headers['x-tenant-id'];
 
   if (!claims) {
     return;
@@ -100,6 +103,12 @@ export function attachValidatedIdentityHeaders(
   event.headers['x-sisum-user-groups'] = groups;
   event.headers['x-sisum-token-use'] = tokenUse || 'access';
   event.headers['x-sisum-client-id'] = clientId;
+
+  const tenantClaim = extractTrustedTenantClaim(claims);
+
+  if (tenantClaim) {
+    event.headers['x-sisum-tenant-id'] = tenantClaim;
+  }
 }
 
 /**
