@@ -135,6 +135,16 @@ export class ReportingEngine {
     return this.store.getByWorkflowId(tenantId, workflowId);
   }
 
+  resolveReportOwnerTenantId(reportId: string): string | undefined {
+    return this.store.resolveReportOwnerTenantId(reportId);
+  }
+
+  resolveReportOwnerTenantIdByWorkflow(
+    workflowId: string
+  ): string | undefined {
+    return this.store.resolveReportOwnerTenantIdByWorkflow(workflowId);
+  }
+
   listReports(tenantId: string): OptimizationReport[] {
     return this.store.list(tenantId);
   }

@@ -27,6 +27,7 @@ export function recordTenantAccessDenied(
   input: {
     resourceType: string;
     resourceId: string;
+    resourceTenantId: string;
     method?: string;
     path?: string;
   }
@@ -41,6 +42,7 @@ export function recordTenantAccessDenied(
     correlationId: context.correlationId,
     actor,
     tenantId: context.tenantId,
+    resourceTenantId: input.resourceTenantId,
     action: 'tenant.access',
     method: input.method ?? req.method,
     path: input.path ?? req.path,
@@ -72,6 +74,39 @@ export function throwTenantScopedNotFound(
   );
 }
 
+/**
+ * Handle a tenant-scoped lookup miss by distinguishing cross-tenant access
+ * from genuinely missing resources.
+ */
+export function handleTenantScopedResourceMiss(
+  req: Request,
+  input: {
+    resourceType: string;
+    resourceId: string;
+    ownerTenantId: string | undefined;
+    label?: string;
+  }
+): never {
+  const context = resolveRouteTenantContext(req);
+
+  if (
+    input.ownerTenantId !== undefined &&
+    input.ownerTenantId !== context.tenantId
+  ) {
+    recordTenantAccessDenied(req, {
+      resourceType: input.resourceType,
+      resourceId: input.resourceId,
+      resourceTenantId: input.ownerTenantId,
+    });
+  }
+
+  throwTenantScopedNotFound(
+    input.resourceType,
+    input.resourceId,
+    input.label
+  );
+}
+
 export function assertTenantResourceAccess(
   req: Request,
   input: {
@@ -90,10 +125,11 @@ export function assertTenantResourceAccess(
   });
 
   if (!guard.allowed) {
-    if (guard.crossTenantAttempt) {
+    if (guard.crossTenantAttempt && input.recordTenantId !== undefined) {
       recordTenantAccessDenied(req, {
         resourceType: input.resourceType,
         resourceId: input.resourceId,
+        resourceTenantId: input.recordTenantId,
       });
     }
 

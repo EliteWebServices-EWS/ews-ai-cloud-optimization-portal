@@ -11,7 +11,7 @@
 ### Recent cross-tenant denials
 
 ```
-fields @timestamp, eventName, tenantId, actor.userId, actor.email, path, resource.id, reason
+fields @timestamp, eventName, tenantId, resourceTenantId, actor.userId, actor.email, path, resource.type, resource.id, reason
 | filter eventName = "tenant.access_denied"
 | sort @timestamp desc
 | limit 50
@@ -37,11 +37,12 @@ fields @timestamp, eventName, tenantId, path, resource.id
 ## Investigation steps
 
 1. Confirm alarm threshold (≥5 denials in 5 minutes) — rule out single mis-click
-2. Identify `actor.userId` and `tenantId` from denial events
-3. Check whether user has correct `custom:tenantId` in Cognito
-4. Verify requested resource ID belongs to user's tenant (internal admin tools only)
-5. If attack pattern (many IDs, many tenants): escalate per security incident runbook
-6. If misconfiguration: assign correct tenant attribute; verify strict mode readiness
+2. Identify `actor.userId` and `tenantId` (requesting tenant) from denial events
+3. Use audit-only `resourceTenantId` (internal tools only) to confirm which tenant owns the resource
+4. Check whether user has correct `custom:tenantId` in Cognito
+5. Verify requested resource ID belongs to user's tenant (internal admin tools only)
+6. If attack pattern (many IDs, many tenants): escalate per security incident runbook
+7. If misconfiguration: assign correct tenant attribute; verify strict mode readiness
 
 ## False positive scenarios
 

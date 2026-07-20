@@ -49,6 +49,7 @@ import {
 } from '../../auth';
 import {
   assertTenantResourceAccess,
+  handleTenantScopedResourceMiss,
   resolveRouteTenantContext,
 } from '../tenant-route-helpers';
 import {
@@ -784,7 +785,13 @@ export function createWorkflowRoutes(
       const status = deps.orchestrator.getWorkflowStatus(tenantId, workflowId);
 
       if (!status) {
-        throw new AppError('NOT_FOUND', `Workflow not found: ${workflowId}`, 404);
+        handleTenantScopedResourceMiss(req, {
+          resourceType: 'workflow',
+          resourceId: workflowId,
+          ownerTenantId:
+            deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+          label: 'Workflow',
+        });
       }
 
       res.json(
@@ -819,7 +826,13 @@ export function createWorkflowRoutes(
       const record = deps.orchestrator.getWorkflow(tenantId, workflowId);
 
       if (!record) {
-        throw new AppError('NOT_FOUND', `Workflow not found: ${workflowId}`, 404);
+        handleTenantScopedResourceMiss(req, {
+          resourceType: 'workflow',
+          resourceId: workflowId,
+          ownerTenantId:
+            deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+          label: 'Workflow',
+        });
       }
 
       res.json(
@@ -1306,11 +1319,13 @@ export function createVerificationRoutes(
             );
 
           if (!record) {
-            throw new AppError(
-              'NOT_FOUND',
-              `No verification report found for workflow ${workflowId}`,
-              404
-            );
+            handleTenantScopedResourceMiss(req, {
+              resourceType: 'workflow',
+              resourceId: workflowId,
+              ownerTenantId:
+                deps.learningStore.resolveOwnerTenantId(workflowId),
+              label: 'Verification report',
+            });
           }
 
           const report =
@@ -1492,11 +1507,13 @@ export function createReportRoutes(
           );
 
         if (!report) {
-          throw new AppError(
-            'NOT_FOUND',
-            `Report not found: ${reportId}`,
-            404
-          );
+          handleTenantScopedResourceMiss(req, {
+            resourceType: 'report',
+            resourceId: reportId,
+            ownerTenantId:
+              deps.reportingEngine.resolveReportOwnerTenantId(reportId),
+            label: 'Report',
+          });
         }
 
         assertTenantResourceAccess(req, {
@@ -1586,6 +1603,23 @@ export function createReportRoutes(
           return;
         }
 
+        const cachedReportOwner =
+          deps.reportingEngine.resolveReportOwnerTenantIdByWorkflow(
+            workflowId
+          );
+
+        if (
+          cachedReportOwner !== undefined &&
+          cachedReportOwner !== tenantId
+        ) {
+          handleTenantScopedResourceMiss(req, {
+            resourceType: 'report',
+            resourceId: workflowId,
+            ownerTenantId: cachedReportOwner,
+            label: 'Report',
+          });
+        }
+
         const record =
           deps.orchestrator.getWorkflow(
             tenantId,
@@ -1593,12 +1627,13 @@ export function createReportRoutes(
           );
 
         if (!record) {
-          throw new AppError(
-            'NOT_FOUND',
-            `Workflow not found: ${workflowId}`,
-            404,
-            'reports'
-          );
+          handleTenantScopedResourceMiss(req, {
+            resourceType: 'workflow',
+            resourceId: workflowId,
+            ownerTenantId:
+              deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+            label: 'Workflow',
+          });
         }
 
         assertTenantResourceAccess(req, {

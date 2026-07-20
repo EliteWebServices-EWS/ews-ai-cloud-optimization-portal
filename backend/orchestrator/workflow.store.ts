@@ -20,11 +20,13 @@ export interface WorkflowStoreInterface {
   get(tenantId: string, workflowId: string): WorkflowRecord | undefined;
   getMetadata(tenantId: string, workflowId: string): WorkflowMetadata | undefined;
   list(tenantId: string, status?: WorkflowState): WorkflowMetadata[];
+  resolveOwnerTenantId(workflowId: string): string | undefined;
 }
 
 /** In-memory workflow registry for Demo Mode workflow tracking. */
 export class InMemoryWorkflowStore implements WorkflowStoreInterface {
   private readonly records = new Map<string, WorkflowRecord>();
+  private readonly ownerIndex = new Map<string, string>();
 
   save(record: WorkflowRecord): void {
     const key = buildStoreKey(
@@ -32,6 +34,10 @@ export class InMemoryWorkflowStore implements WorkflowStoreInterface {
       record.metadata.workflowId
     );
     this.records.set(key, record);
+    this.ownerIndex.set(
+      record.metadata.workflowId,
+      record.metadata.tenantId
+    );
   }
 
   updateContext(tenantId: string, workflowId: string, context: WorkflowContext): void {
@@ -88,6 +94,10 @@ export class InMemoryWorkflowStore implements WorkflowStoreInterface {
     }
 
     return all.filter((metadata) => metadata.status === status);
+  }
+
+  resolveOwnerTenantId(workflowId: string): string | undefined {
+    return this.ownerIndex.get(workflowId);
   }
 }
 

@@ -18,6 +18,7 @@ export interface LearningStoreInterface {
   listReports(tenantId: string): VerificationReport[];
   listRecords(tenantId: string): LearningRecord[];
   buildRecord(tenantId: string, outcome: OptimizationOutcome): LearningRecord;
+  resolveOwnerTenantId(workflowId: string): string | undefined;
 }
 
 /**
@@ -28,10 +29,12 @@ export interface LearningStoreInterface {
  */
 export class InMemoryLearningStore implements LearningStoreInterface {
   private readonly records = new Map<string, LearningRecord>();
+  private readonly ownerIndex = new Map<string, string>();
 
   save(record: LearningRecord): LearningRecord {
     const key = buildStoreKey(record.tenantId, record.workflowId);
     this.records.set(key, record);
+    this.ownerIndex.set(record.workflowId, record.tenantId);
     logger.info('Outcome stored', {
       workflowId: record.workflowId,
       operation: 'save',
@@ -92,6 +95,10 @@ export class InMemoryLearningStore implements LearningStoreInterface {
       outcome,
       recordedAt: new Date().toISOString(),
     };
+  }
+
+  resolveOwnerTenantId(workflowId: string): string | undefined {
+    return this.ownerIndex.get(workflowId);
   }
 }
 
