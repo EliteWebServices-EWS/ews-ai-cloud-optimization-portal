@@ -25,6 +25,10 @@ export const AUDIT_EVENTS = {
 
   AUDIT_SEARCH_PERFORMED: 'audit.search_performed',
   AUDIT_PERSISTENCE_FAILED: 'audit.persistence_failed',
+
+  TENANT_CLAIM_MISSING: 'tenant.claim_missing',
+  TENANT_FALLBACK_USED: 'tenant.fallback_used',
+  TENANT_ACCESS_DENIED: 'tenant.access_denied',
 } as const;
 
 export type AuditEventName =

@@ -352,6 +352,42 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  TenantAccessDeniedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LambdaFunctionName}"
+      FilterPattern: '{ $.eventName = "tenant.access_denied" }'
+      MetricTransformations:
+        - MetricName: TenantAccessDenied
+          MetricNamespace: SISUM/Security
+          MetricValue: "1"
+          DefaultValue: 0
+
+  TenantAccessDeniedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-tenant-access-denied
+      AlarmDescription: >
+        Five or more cross-tenant access denial events were logged within five minutes.
+      Namespace: SISUM/Security
+      MetricName: TenantAccessDenied
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
   ApiGatewayHigh4xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
