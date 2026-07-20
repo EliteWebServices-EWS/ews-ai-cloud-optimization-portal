@@ -65,6 +65,7 @@ export interface WorkflowOrchestratorDependencies {
 }
 
 export interface RunWorkflowRequest {
+  tenantId: string;
   plugin: PluginName;
   resourceId?: string;
   region?: string;
@@ -105,6 +106,7 @@ export class WorkflowOrchestrator {
 
     const context = this.createInitialContext({
       workflowId,
+      tenantId: request.tenantId,
       plugin: request.plugin,
       region,
       triggerSource: request.triggerSource ?? 'api',
@@ -114,6 +116,7 @@ export class WorkflowOrchestrator {
 
     const metadata: WorkflowMetadata = {
       workflowId,
+      tenantId: request.tenantId,
       plugin: request.plugin,
       createdAt: startedAt,
       status: WORKFLOW_STATES.RUNNING,
@@ -149,7 +152,7 @@ export class WorkflowOrchestrator {
       }
 
       context.candidate = candidate;
-      this.store.updateContext(workflowId, context);
+      this.store.updateContext(request.tenantId, workflowId, context);
 
       await this.runPipeline(context, config, plugin);
 
@@ -160,8 +163,8 @@ export class WorkflowOrchestrator {
       context.executionState = WORKFLOW_EXECUTION_STATES.COMPLETED;
 
       const result = this.buildWorkflowResult(context, durationMs);
-      this.store.updateContext(workflowId, context);
-      this.store.updateResult(workflowId, result);
+      this.store.updateContext(request.tenantId, workflowId, context);
+      this.store.updateResult(request.tenantId, workflowId, result);
 
       logger.info('Workflow completed', {
         workflowId,
@@ -194,20 +197,20 @@ export class WorkflowOrchestrator {
     }
   }
 
-  /** Retrieve a tracked workflow by ID. */
-  getWorkflow(workflowId: string): WorkflowRecord | undefined {
-    return this.store.get(workflowId);
+  /** Retrieve a tracked workflow by tenant and ID. */
+  getWorkflow(tenantId: string, workflowId: string): WorkflowRecord | undefined {
+    return this.store.get(tenantId, workflowId);
   }
 
-  /** Retrieve workflow status summary by ID. */
-  getWorkflowStatus(workflowId: string): {
+  /** Retrieve workflow status summary by tenant and ID. */
+  getWorkflowStatus(tenantId: string, workflowId: string): {
     metadata: WorkflowMetadata;
     completedStages: string[];
     failedStages: string[];
     currentStage?: string;
     failure?: WorkflowFailure;
   } | undefined {
-    const record = this.store.get(workflowId);
+    const record = this.store.get(tenantId, workflowId);
     if (!record) {
       return undefined;
     }
@@ -292,7 +295,10 @@ export class WorkflowOrchestrator {
     request: RunCompleteWorkflowRequest
   ): Promise<CompleteWorkflowResult> {
     const result = await this.executeWorkflow({ ...request, mode: 'full', triggerSource: 'api' });
-    const verification = this.toVerificationResultFromHardened(result);
+    const verification = this.toVerificationResultFromHardened(
+      result,
+      request.tenantId
+    );
     return {
       ...verification,
       status: WORKFLOW_STATES.COMPLETED,
@@ -302,7 +308,7 @@ export class WorkflowOrchestrator {
 
   async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
     const hardened = await this.executeWorkflow({ ...request, mode: 'full', triggerSource: 'api' });
-    const record = this.store.get(hardened.workflowId);
+    const record = this.store.get(request.tenantId, hardened.workflowId);
     if (!record) {
       throw new Error(`Workflow record not found: ${hardened.workflowId}`);
     }
@@ -328,6 +334,7 @@ export class WorkflowOrchestrator {
     const recommendation = this.toLegacyRecommendation(context);
 
     const optimizationContext: OptimizationContext = {
+      tenantId: context.tenantId,
       workflowId: context.workflowId,
       plugin: request.plugin,
       provider: PROVIDER_NAMES.MOCK,
@@ -362,6 +369,7 @@ export class WorkflowOrchestrator {
 
   private createInitialContext(params: {
     workflowId: string;
+    tenantId: string;
     plugin: PluginName;
     region: string;
     triggerSource: WorkflowContext['triggerSource'];
@@ -370,6 +378,7 @@ export class WorkflowOrchestrator {
   }): WorkflowContext {
     return {
       workflowId: params.workflowId,
+      tenantId: params.tenantId,
       plugin: params.plugin,
       provider: PROVIDER_NAMES.MOCK,
       region: params.region,
@@ -395,6 +404,7 @@ export class WorkflowOrchestrator {
 
     const context = this.createInitialContext({
       workflowId,
+      tenantId: request.tenantId,
       plugin: request.plugin,
       region,
       triggerSource: 'api',
@@ -442,7 +452,7 @@ export class WorkflowOrchestrator {
 
     for (const stage of pipeline) {
       await this.executeStage(context, config, plugin, stage);
-      this.store.updateContext(context.workflowId, context);
+      this.store.updateContext(context.tenantId, context.workflowId, context);
     }
   }
 
@@ -736,7 +746,7 @@ export class WorkflowOrchestrator {
     };
 
     context.learningRecord = this.deps.learningStore.save(
-      this.deps.learningStore.buildRecord(outcome)
+      this.deps.learningStore.buildRecord(context.tenantId, outcome)
     );
   }
 
@@ -770,8 +780,8 @@ export class WorkflowOrchestrator {
     );
 
     const result = this.buildWorkflowResult(context, durationMs);
-    this.store.updateContext(context.workflowId, context);
-    this.store.updateResult(context.workflowId, result);
+    this.store.updateContext(context.tenantId, context.workflowId, context);
+    this.store.updateResult(context.tenantId, context.workflowId, result);
 
     logger.error('Stage failed', {
       workflowId: context.workflowId,
@@ -816,6 +826,7 @@ export class WorkflowOrchestrator {
 
   private toOptimizationContext(context: WorkflowContext): OptimizationContext {
     return {
+      tenantId: context.tenantId,
       workflowId: context.workflowId,
       plugin: context.plugin,
       provider: context.provider,
@@ -894,9 +905,10 @@ export class WorkflowOrchestrator {
   }
 
   private toVerificationResultFromHardened(
-    result: HardenedWorkflowResult
+    result: HardenedWorkflowResult,
+    tenantId: string
   ): VerificationWorkflowResult {
-    const record = this.store.get(result.workflowId);
+    const record = this.store.get(tenantId, result.workflowId);
     if (!record) {
       throw new Error(`Workflow record not found: ${result.workflowId}`);
     }

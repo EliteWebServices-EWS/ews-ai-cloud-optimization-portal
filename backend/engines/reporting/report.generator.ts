@@ -129,6 +129,7 @@ export function generateReport(input: ReportGenerationInput): OptimizationReport
 
   return {
     reportId,
+    tenantId: input.tenantId,
     workflowId: input.workflowId,
     plugin: input.plugin,
     status,

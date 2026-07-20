@@ -18,7 +18,7 @@ export interface ReportingEngineOptions {
 /** Maps a workflow record context into report generation input. */
 export function toReportGenerationInput(
   record: {
-    metadata: { workflowId: string; plugin: ReportGenerationInput['plugin']; region: string; completedAt?: string; status: ReportGenerationInput['status'] };
+    metadata: { tenantId: string; workflowId: string; plugin: ReportGenerationInput['plugin']; region: string; completedAt?: string; status: ReportGenerationInput['status'] };
     context: {
       candidate?: ReportGenerationInput['candidate'];
       evidence?: ReportGenerationInput['evidence'];
@@ -38,6 +38,7 @@ export function toReportGenerationInput(
   }
 ): ReportGenerationInput {
   return {
+    tenantId: record.metadata.tenantId,
     workflowId: record.metadata.workflowId,
     plugin: record.metadata.plugin,
     status: record.metadata.status,
@@ -126,16 +127,16 @@ export class ReportingEngine {
     }
   }
 
-  getReport(reportId: string): OptimizationReport | undefined {
-    return this.store.get(reportId);
+  getReport(tenantId: string, reportId: string): OptimizationReport | undefined {
+    return this.store.get(tenantId, reportId);
   }
 
-  getReportByWorkflowId(workflowId: string): OptimizationReport | undefined {
-    return this.store.getByWorkflowId(workflowId);
+  getReportByWorkflowId(tenantId: string, workflowId: string): OptimizationReport | undefined {
+    return this.store.getByWorkflowId(tenantId, workflowId);
   }
 
-  listReports(): OptimizationReport[] {
-    return this.store.list();
+  listReports(tenantId: string): OptimizationReport[] {
+    return this.store.list(tenantId);
   }
 
   getStore(): ReportStoreInterface {

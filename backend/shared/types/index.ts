@@ -212,6 +212,7 @@ export interface ExecutionChange {
 
 /** Metadata describing how and where execution occurred. */
 export interface ExecutionMetadata {
+  tenantId: string;
   workflowId: string;
   plugin: PluginName;
   region: string;
@@ -281,6 +282,7 @@ export interface VerificationExpectation {
 
 /** Detailed verification report for API and learning storage. */
 export interface VerificationReport {
+  tenantId: string;
   workflowId: string;
   executionId: string;
   status: VerificationStatusValue;
@@ -334,6 +336,7 @@ export interface OptimizationOutcome {
 /** Learning record persisted after closed-loop verification. */
 export interface LearningRecord {
   id: string;
+  tenantId: string;
   workflowId: string;
   plugin: PluginName;
   recommendation: RecommendationDecision;
@@ -352,6 +355,7 @@ export interface PluginMetadata {
 
 /** Context flowing through the optimization workflow. */
 export interface OptimizationContext {
+  tenantId: string;
   workflowId: string;
   plugin: PluginName;
   provider: ProviderName;

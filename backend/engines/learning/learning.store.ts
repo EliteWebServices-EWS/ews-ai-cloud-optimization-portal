@@ -3,28 +3,35 @@ import type {
   OptimizationOutcome,
   VerificationReport,
 } from '../../shared/types';
+import { recordBelongsToTenant } from '../../auth/tenant';
 import { createLogger } from '../../shared/utils';
 
 const logger = createLogger('LearningStore');
 
+function buildStoreKey(tenantId: string, workflowId: string): string {
+  return `${tenantId}:${workflowId}`;
+}
+
 export interface LearningStoreInterface {
   save(record: LearningRecord): LearningRecord;
-  getByWorkflowId(workflowId: string): LearningRecord | undefined;
-  listReports(): VerificationReport[];
-  listRecords(): LearningRecord[];
-  buildRecord(outcome: OptimizationOutcome): LearningRecord;
+  getByWorkflowId(tenantId: string, workflowId: string): LearningRecord | undefined;
+  listReports(tenantId: string): VerificationReport[];
+  listRecords(tenantId: string): LearningRecord[];
+  buildRecord(tenantId: string, outcome: OptimizationOutcome): LearningRecord;
 }
 
 /**
  * In-memory learning data store for closed-loop optimization outcomes.
  * Future ML models will consume persisted LearningRecord entries.
  * Sprint 6: no database persistence — deterministic in-memory storage only.
+ * Sprint 10.5.16: tenant-scoped lookups prevent cross-tenant access.
  */
 export class InMemoryLearningStore implements LearningStoreInterface {
   private readonly records = new Map<string, LearningRecord>();
 
   save(record: LearningRecord): LearningRecord {
-    this.records.set(record.workflowId, record);
+    const key = buildStoreKey(record.tenantId, record.workflowId);
+    this.records.set(key, record);
     logger.info('Outcome stored', {
       workflowId: record.workflowId,
       operation: 'save',
@@ -33,12 +40,23 @@ export class InMemoryLearningStore implements LearningStoreInterface {
     return record;
   }
 
-  getByWorkflowId(workflowId: string): LearningRecord | undefined {
-    return this.records.get(workflowId);
+  getByWorkflowId(tenantId: string, workflowId: string): LearningRecord | undefined {
+    const record = this.records.get(buildStoreKey(tenantId, workflowId));
+
+    if (!record) {
+      return undefined;
+    }
+
+    if (!recordBelongsToTenant(record.tenantId, tenantId)) {
+      return undefined;
+    }
+
+    return record;
   }
 
-  listReports(): VerificationReport[] {
-    return [...this.records.values()].map((record) => ({
+  listReports(tenantId: string): VerificationReport[] {
+    return this.listRecords(tenantId).map((record) => ({
+      tenantId: record.tenantId,
       workflowId: record.workflowId,
       executionId: record.execution.executionId,
       status: record.verification.status,
@@ -55,13 +73,16 @@ export class InMemoryLearningStore implements LearningStoreInterface {
     }));
   }
 
-  listRecords(): LearningRecord[] {
-    return [...this.records.values()];
+  listRecords(tenantId: string): LearningRecord[] {
+    return [...this.records.values()].filter((record) =>
+      recordBelongsToTenant(record.tenantId, tenantId)
+    );
   }
 
-  buildRecord(outcome: OptimizationOutcome): LearningRecord {
+  buildRecord(tenantId: string, outcome: OptimizationOutcome): LearningRecord {
     return {
       id: `lr-${outcome.workflowId}`,
+      tenantId,
       workflowId: outcome.workflowId,
       plugin: outcome.plugin,
       recommendation: outcome.recommendation,

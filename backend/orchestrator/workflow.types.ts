@@ -61,6 +61,7 @@ export interface WorkflowFailure {
 /** Metadata describing workflow lifecycle for observability and tracking. */
 export interface WorkflowMetadata {
   workflowId: string;
+  tenantId: string;
   plugin: PluginName;
   createdAt: string;
   completedAt?: string;
@@ -77,6 +78,7 @@ export interface WorkflowMetadata {
  */
 export interface WorkflowContext {
   workflowId: string;
+  tenantId: string;
   plugin: PluginName;
   provider: OptimizationContext['provider'];
   region: string;
@@ -139,6 +141,7 @@ export interface WorkflowRecord {
 
 /** Request to start a hardened workflow execution. */
 export interface ExecuteWorkflowRequest {
+  tenantId: string;
   plugin: PluginName;
   resourceId?: string;
   region?: string;
