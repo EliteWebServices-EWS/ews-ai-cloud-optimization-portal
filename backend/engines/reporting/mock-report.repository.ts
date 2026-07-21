@@ -7,6 +7,11 @@ import {
   type ReportMetadata,
   type ReportRepository,
 } from './report.repository';
+import {
+  applyReportQuery,
+  type ReportQuery,
+  type ReportQueryResult,
+} from './report.query';
 
 function reportKey(tenantId: string, reportId: string): string {
   return `${tenantId}:${reportId}`;
@@ -84,6 +89,13 @@ export class MockReportRepository implements ReportRepository {
           new Date(left.createdAt).getTime()
       )
       .map(clone);
+  }
+
+  async query(
+    tenantId: string,
+    query: ReportQuery
+  ): Promise<ReportQueryResult> {
+    return applyReportQuery(await this.list(tenantId), query);
   }
 
   async getHistory(

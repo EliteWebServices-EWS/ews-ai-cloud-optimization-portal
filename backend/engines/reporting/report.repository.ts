@@ -7,6 +7,7 @@
  */
 
 import type { OptimizationReport } from '../../shared/types';
+import type { ReportQuery, ReportQueryResult } from './report.query';
 
 /** Fields suitable for report list views and secondary indexes. */
 export type ReportMetadata = Pick<
@@ -53,6 +54,11 @@ export interface ReportRepository {
   ): Promise<OptimizationReport | undefined>;
   listMetadata(tenantId: string): Promise<ReportMetadata[]>;
   list(tenantId: string): Promise<OptimizationReport[]>;
+  /**
+   * Search, filter, sort, and paginate a tenant's reports. A DynamoDB
+   * implementation may push these semantics down to the database.
+   */
+  query(tenantId: string, query: ReportQuery): Promise<ReportQueryResult>;
   getHistory(
     tenantId: string,
     reportId: string

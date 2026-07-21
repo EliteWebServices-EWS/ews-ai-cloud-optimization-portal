@@ -25,8 +25,8 @@ import { DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
 import { DEFAULT_RECOMMENDATION_CONFIG } from '../../engines/recommendation';
 import { DEFAULT_VERIFICATION_CONFIG } from '../../engines/verification';
 import {
-  filterReports,
-  parseReportFilters,
+  parseReportQuery,
+  ReportQueryValidationError,
   toReportGenerationInput,
   type ReportingEngine,
 } from '../../engines/reporting';
@@ -1415,18 +1415,17 @@ export function createReportRoutes(
       const tenantId = resolveRouteTenantContext(req).tenantId;
 
       try {
-        const filters = parseReportFilters(
+        const query = parseReportQuery(
           req.query as Record<string, unknown>
         );
 
-        const allReports = await deps.reportingEngine.listReports(
-          tenantId
-        );
+        const result =
+          await deps.reportingEngine.queryReports(
+            tenantId,
+            query
+          );
 
-        const reports = filterReports(
-          allReports,
-          filters
-        );
+        const reports = result.reports;
 
         res.json(
           buildSuccessResponse(
@@ -1472,13 +1471,37 @@ export function createReportRoutes(
                 verificationStatus:
                   report.verification?.status,
               })),
-              total: reports.length,
-              filters,
+              total: result.total,
+              filters: query.filters,
+              search: query.search,
+              sort: {
+                sortBy: query.sortBy,
+                sortOrder: query.sortOrder,
+              },
+              pagination: {
+                limit: query.limit,
+                count: reports.length,
+                nextToken: result.nextToken,
+              },
             },
             requestId
           )
         );
       } catch (error) {
+        if (error instanceof ReportQueryValidationError) {
+          handleRouteError(
+            res,
+            new AppError(
+              'INVALID_REQUEST',
+              error.message,
+              400
+            ),
+            requestId,
+            'reports'
+          );
+          return;
+        }
+
         handleRouteError(
           res,
           error,

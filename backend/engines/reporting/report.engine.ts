@@ -9,6 +9,7 @@ import { REPORT_ERROR_CODES, createReportError } from './report.errors';
 import { generateReport } from './report.generator';
 import { MockReportRepository } from './mock-report.repository';
 import type { ReportRepository } from './report.repository';
+import type { ReportQuery, ReportQueryResult } from './report.query';
 
 const logger = createLogger('ReportingEngine');
 
@@ -158,6 +159,13 @@ export class ReportingEngine {
 
   listReports(tenantId: string): Promise<OptimizationReport[]> {
     return this.repository.list(tenantId);
+  }
+
+  queryReports(
+    tenantId: string,
+    query: ReportQuery
+  ): Promise<ReportQueryResult> {
+    return this.repository.query(tenantId, query);
   }
 
   getRepository(): ReportRepository {
