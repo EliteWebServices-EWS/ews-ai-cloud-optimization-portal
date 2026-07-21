@@ -22,12 +22,16 @@ export interface ReportStoreInterface {
   getByWorkflowId(tenantId: string, workflowId: string): OptimizationReport | undefined;
   list(tenantId: string): OptimizationReport[];
   delete(tenantId: string, reportId: string): boolean;
+  resolveReportOwnerTenantId(reportId: string): string | undefined;
+  resolveReportOwnerTenantIdByWorkflow(workflowId: string): string | undefined;
 }
 
 /** In-memory optimization report registry. */
 export class InMemoryReportStore implements ReportStoreInterface {
   private readonly reports = new Map<string, OptimizationReport>();
   private readonly workflowIndex = new Map<string, string>();
+  private readonly reportOwnerIndex = new Map<string, string>();
+  private readonly workflowOwnerIndex = new Map<string, string>();
 
   save(report: OptimizationReport): void {
     const key = buildStoreKey(report.tenantId, report.reportId);
@@ -36,6 +40,8 @@ export class InMemoryReportStore implements ReportStoreInterface {
       buildWorkflowIndexKey(report.tenantId, report.workflowId),
       report.reportId
     );
+    this.reportOwnerIndex.set(report.reportId, report.tenantId);
+    this.workflowOwnerIndex.set(report.workflowId, report.tenantId);
   }
 
   get(tenantId: string, reportId: string): OptimizationReport | undefined {
@@ -84,8 +90,20 @@ export class InMemoryReportStore implements ReportStoreInterface {
     this.workflowIndex.delete(
       buildWorkflowIndexKey(tenantId, report.workflowId)
     );
+    this.reportOwnerIndex.delete(reportId);
+    this.workflowOwnerIndex.delete(report.workflowId);
 
     return true;
+  }
+
+  resolveReportOwnerTenantId(reportId: string): string | undefined {
+    return this.reportOwnerIndex.get(reportId);
+  }
+
+  resolveReportOwnerTenantIdByWorkflow(
+    workflowId: string
+  ): string | undefined {
+    return this.workflowOwnerIndex.get(workflowId);
   }
 }
 

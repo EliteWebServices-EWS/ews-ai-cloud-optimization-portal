@@ -27,8 +27,16 @@ Until the Pre Token Generation trigger is deployed, compatibility mode uses `DEF
 | Stores | `workflow.store.ts`, `report.store.ts`, `learning.store.ts` |
 | API | `backend/api/routes/index.ts`, `tenant-route-helpers.ts` |
 | Infra | `infrastructure/auth/template.yaml` (inline Pre Token Gen ZipFile), `backend/template.yaml`, `infrastructure/monitoring/template.yaml` |
-| Tests | `tenant.test.ts`, `tenant-isolation.test.ts`, `pre-token-generation.test.ts` |
+| Tests | `tenant.test.ts`, `tenant-isolation.test.ts`, `tenant-access-denied.test.ts`, `pre-token-generation.test.ts` |
 | Docs | `docs/security/10.5.16-tenant-isolation-foundation.md` |
+
+## Audit schema note
+
+`tenant.access_denied` events include:
+
+- `tenantId` — requesting tenant
+- `resourceTenantId` — owning tenant (audit-only; not exposed in API responses)
+- `resource.type`, `resource.id`, `actor.userId`, `requestId`, `correlationId`
 
 ## Deployment order
 

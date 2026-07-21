@@ -30,7 +30,7 @@ Cognito JWT (custom:tenantId)
 
 **Attack:** Tenant B user guesses Tenant A workflow/report UUID.
 
-**Mitigation:** Composite store keys; lookup requires both tenant and resource ID; mismatch returns empty result → 404; `tenant.access_denied` audit event when record exists under different tenant.
+**Mitigation:** Composite store keys; lookup requires both tenant and resource ID; mismatch returns empty result → 404; `tenant.access_denied` audit event when record exists under different tenant. Audit payload includes `tenantId` (requesting tenant) and audit-only `resourceTenantId` (owning tenant).
 
 ### T3 — Audit query lateral movement
 

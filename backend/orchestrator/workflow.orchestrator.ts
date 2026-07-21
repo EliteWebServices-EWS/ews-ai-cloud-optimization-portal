@@ -202,6 +202,11 @@ export class WorkflowOrchestrator {
     return this.store.get(tenantId, workflowId);
   }
 
+  /** Resolve the owning tenant for a workflow ID without exposing the record. */
+  resolveWorkflowOwnerTenantId(workflowId: string): string | undefined {
+    return this.store.resolveOwnerTenantId(workflowId);
+  }
+
   /** Retrieve workflow status summary by tenant and ID. */
   getWorkflowStatus(tenantId: string, workflowId: string): {
     metadata: WorkflowMetadata;

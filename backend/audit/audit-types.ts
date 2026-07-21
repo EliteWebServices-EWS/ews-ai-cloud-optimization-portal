@@ -40,6 +40,8 @@ export interface AuditEvent {
   outcome: AuditOutcome;
 
   tenantId?: string;
+  /** Owning tenant of the requested resource (audit-only; never returned to clients). */
+  resourceTenantId?: string;
   schemaVersion?: number;
   source?: AuditSource;
   expiresAt?: number;
@@ -76,6 +78,8 @@ export interface WriteAuditEventInput {
 
   /** Trusted tenant from request security context — never from client input. */
   tenantId?: string;
+  /** Owning tenant of the requested resource (audit-only; never returned to clients). */
+  resourceTenantId?: string;
 
   action?: string;
   method?: string;
