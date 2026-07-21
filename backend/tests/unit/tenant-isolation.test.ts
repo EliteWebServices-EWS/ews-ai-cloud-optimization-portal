@@ -120,7 +120,7 @@ describe('Report tenant isolation', () => {
 
     assert.ok(record);
 
-    const reportResult = reportingEngine.execute(
+    const reportResult = await reportingEngine.execute(
       toReportGenerationInput(record)
     );
 
@@ -128,7 +128,7 @@ describe('Report tenant isolation', () => {
     assert.equal(reportResult.data?.tenantId, TENANT_A);
 
     assert.equal(
-      reportingEngine.getReportByWorkflowId(
+      await reportingEngine.getReportByWorkflowId(
         TENANT_B,
         result.workflowId
       ),
@@ -152,7 +152,7 @@ describe('Report tenant isolation', () => {
     );
 
     assert.ok(recordA);
-    reportingEngine.execute(toReportGenerationInput(recordA));
+    await reportingEngine.execute(toReportGenerationInput(recordA));
 
     const resultB = await orchestrator.executeWorkflow({
       tenantId: TENANT_B,
@@ -166,13 +166,16 @@ describe('Report tenant isolation', () => {
     );
 
     assert.ok(recordB);
-    reportingEngine.execute(toReportGenerationInput(recordB));
+    await reportingEngine.execute(toReportGenerationInput(recordB));
 
-    assert.equal(reportingEngine.listReports(TENANT_A).length, 1);
-    assert.equal(reportingEngine.listReports(TENANT_B).length, 1);
+    const tenantAReports = await reportingEngine.listReports(TENANT_A);
+    const tenantBReports = await reportingEngine.listReports(TENANT_B);
+
+    assert.equal(tenantAReports.length, 1);
+    assert.equal(tenantBReports.length, 1);
     assert.notEqual(
-      reportingEngine.listReports(TENANT_A)[0]?.reportId,
-      reportingEngine.listReports(TENANT_B)[0]?.reportId
+      tenantAReports[0]?.reportId,
+      tenantBReports[0]?.reportId
     );
   });
 });
@@ -210,7 +213,7 @@ describe('Learning store tenant isolation', () => {
     assert.equal(record.context.learningRecord.tenantId, TENANT_A);
 
     assert.equal(
-      learningStore.getByWorkflowId(
+      await learningStore.findByWorkflowId(
         TENANT_B,
         result.workflowId
       ),

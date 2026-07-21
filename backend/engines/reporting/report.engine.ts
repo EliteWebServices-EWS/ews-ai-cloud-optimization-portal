@@ -7,12 +7,13 @@ import type { OptimizationReport, ReportGenerationInput, Result } from '../../sh
 import { createLogger } from '../../shared/utils';
 import { REPORT_ERROR_CODES, createReportError } from './report.errors';
 import { generateReport } from './report.generator';
-import { createReportStore, type ReportStoreInterface } from './report.store';
+import { MockReportRepository } from './mock-report.repository';
+import type { ReportRepository } from './report.repository';
 
 const logger = createLogger('ReportingEngine');
 
 export interface ReportingEngineOptions {
-  store?: ReportStoreInterface;
+  repository?: ReportRepository;
 }
 
 /** Maps a workflow record context into report generation input. */
@@ -66,14 +67,16 @@ export function toReportGenerationInput(
  */
 export class ReportingEngine {
   readonly name = 'Reporting Engine';
-  private readonly store: ReportStoreInterface;
+  private readonly repository: ReportRepository;
 
   constructor(options: ReportingEngineOptions = {}) {
-    this.store = options.store ?? createReportStore();
+    this.repository = options.repository ?? new MockReportRepository();
   }
 
   /** Generate and persist an optimization report from workflow data. */
-  execute(input: ReportGenerationInput): Result<OptimizationReport> {
+  async execute(
+    input: ReportGenerationInput
+  ): Promise<Result<OptimizationReport>> {
     const start = Date.now();
 
     logger.info('Report generation started', {
@@ -95,7 +98,7 @@ export class ReportingEngine {
       }
 
       const report = generateReport(input);
-      this.store.save(report);
+      await this.repository.save(report);
 
       logger.info('Report generated', {
         workflowId: input.workflowId,
@@ -127,30 +130,38 @@ export class ReportingEngine {
     }
   }
 
-  getReport(tenantId: string, reportId: string): OptimizationReport | undefined {
-    return this.store.get(tenantId, reportId);
+  getReport(
+    tenantId: string,
+    reportId: string
+  ): Promise<OptimizationReport | undefined> {
+    return this.repository.findById(tenantId, reportId);
   }
 
-  getReportByWorkflowId(tenantId: string, workflowId: string): OptimizationReport | undefined {
-    return this.store.getByWorkflowId(tenantId, workflowId);
+  getReportByWorkflowId(
+    tenantId: string,
+    workflowId: string
+  ): Promise<OptimizationReport | undefined> {
+    return this.repository.findByWorkflowId(tenantId, workflowId);
   }
 
-  resolveReportOwnerTenantId(reportId: string): string | undefined {
-    return this.store.resolveReportOwnerTenantId(reportId);
+  resolveReportOwnerTenantId(
+    reportId: string
+  ): Promise<string | undefined> {
+    return this.repository.resolveOwnerTenantId(reportId);
   }
 
   resolveReportOwnerTenantIdByWorkflow(
     workflowId: string
-  ): string | undefined {
-    return this.store.resolveReportOwnerTenantIdByWorkflow(workflowId);
+  ): Promise<string | undefined> {
+    return this.repository.resolveOwnerTenantIdByWorkflow(workflowId);
   }
 
-  listReports(tenantId: string): OptimizationReport[] {
-    return this.store.list(tenantId);
+  listReports(tenantId: string): Promise<OptimizationReport[]> {
+    return this.repository.list(tenantId);
   }
 
-  getStore(): ReportStoreInterface {
-    return this.store;
+  getRepository(): ReportRepository {
+    return this.repository;
   }
 }
 
@@ -161,4 +172,4 @@ export function createReportingEngine(options?: ReportingEngineOptions): Reporti
 export { generateReport, generateExecutiveSummary, generateTechnicalSummary } from './report.generator';
 export { filterReports, parseReportFilters } from './report.filter';
 export { buildExportOptions, prepareExportPayload } from './report.export';
-export type { ReportStoreInterface } from './report.store';
+export type { ReportRepository } from './report.repository';

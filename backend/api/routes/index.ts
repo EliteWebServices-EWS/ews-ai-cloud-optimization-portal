@@ -1313,7 +1313,7 @@ export function createVerificationRoutes(
 
         if (workflowId) {
           const record =
-            deps.learningStore.getByWorkflowId(
+            await deps.learningStore.findByWorkflowId(
               tenantId,
               workflowId
             );
@@ -1323,18 +1323,15 @@ export function createVerificationRoutes(
               resourceType: 'workflow',
               resourceId: workflowId,
               ownerTenantId:
-                deps.learningStore.resolveOwnerTenantId(workflowId),
+                await deps.learningStore.resolveOwnerTenantId(workflowId),
               label: 'Verification report',
             });
           }
 
           const report =
-            deps.learningStore
-              .listReports(tenantId)
-              .find(
-                (item) =>
-                  item.workflowId === workflowId
-              );
+            (await deps.learningStore.listReports(tenantId)).find(
+              (item) => item.workflowId === workflowId
+            );
 
           res.json(
             buildSuccessResponse(
@@ -1351,10 +1348,10 @@ export function createVerificationRoutes(
         }
 
         const reports =
-          deps.learningStore.listReports(tenantId);
+          await deps.learningStore.listReports(tenantId);
 
         const total =
-          deps.learningStore.listRecords(tenantId).length;
+          (await deps.learningStore.list(tenantId)).length;
 
         res.json(
           buildSuccessResponse(
@@ -1413,7 +1410,7 @@ export function createReportRoutes(
 
   router.get(
     '/reports',
-    (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const requestId = generateRequestId();
       const tenantId = resolveRouteTenantContext(req).tenantId;
 
@@ -1422,8 +1419,9 @@ export function createReportRoutes(
           req.query as Record<string, unknown>
         );
 
-        const allReports =
-          deps.reportingEngine.listReports(tenantId);
+        const allReports = await deps.reportingEngine.listReports(
+          tenantId
+        );
 
         const reports = filterReports(
           allReports,
@@ -1493,25 +1491,24 @@ export function createReportRoutes(
 
   router.get(
     '/reports/:id',
-    (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const requestId = generateRequestId();
       const tenantId = resolveRouteTenantContext(req).tenantId;
 
       try {
         const reportId = req.params.id;
 
-        const report =
-          deps.reportingEngine.getReport(
-            tenantId,
-            reportId
-          );
+        const report = await deps.reportingEngine.getReport(
+          tenantId,
+          reportId
+        );
 
         if (!report) {
           handleTenantScopedResourceMiss(req, {
             resourceType: 'report',
             resourceId: reportId,
             ownerTenantId:
-              deps.reportingEngine.resolveReportOwnerTenantId(reportId),
+              await deps.reportingEngine.resolveReportOwnerTenantId(reportId),
             label: 'Report',
           });
         }
@@ -1543,7 +1540,7 @@ export function createReportRoutes(
   router.post(
     '/reports/generate',
     requireAnyRole(...ANALYSIS_ROLES),
-    (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const requestId = getRequestId(req);
       const correlationId = getCorrelationId(
         req,
@@ -1561,12 +1558,10 @@ export function createReportRoutes(
           req.body
         ).workflowId;
 
-        const existing =
-          deps.reportingEngine
-            .getReportByWorkflowId(
-              tenantId,
-              workflowId
-            );
+        const existing = await deps.reportingEngine.getReportByWorkflowId(
+          tenantId,
+          workflowId
+        );
 
         if (existing) {
           reportId = existing.reportId;
@@ -1604,7 +1599,7 @@ export function createReportRoutes(
         }
 
         const cachedReportOwner =
-          deps.reportingEngine.resolveReportOwnerTenantIdByWorkflow(
+          await deps.reportingEngine.resolveReportOwnerTenantIdByWorkflow(
             workflowId
           );
 
@@ -1646,8 +1641,7 @@ export function createReportRoutes(
         const input =
           toReportGenerationInput(record);
 
-        const result =
-          deps.reportingEngine.execute(input);
+        const result = await deps.reportingEngine.execute(input);
 
         if (!result.success || !result.data) {
           const code =

@@ -12,7 +12,7 @@ import type {
   WorkflowResult,
 } from '../shared/types';
 import type { ExecutionSimulatorInterface } from '../execution';
-import type { LearningStoreInterface } from '../engines/learning';
+import { buildLearningRecord, type LearningStoreInterface } from '../engines/learning';
 import type { VerificationEngine } from '../engines/verification';
 import {
   PLATFORM_MODE,
@@ -750,9 +750,22 @@ export class WorkflowOrchestrator {
       completedAt: new Date().toISOString(),
     };
 
-    context.learningRecord = this.deps.learningStore.save(
-      this.deps.learningStore.buildRecord(context.tenantId, outcome)
+    context.learningRecord = await this.deps.learningStore.save(
+      buildLearningRecord(context.tenantId, {
+        ...outcome,
+        confidence: context.confidence,
+      })
     );
+
+    if (context.confidence) {
+      await this.deps.learningStore.appendConfidence({
+        historyId: `${context.workflowId}:confidence:1`,
+        tenantId: context.tenantId,
+        workflowId: context.workflowId,
+        confidence: context.confidence,
+        recordedAt: context.learningRecord.recordedAt,
+      });
+    }
   }
 
   private failWorkflow(
