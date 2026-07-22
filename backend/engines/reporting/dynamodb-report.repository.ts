@@ -1,12 +1,18 @@
 /**
  * DynamoDB-backed ReportRepository.
  *
- * Single-table layout (all under the tenant partition unless noted):
+ * Report content and history live in the dedicated Reports table (tenant
+ * partition unless noted):
  *   REPORT#<reportId>            report content
  *   REPORTWF#<workflowId>        workflow -> reportId pointer
  *   REPORTHIST#<reportId>#<seq>  append-only history entries
- *   OWNER#REPORT#<reportId>      global reportId -> tenantId (audit only)
- *   OWNER#REPORTWF#<workflowId>  global workflowId -> tenantId (audit only)
+ *
+ * Cross-tenant ownership lookups (used only for tenant.access_denied
+ * auditing) live in the shared Ownership table, keyed by the same
+ * resourceType/resourceId scheme main's repository contracts use so any
+ * future consumer of that table stays compatible:
+ *   RESOURCE#REPORT#<reportId>    -> ownerTenantId
+ *   RESOURCE#WORKFLOW#<workflowId> -> ownerTenantId
  *
  * Search, filter, sort, and pagination reuse the shared pure query functions
  * so behavior matches the mock exactly. A GSI-backed push-down is a future
@@ -20,6 +26,10 @@ import {
   type PersistenceTable,
 } from '../../persistence/persistence-table';
 import {
+  ownershipPartitionKey,
+  OWNERSHIP_SORT_KEY,
+} from '../../database/dynamodb-keys';
+import {
   toReportMetadata,
   type ReportHistoryEntry,
   type ReportMetadata,
@@ -30,8 +40,6 @@ import {
   type ReportQuery,
   type ReportQueryResult,
 } from './report.query';
-
-const OWNER_SK = 'OWNER';
 
 function reportSk(reportId: string): string {
   return `REPORT#${reportId}`;
@@ -49,16 +57,11 @@ function historySk(reportId: string, seq: number): string {
   return `${historyPrefix(reportId)}${String(seq).padStart(12, '0')}`;
 }
 
-function reportOwnerPk(reportId: string): string {
-  return `OWNER#REPORT#${reportId}`;
-}
-
-function workflowOwnerPk(workflowId: string): string {
-  return `OWNER#REPORTWF#${workflowId}`;
-}
-
 export class DynamoDbReportRepository implements ReportRepository {
-  constructor(private readonly table: PersistenceTable) {}
+  constructor(
+    private readonly table: PersistenceTable,
+    private readonly ownershipTable: PersistenceTable
+  ) {}
 
   async save(report: OptimizationReport): Promise<OptimizationReport> {
     const pk = buildTenantPartitionKey(report.tenantId);
@@ -83,21 +86,25 @@ export class DynamoDbReportRepository implements ReportRepository {
         entityType: 'report-workflow-index',
         reportId: report.reportId,
       },
+    ];
+
+    await this.table.putItems(items);
+
+    await this.ownershipTable.putItems([
       {
-        pk: reportOwnerPk(report.reportId),
-        sk: OWNER_SK,
+        pk: ownershipPartitionKey('REPORT', report.reportId),
+        sk: OWNERSHIP_SORT_KEY,
         entityType: 'report-owner-index',
         tenantId: report.tenantId,
       },
       {
-        pk: workflowOwnerPk(report.workflowId),
-        sk: OWNER_SK,
-        entityType: 'report-workflow-owner-index',
+        pk: ownershipPartitionKey('WORKFLOW', report.workflowId),
+        sk: OWNERSHIP_SORT_KEY,
+        entityType: 'workflow-owner-index',
         tenantId: report.tenantId,
       },
-    ];
+    ]);
 
-    await this.table.putItems(items);
     await this.appendHistory(report, existing ? 'updated' : 'created');
 
     return report;
@@ -177,8 +184,14 @@ export class DynamoDbReportRepository implements ReportRepository {
 
     await this.table.deleteItem(pk, reportSk(reportId));
     await this.table.deleteItem(pk, workflowPointerSk(report.workflowId));
-    await this.table.deleteItem(reportOwnerPk(reportId), OWNER_SK);
-    await this.table.deleteItem(workflowOwnerPk(report.workflowId), OWNER_SK);
+    await this.ownershipTable.deleteItem(
+      ownershipPartitionKey('REPORT', reportId),
+      OWNERSHIP_SORT_KEY
+    );
+    await this.ownershipTable.deleteItem(
+      ownershipPartitionKey('WORKFLOW', report.workflowId),
+      OWNERSHIP_SORT_KEY
+    );
     await this.appendHistory(report, 'deleted');
 
     return true;
@@ -187,16 +200,19 @@ export class DynamoDbReportRepository implements ReportRepository {
   async resolveOwnerTenantId(
     reportId: string
   ): Promise<string | undefined> {
-    const item = await this.table.getItem(reportOwnerPk(reportId), OWNER_SK);
+    const item = await this.ownershipTable.getItem(
+      ownershipPartitionKey('REPORT', reportId),
+      OWNERSHIP_SORT_KEY
+    );
     return item?.tenantId as string | undefined;
   }
 
   async resolveOwnerTenantIdByWorkflow(
     workflowId: string
   ): Promise<string | undefined> {
-    const item = await this.table.getItem(
-      workflowOwnerPk(workflowId),
-      OWNER_SK
+    const item = await this.ownershipTable.getItem(
+      ownershipPartitionKey('WORKFLOW', workflowId),
+      OWNERSHIP_SORT_KEY
     );
     return item?.tenantId as string | undefined;
   }

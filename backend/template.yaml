@@ -181,12 +181,192 @@ Resources:
             Resource:
               - !GetAtt SisumAuditTable.Arn
 
-  SisumPersistenceTable:
+  SisumWorkflowsTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: !Sub "sisum-persistence-${Environment}"
+      TableName: !Sub "sisum-workflows-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: WorkflowPersistence
+
+  SisumReportsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-reports-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: ReportPersistence
+
+  SisumLearningTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-learning-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: LearningPersistence
+
+  SisumVerificationsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-verifications-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: VerificationPersistence
+
+  SisumOwnershipTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-ownership-${Environment}"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: pk
@@ -202,32 +382,46 @@ Resources:
         SSEEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
       Tags:
         - Key: Project
           Value: SISUM
         - Key: Environment
           Value: !Ref Environment
         - Key: Purpose
-          Value: BusinessPersistence
+          Value: OwnershipPersistence
 
-  SisumPersistenceTablePolicy:
+  SisumBusinessPersistencePolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub "sisum-persistence-dynamodb-${Environment}"
+      PolicyName: !Sub "sisum-business-persistence-${Environment}"
       Roles:
         - SisumLambdaExecutionRole
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - Sid: PersistenceTableWriteRead
+          - Sid: TenantBusinessTableDataAccess
             Effect: Allow
             Action:
-              - dynamodb:PutItem
               - dynamodb:GetItem
-              - dynamodb:Query
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
               - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:TransactGetItems
+              - dynamodb:TransactWriteItems
             Resource:
-              - !GetAtt SisumPersistenceTable.Arn
+              - !GetAtt SisumWorkflowsTable.Arn
+              - !Sub "${SisumWorkflowsTable.Arn}/index/*"
+              - !GetAtt SisumReportsTable.Arn
+              - !Sub "${SisumReportsTable.Arn}/index/*"
+              - !GetAtt SisumLearningTable.Arn
+              - !Sub "${SisumLearningTable.Arn}/index/*"
+              - !GetAtt SisumVerificationsTable.Arn
+              - !Sub "${SisumVerificationsTable.Arn}/index/*"
+              - !GetAtt SisumOwnershipTable.Arn
 
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
@@ -280,11 +474,15 @@ Resources:
           AUDIT_TABLE_NAME: !Ref SisumAuditTable
           AUDIT_RETENTION_DAYS: !Ref AuditRetentionDays
           AUDIT_PERSISTENCE_ENABLED: !Ref AuditPersistenceEnabled
-          PERSISTENCE_TABLE_NAME: !Ref SisumPersistenceTable
           PERSISTENCE_ENABLED: !Ref PersistenceEnabled
           DEFAULT_TENANT_ID: !Ref DefaultTenantId
           TENANT_ENFORCEMENT_MODE: !Ref TenantEnforcementMode
           TENANT_FALLBACK_ENABLED: !Ref TenantFallbackEnabled
+          WORKFLOWS_TABLE_NAME: !Ref SisumWorkflowsTable
+          REPORTS_TABLE_NAME: !Ref SisumReportsTable
+          LEARNING_TABLE_NAME: !Ref SisumLearningTable
+          VERIFICATIONS_TABLE_NAME: !Ref SisumVerificationsTable
+          OWNERSHIP_TABLE_NAME: !Ref SisumOwnershipTable
 
       Events:
         PublicHealthRoute:
@@ -389,18 +587,26 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-AuditTableArn"
 
-  PersistenceTableName:
-    Description: DynamoDB business persistence table name.
-    Value: !Ref SisumPersistenceTable
-    Export:
-      Name: !Sub "${AWS::StackName}-PersistenceTableName"
-
-  PersistenceTableArn:
-    Description: DynamoDB business persistence table ARN.
-    Value: !GetAtt SisumPersistenceTable.Arn
-    Export:
-      Name: !Sub "${AWS::StackName}-PersistenceTableArn"
-
   JwtIssuer:
     Description: JWT issuer configured on API Gateway.
     Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}"
+
+  WorkflowsTableName:
+    Description: DynamoDB table for durable tenant workflows.
+    Value: !Ref SisumWorkflowsTable
+
+  ReportsTableName:
+    Description: DynamoDB table for durable tenant reports.
+    Value: !Ref SisumReportsTable
+
+  LearningTableName:
+    Description: DynamoDB table for durable tenant learning records.
+    Value: !Ref SisumLearningTable
+
+  VerificationsTableName:
+    Description: DynamoDB table for durable tenant verification records.
+    Value: !Ref SisumVerificationsTable
+
+  OwnershipTableName:
+    Description: DynamoDB table for durable ownership metadata.
+    Value: !Ref SisumOwnershipTable

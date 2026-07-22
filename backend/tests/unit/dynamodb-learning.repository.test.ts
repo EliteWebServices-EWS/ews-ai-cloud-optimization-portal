@@ -92,6 +92,7 @@ function buildConfidence(
 describe('DynamoDbLearningRepository', () => {
   it('persists records, feedback, and confidence history', async () => {
     const repository = new DynamoDbLearningRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
 
@@ -129,6 +130,7 @@ describe('DynamoDbLearningRepository', () => {
 
   it('rejects feedback for a missing learning record', async () => {
     const repository = new DynamoDbLearningRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
 
@@ -140,6 +142,7 @@ describe('DynamoDbLearningRepository', () => {
 
   it('resolves the owner tenant for denial auditing but isolates reads', async () => {
     const repository = new DynamoDbLearningRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
     await repository.save(buildRecord());
@@ -157,9 +160,15 @@ describe('DynamoDbLearningRepository', () => {
 
   it('survives a fresh repository over the same table (restart)', async () => {
     const table = createFakePersistenceTable();
-    await new DynamoDbLearningRepository(table).save(buildRecord());
+    const ownershipTable = createFakePersistenceTable();
+    await new DynamoDbLearningRepository(table, ownershipTable).save(
+      buildRecord()
+    );
 
-    const afterRestart = new DynamoDbLearningRepository(table);
+    const afterRestart = new DynamoDbLearningRepository(
+      table,
+      ownershipTable
+    );
     assert.equal(
       (await afterRestart.findByWorkflowId('tenant-a', 'workflow-001'))
         ?.recommendation.summary,

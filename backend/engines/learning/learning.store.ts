@@ -1,5 +1,5 @@
 import type { LearningRecord, OptimizationOutcome } from '../../shared/types';
-import { getPersistenceTable } from '../../persistence/persistence-table';
+import { getLearningTable, getOwnershipTable } from '../../persistence/persistence-table';
 import { MockLearningRepository } from './mock-learning.repository';
 import { DynamoDbLearningRepository } from './dynamodb-learning.repository';
 import type { LearningRepository } from './learning.repository';
@@ -29,8 +29,9 @@ export function buildLearningRecord(tenantId: string, outcome: OptimizationOutco
  * falling back to the in-memory mock for local development and tests.
  */
 export function createLearningStore(): LearningRepository {
-  const table = getPersistenceTable();
-  return table
-    ? new DynamoDbLearningRepository(table)
+  const table = getLearningTable();
+  const ownershipTable = getOwnershipTable();
+  return table && ownershipTable
+    ? new DynamoDbLearningRepository(table, ownershipTable)
     : new MockLearningRepository();
 }

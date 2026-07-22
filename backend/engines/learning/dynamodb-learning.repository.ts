@@ -1,11 +1,16 @@
 /**
  * DynamoDB-backed LearningRepository.
  *
- * Single-table layout (all under the tenant partition unless noted):
+ * Learning records live in the dedicated Learning table (tenant partition
+ * unless noted):
  *   LEARN#<workflowId>                 learning record
  *   LEARNFB#<workflowId>#<feedbackId>  feedback (append-only)
  *   LEARNCONF#<workflowId>#<seq>       confidence history (append-only)
- *   OWNER#LEARN#<workflowId>           global workflowId -> tenantId (audit only)
+ *
+ * Cross-tenant ownership lookups (used only for tenant.access_denied
+ * auditing) live in the shared Ownership table, keyed the same way the
+ * report adapter keys workflow ownership so both share one fact:
+ *   RESOURCE#WORKFLOW#<workflowId> -> ownerTenantId
  */
 
 import type {
@@ -18,14 +23,16 @@ import {
   type PersistenceTable,
 } from '../../persistence/persistence-table';
 import {
+  ownershipPartitionKey,
+  OWNERSHIP_SORT_KEY,
+} from '../../database/dynamodb-keys';
+import {
   toLearningMetadata,
   type ConfidenceHistoryEntry,
   type LearningFeedback,
   type LearningMetadata,
   type LearningRepository,
 } from './learning.repository';
-
-const OWNER_SK = 'OWNER';
 
 function learnSk(workflowId: string): string {
   return `LEARN#${workflowId}`;
@@ -47,10 +54,6 @@ function confidenceSk(workflowId: string, seq: number): string {
   return `LEARNCONF#${workflowId}#${String(seq).padStart(12, '0')}`;
 }
 
-function ownerPk(workflowId: string): string {
-  return `OWNER#LEARN#${workflowId}`;
-}
-
 function byRecordedAtAscending(
   left: { recordedAt: string },
   right: { recordedAt: string }
@@ -62,7 +65,10 @@ function byRecordedAtAscending(
 }
 
 export class DynamoDbLearningRepository implements LearningRepository {
-  constructor(private readonly table: PersistenceTable) {}
+  constructor(
+    private readonly table: PersistenceTable,
+    private readonly ownershipTable: PersistenceTable
+  ) {}
 
   async save(record: LearningRecord): Promise<LearningRecord> {
     const pk = buildTenantPartitionKey(record.tenantId);
@@ -75,10 +81,10 @@ export class DynamoDbLearningRepository implements LearningRepository {
       data: record,
     });
 
-    await this.table.putItem({
-      pk: ownerPk(record.workflowId),
-      sk: OWNER_SK,
-      entityType: 'learning-owner-index',
+    await this.ownershipTable.putItem({
+      pk: ownershipPartitionKey('WORKFLOW', record.workflowId),
+      sk: OWNERSHIP_SORT_KEY,
+      entityType: 'workflow-owner-index',
       tenantId: record.tenantId,
     });
 
@@ -218,7 +224,10 @@ export class DynamoDbLearningRepository implements LearningRepository {
   async resolveOwnerTenantId(
     workflowId: string
   ): Promise<string | undefined> {
-    const item = await this.table.getItem(ownerPk(workflowId), OWNER_SK);
+    const item = await this.ownershipTable.getItem(
+      ownershipPartitionKey('WORKFLOW', workflowId),
+      OWNERSHIP_SORT_KEY
+    );
     return item?.tenantId as string | undefined;
   }
 

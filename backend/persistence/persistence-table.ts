@@ -1,7 +1,8 @@
 /**
- * Shared DynamoDB access for durable business persistence (reports, learning,
- * verification). Single-table design mirroring the audit table: PAY_PER_REQUEST,
- * string pk/sk, server-side encryption, and point-in-time recovery.
+ * DynamoDB access for durable business persistence (reports, learning,
+ * verification, and the cross-cutting ownership index). Each entity type has
+ * its own physical table (PAY_PER_REQUEST, string pk/sk, server-side
+ * encryption, and point-in-time recovery), mirroring the audit table.
  *
  * Item envelope:
  *   { pk, sk, entityType, data: <domain object>, ...denormalized fields }
@@ -129,45 +130,74 @@ export class PersistenceTable {
   }
 }
 
-let sharedTable: PersistenceTable | null = null;
-
-/** Persistence is active only when a table name is configured and not disabled. */
+/** Persistence is active unless explicitly disabled. */
 export function isPersistenceEnabled(): boolean {
-  if (
-    process.env.PERSISTENCE_ENABLED?.trim().toLowerCase() === 'false'
-  ) {
-    return false;
-  }
-
-  return Boolean(process.env.PERSISTENCE_TABLE_NAME?.trim());
+  return process.env.PERSISTENCE_ENABLED?.trim().toLowerCase() !== 'false';
 }
 
 /**
- * Resolve the shared persistence table, or null when persistence is not
- * configured (local dev / tests default to mock repositories).
+ * Builds a memoized accessor for one physical table, resolved from the given
+ * environment variable. Returns null when persistence is disabled or the
+ * table name is not configured (local dev / tests default to mock
+ * repositories).
  */
-export function getPersistenceTable(): PersistenceTable | null {
-  if (!isPersistenceEnabled()) {
-    return null;
-  }
+function createTableAccessor(envVarName: string) {
+  let cached: PersistenceTable | null = null;
 
-  const tableName = process.env.PERSISTENCE_TABLE_NAME!.trim();
+  return {
+    get(): PersistenceTable | null {
+      if (!isPersistenceEnabled()) {
+        return null;
+      }
 
-  if (!sharedTable) {
-    sharedTable = new PersistenceTable({ tableName });
-  }
+      const tableName = process.env[envVarName]?.trim();
 
-  return sharedTable;
+      if (!tableName) {
+        return null;
+      }
+
+      if (!cached) {
+        cached = new PersistenceTable({ tableName });
+      }
+
+      return cached;
+    },
+    /** Override the memoized table (used by tests to inject a fake client). */
+    set(table: PersistenceTable | null): void {
+      cached = table;
+    },
+    /** Reset the memoized table. */
+    reset(): void {
+      cached = null;
+    },
+  };
 }
 
-/** Override the shared table (used by tests to inject a fake client). */
-export function setPersistenceTable(
-  table: PersistenceTable | null
-): void {
-  sharedTable = table;
-}
+const reportsAccessor = createTableAccessor('REPORTS_TABLE_NAME');
+const learningAccessor = createTableAccessor('LEARNING_TABLE_NAME');
+const verificationsAccessor = createTableAccessor('VERIFICATIONS_TABLE_NAME');
+const ownershipAccessor = createTableAccessor('OWNERSHIP_TABLE_NAME');
 
-/** Reset the memoized shared table. */
-export function resetPersistenceTable(): void {
-  sharedTable = null;
+export const getReportsTable = reportsAccessor.get;
+export const setReportsTable = reportsAccessor.set;
+export const resetReportsTable = reportsAccessor.reset;
+
+export const getLearningTable = learningAccessor.get;
+export const setLearningTable = learningAccessor.set;
+export const resetLearningTable = learningAccessor.reset;
+
+export const getVerificationsTable = verificationsAccessor.get;
+export const setVerificationsTable = verificationsAccessor.set;
+export const resetVerificationsTable = verificationsAccessor.reset;
+
+export const getOwnershipTable = ownershipAccessor.get;
+export const setOwnershipTable = ownershipAccessor.set;
+export const resetOwnershipTable = ownershipAccessor.reset;
+
+/** Reset all memoized tables (used between tests). */
+export function resetAllPersistenceTables(): void {
+  reportsAccessor.reset();
+  learningAccessor.reset();
+  verificationsAccessor.reset();
+  ownershipAccessor.reset();
 }

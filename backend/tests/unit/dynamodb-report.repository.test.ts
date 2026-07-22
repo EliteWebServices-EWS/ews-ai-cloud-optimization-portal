@@ -61,6 +61,7 @@ function baseQuery(overrides: Partial<ReportQuery> = {}): ReportQuery {
 describe('DynamoDbReportRepository', () => {
   it('round-trips reports and looks them up by workflow ID', async () => {
     const repository = new DynamoDbReportRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
 
@@ -79,6 +80,7 @@ describe('DynamoDbReportRepository', () => {
 
   it('records append-only history across create and update', async () => {
     const repository = new DynamoDbReportRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
 
@@ -98,6 +100,7 @@ describe('DynamoDbReportRepository', () => {
 
   it('deletes report content while retaining history and clearing ownership', async () => {
     const repository = new DynamoDbReportRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
     await repository.save(buildReport());
@@ -115,6 +118,7 @@ describe('DynamoDbReportRepository', () => {
 
   it('resolves owner tenant for denial auditing but isolates reads', async () => {
     const repository = new DynamoDbReportRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
     await repository.save(buildReport());
@@ -133,6 +137,7 @@ describe('DynamoDbReportRepository', () => {
 
   it('applies search, filter, sort, and pagination via query()', async () => {
     const repository = new DynamoDbReportRepository(
+      createFakePersistenceTable(),
       createFakePersistenceTable()
     );
 
@@ -181,9 +186,12 @@ describe('DynamoDbReportRepository', () => {
 
   it('survives a fresh repository over the same table (restart)', async () => {
     const table = createFakePersistenceTable();
-    await new DynamoDbReportRepository(table).save(buildReport());
+    const ownershipTable = createFakePersistenceTable();
+    await new DynamoDbReportRepository(table, ownershipTable).save(
+      buildReport()
+    );
 
-    const afterRestart = new DynamoDbReportRepository(table);
+    const afterRestart = new DynamoDbReportRepository(table, ownershipTable);
     const reports = await afterRestart.list('tenant-a');
     assert.deepEqual(
       reports.map((r) => r.reportId),
