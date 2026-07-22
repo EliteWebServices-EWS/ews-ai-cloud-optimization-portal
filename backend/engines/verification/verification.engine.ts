@@ -11,11 +11,16 @@ import { compareVerificationOutcome } from './verification.comparator';
 import { buildVerificationReport } from './verification.report';
 import { DEFAULT_VERIFICATION_CONFIG, type VerificationConfig } from './verification.config';
 import { requireValidVerificationInputs } from './verification.validator';
+import { getVerificationsTable } from '../../persistence/persistence-table';
+import { MockVerificationRepository } from './mock-verification.repository';
+import { DynamoDbVerificationRepository } from './dynamodb-verification.repository';
+import type { VerificationRepository } from './verification.repository';
 
 const logger = createLogger('VerificationEngine');
 
 export interface VerificationEngineOptions {
   config?: VerificationConfig;
+  repository?: VerificationRepository;
 }
 
 /**
@@ -25,9 +30,11 @@ export interface VerificationEngineOptions {
 export class VerificationEngine implements VerificationEngineInterface {
   readonly name = 'Verification Engine';
   private readonly config: VerificationConfig;
+  private readonly repository: VerificationRepository;
 
   constructor(options: VerificationEngineOptions = {}) {
     this.config = options.config ?? DEFAULT_VERIFICATION_CONFIG;
+    this.repository = options.repository ?? new MockVerificationRepository();
   }
 
   async execute(request: VerificationRequest): Promise<Result<VerificationResult>> {
@@ -67,6 +74,16 @@ export class VerificationEngine implements VerificationEngineInterface {
         observation: request.observation,
         expectation,
         config: this.config,
+      });
+
+      await this.repository.save({
+        tenantId: request.context.tenantId,
+        workflowId: request.context.workflowId,
+        executionId: request.executionResult.executionId,
+        expectation,
+        observation: request.observation,
+        result,
+        recordedAt: new Date().toISOString(),
       });
 
       logger.info('Verification completed', {
@@ -121,6 +138,11 @@ export class VerificationEngine implements VerificationEngineInterface {
     });
   }
 
+  /** Exposes the persistence boundary for API composition and adapter injection. */
+  getRepository(): VerificationRepository {
+    return this.repository;
+  }
+
   private buildExpectation(request: VerificationRequest): VerificationExpectation {
     const expectedInstanceType =
       request.recommendation.detail.toInstanceType ??
@@ -142,7 +164,17 @@ export class VerificationEngine implements VerificationEngineInterface {
 export function createVerificationEngine(
   options?: VerificationEngineOptions
 ): VerificationEngine {
-  return new VerificationEngine(options);
+  if (options?.repository) {
+    return new VerificationEngine(options);
+  }
+
+  const table = getVerificationsTable();
+  return new VerificationEngine({
+    ...options,
+    repository: table
+      ? new DynamoDbVerificationRepository(table)
+      : undefined,
+  });
 }
 
 export { compareVerificationOutcome } from './verification.comparator';

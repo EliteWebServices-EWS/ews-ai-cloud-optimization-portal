@@ -468,7 +468,7 @@ describe('Report route tenant access audit', () => {
     const record = orchestrator.getWorkflow(TENANT_B, result.workflowId);
     assert.ok(record);
 
-    const reportResult = reportingEngine.execute(
+    const reportResult = await reportingEngine.execute(
       toReportGenerationInput(record)
     );
 
@@ -548,7 +548,7 @@ describe('Report route tenant access audit', () => {
     const record = orchestrator.getWorkflow(TENANT_B, result.workflowId);
     assert.ok(record);
 
-    const reportResult = reportingEngine.execute(
+    const reportResult = await reportingEngine.execute(
       toReportGenerationInput(record)
     );
 

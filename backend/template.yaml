@@ -73,6 +73,16 @@ Parameters:
     Description: >
       Enables DynamoDB audit persistence in addition to CloudWatch logging.
 
+  PersistenceEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Enables durable DynamoDB persistence for reports, learning, and
+      verification outputs. When "false" the backend uses in-memory stores.
+
   DefaultTenantId:
     Type: String
     Default: sisum-default
@@ -464,6 +474,7 @@ Resources:
           AUDIT_TABLE_NAME: !Ref SisumAuditTable
           AUDIT_RETENTION_DAYS: !Ref AuditRetentionDays
           AUDIT_PERSISTENCE_ENABLED: !Ref AuditPersistenceEnabled
+          PERSISTENCE_ENABLED: !Ref PersistenceEnabled
           DEFAULT_TENANT_ID: !Ref DefaultTenantId
           TENANT_ENFORCEMENT_MODE: !Ref TenantEnforcementMode
           TENANT_FALLBACK_ENABLED: !Ref TenantFallbackEnabled

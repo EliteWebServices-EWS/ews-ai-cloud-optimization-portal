@@ -329,6 +329,7 @@ export interface OptimizationOutcome {
   execution: ExecutionResult;
   observation: Observation;
   verification: VerificationResult;
+  confidence?: ConfidenceResult;
   financialImpact: FinancialImpact;
   completedAt: string;
 }
@@ -343,6 +344,7 @@ export interface LearningRecord {
   execution: ExecutionResult;
   observation: Observation;
   verification: VerificationResult;
+  confidence?: ConfidenceResult;
   outcome: OptimizationOutcome;
   recordedAt: string;
 }
