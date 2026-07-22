@@ -1,5 +1,7 @@
 import type { LearningRecord, OptimizationOutcome } from '../../shared/types';
+import { getPersistenceTable } from '../../persistence/persistence-table';
 import { MockLearningRepository } from './mock-learning.repository';
+import { DynamoDbLearningRepository } from './dynamodb-learning.repository';
 import type { LearningRepository } from './learning.repository';
 
 /** @deprecated Use LearningRepository; retained as a transition alias. */
@@ -22,7 +24,13 @@ export function buildLearningRecord(tenantId: string, outcome: OptimizationOutco
   };
 }
 
-/** Creates the mock repository until a durable adapter is configured. */
-export function createLearningStore(): MockLearningRepository {
-  return new MockLearningRepository();
+/**
+ * Creates the DynamoDB-backed repository when persistence is configured,
+ * falling back to the in-memory mock for local development and tests.
+ */
+export function createLearningStore(): LearningRepository {
+  const table = getPersistenceTable();
+  return table
+    ? new DynamoDbLearningRepository(table)
+    : new MockLearningRepository();
 }

@@ -18,6 +18,7 @@ export type {
 } from './report.repository';
 export { toReportMetadata } from './report.repository';
 export { MockReportRepository } from './mock-report.repository';
+export { DynamoDbReportRepository } from './dynamodb-report.repository';
 export {
   ReportQueryValidationError,
   applyReportQuery,

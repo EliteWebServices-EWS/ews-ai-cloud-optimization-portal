@@ -4,6 +4,7 @@ export {
   type LearningStoreInterface,
 } from './learning.store';
 export { MockLearningRepository } from './mock-learning.repository';
+export { DynamoDbLearningRepository } from './dynamodb-learning.repository';
 export type {
   ConfidenceHistoryEntry,
   LearningFeedback,

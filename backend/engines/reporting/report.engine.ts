@@ -7,7 +7,9 @@ import type { OptimizationReport, ReportGenerationInput, Result } from '../../sh
 import { createLogger } from '../../shared/utils';
 import { REPORT_ERROR_CODES, createReportError } from './report.errors';
 import { generateReport } from './report.generator';
+import { getPersistenceTable } from '../../persistence/persistence-table';
 import { MockReportRepository } from './mock-report.repository';
+import { DynamoDbReportRepository } from './dynamodb-report.repository';
 import type { ReportRepository } from './report.repository';
 import type { ReportQuery, ReportQueryResult } from './report.query';
 
@@ -174,7 +176,15 @@ export class ReportingEngine {
 }
 
 export function createReportingEngine(options?: ReportingEngineOptions): ReportingEngine {
-  return new ReportingEngine(options);
+  if (options?.repository) {
+    return new ReportingEngine(options);
+  }
+
+  const table = getPersistenceTable();
+  return new ReportingEngine({
+    ...options,
+    repository: table ? new DynamoDbReportRepository(table) : undefined,
+  });
 }
 
 export { generateReport, generateExecutiveSummary, generateTechnicalSummary } from './report.generator';

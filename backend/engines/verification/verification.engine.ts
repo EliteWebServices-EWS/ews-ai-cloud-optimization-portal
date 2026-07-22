@@ -11,7 +11,9 @@ import { compareVerificationOutcome } from './verification.comparator';
 import { buildVerificationReport } from './verification.report';
 import { DEFAULT_VERIFICATION_CONFIG, type VerificationConfig } from './verification.config';
 import { requireValidVerificationInputs } from './verification.validator';
+import { getPersistenceTable } from '../../persistence/persistence-table';
 import { MockVerificationRepository } from './mock-verification.repository';
+import { DynamoDbVerificationRepository } from './dynamodb-verification.repository';
 import type { VerificationRepository } from './verification.repository';
 
 const logger = createLogger('VerificationEngine');
@@ -162,7 +164,17 @@ export class VerificationEngine implements VerificationEngineInterface {
 export function createVerificationEngine(
   options?: VerificationEngineOptions
 ): VerificationEngine {
-  return new VerificationEngine(options);
+  if (options?.repository) {
+    return new VerificationEngine(options);
+  }
+
+  const table = getPersistenceTable();
+  return new VerificationEngine({
+    ...options,
+    repository: table
+      ? new DynamoDbVerificationRepository(table)
+      : undefined,
+  });
 }
 
 export { compareVerificationOutcome } from './verification.comparator';
