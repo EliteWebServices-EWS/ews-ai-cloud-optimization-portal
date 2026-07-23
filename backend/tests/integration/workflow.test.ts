@@ -14,15 +14,12 @@ import { createWorkflowOrchestrator, createWorkflowStore } from '../../orchestra
 import { createPluginRegistry } from '../../plugins';
 import { createProvider } from '../../providers';
 import { PLUGIN_NAMES, PROVIDER_NAMES, WORKFLOW_STATES } from '../../shared/constants';
-
 const TENANT_ID = 'integration-workflow-tenant';
-
 function buildIntegrationContext() {
   const provider = createProvider(PROVIDER_NAMES.MOCK);
   const pluginRegistry = createPluginRegistry(provider);
   const learningStore = createLearningStore();
   const workflowStore = createWorkflowStore();
-
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
     governanceEngine: createGovernanceEngine(),
@@ -35,10 +32,8 @@ function buildIntegrationContext() {
     getPlugin: (name) => pluginRegistry.get(name),
     workflowStore,
   });
-
   return { orchestrator, workflowStore };
 }
-
 describe('Workflow persistence integration', () => {
   it('creates a workflow, reads metadata, and validates tenant-scoped lookup', async () => {
     const { orchestrator } = buildIntegrationContext();
@@ -47,22 +42,17 @@ describe('Workflow persistence integration', () => {
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
-
     assert.equal(result.status, WORKFLOW_STATES.COMPLETED);
-
-    const record = orchestrator.getWorkflow(TENANT_ID, result.workflowId);
+    const record = await orchestrator.getWorkflow(TENANT_ID, result.workflowId);
     assert.ok(record);
     assert.equal(record?.metadata.workflowId, result.workflowId);
     assert.equal(record?.metadata.status, WORKFLOW_STATES.COMPLETED);
-
-    const status = orchestrator.getWorkflowStatus(TENANT_ID, result.workflowId);
+    const status = await orchestrator.getWorkflowStatus(TENANT_ID, result.workflowId);
     assert.ok(status);
     assert.equal(status?.metadata.workflowId, result.workflowId);
     assert.equal(status?.metadata.status, WORKFLOW_STATES.COMPLETED);
-
-    assert.equal(orchestrator.getWorkflow('other-tenant', result.workflowId), undefined);
+    assert.equal(await orchestrator.getWorkflow('other-tenant', result.workflowId), undefined);
   });
-
   it('stores workflow metadata in the workflow store and resolves owner tenant', async () => {
     const { orchestrator, workflowStore } = buildIntegrationContext();
     const result = await orchestrator.executeWorkflow({
@@ -70,10 +60,9 @@ describe('Workflow persistence integration', () => {
       plugin: PLUGIN_NAMES.EC2,
       mode: 'full',
     });
-
-    const list = workflowStore.list(TENANT_ID);
+    const list = await workflowStore.list(TENANT_ID);
     assert.equal(list.length, 1);
     assert.equal(list[0].workflowId, result.workflowId);
-    assert.equal(workflowStore.resolveOwnerTenantId(result.workflowId), TENANT_ID);
+    assert.equal(await workflowStore.resolveOwnerTenantId(result.workflowId), TENANT_ID);
   });
 });
