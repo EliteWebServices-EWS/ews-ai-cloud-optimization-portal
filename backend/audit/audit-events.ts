@@ -16,6 +16,7 @@ export const AUDIT_EVENTS = {
   WORKFLOW_STARTED: 'workflow.started',
   WORKFLOW_COMPLETED: 'workflow.completed',
   WORKFLOW_FAILED: 'workflow.failed',
+  WORKFLOW_DUPLICATE_DETECTED: 'workflow.duplicate_detected',
 
   REPORT_GENERATED: 'report.generated',
   REPORT_GENERATION_FAILED: 'report.generation_failed',
