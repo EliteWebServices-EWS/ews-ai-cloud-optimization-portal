@@ -63,7 +63,7 @@ describe('Workflow tenant isolation', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(TENANT_A, result.workflowId);
+    const record = await orchestrator.getWorkflow(TENANT_A, result.workflowId);
     assert.ok(record);
     assert.equal(record.metadata.tenantId, TENANT_A);
   });
@@ -76,11 +76,11 @@ describe('Workflow tenant isolation', () => {
     });
 
     assert.equal(
-      orchestrator.getWorkflow(TENANT_B, result.workflowId),
+      await orchestrator.getWorkflow(TENANT_B, result.workflowId),
       undefined
     );
     assert.equal(
-      orchestrator.getWorkflowStatus(TENANT_B, result.workflowId),
+      await orchestrator.getWorkflowStatus(TENANT_B, result.workflowId),
       undefined
     );
   });
@@ -92,7 +92,7 @@ describe('Workflow tenant isolation', () => {
       mode: 'dry-run',
     });
 
-    const status = orchestrator.getWorkflowStatus(
+    const status = await orchestrator.getWorkflowStatus(
       TENANT_A,
       result.workflowId
     );
@@ -113,14 +113,14 @@ describe('Report tenant isolation', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(
+    const record = await orchestrator.getWorkflow(
       TENANT_A,
       result.workflowId
     );
 
     assert.ok(record);
 
-    const reportResult = reportingEngine.execute(
+    const reportResult = await reportingEngine.execute(
       toReportGenerationInput(record)
     );
 
@@ -128,7 +128,7 @@ describe('Report tenant isolation', () => {
     assert.equal(reportResult.data?.tenantId, TENANT_A);
 
     assert.equal(
-      reportingEngine.getReportByWorkflowId(
+      await reportingEngine.getReportByWorkflowId(
         TENANT_B,
         result.workflowId
       ),
@@ -146,13 +146,13 @@ describe('Report tenant isolation', () => {
       mode: 'full',
     });
 
-    const recordA = orchestrator.getWorkflow(
+    const recordA = await orchestrator.getWorkflow(
       TENANT_A,
       resultA.workflowId
     );
 
     assert.ok(recordA);
-    reportingEngine.execute(toReportGenerationInput(recordA));
+    await reportingEngine.execute(toReportGenerationInput(recordA));
 
     const resultB = await orchestrator.executeWorkflow({
       tenantId: TENANT_B,
@@ -160,19 +160,22 @@ describe('Report tenant isolation', () => {
       mode: 'full',
     });
 
-    const recordB = orchestrator.getWorkflow(
+    const recordB = await orchestrator.getWorkflow(
       TENANT_B,
       resultB.workflowId
     );
 
     assert.ok(recordB);
-    reportingEngine.execute(toReportGenerationInput(recordB));
+    await reportingEngine.execute(toReportGenerationInput(recordB));
 
-    assert.equal(reportingEngine.listReports(TENANT_A).length, 1);
-    assert.equal(reportingEngine.listReports(TENANT_B).length, 1);
+    const tenantAReports = await reportingEngine.listReports(TENANT_A);
+    const tenantBReports = await reportingEngine.listReports(TENANT_B);
+
+    assert.equal(tenantAReports.length, 1);
+    assert.equal(tenantBReports.length, 1);
     assert.notEqual(
-      reportingEngine.listReports(TENANT_A)[0]?.reportId,
-      reportingEngine.listReports(TENANT_B)[0]?.reportId
+      tenantAReports[0]?.reportId,
+      tenantBReports[0]?.reportId
     );
   });
 });
@@ -201,7 +204,7 @@ describe('Learning store tenant isolation', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(
+    const record = await orchestrator.getWorkflow(
       TENANT_A,
       result.workflowId
     );
@@ -210,7 +213,7 @@ describe('Learning store tenant isolation', () => {
     assert.equal(record.context.learningRecord.tenantId, TENANT_A);
 
     assert.equal(
-      learningStore.getByWorkflowId(
+      await learningStore.findByWorkflowId(
         TENANT_B,
         result.workflowId
       ),
@@ -228,7 +231,7 @@ describe('Execution tenant metadata', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(
+    const record = await orchestrator.getWorkflow(
       TENANT_A,
       result.workflowId
     );

@@ -25,8 +25,8 @@ import { DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
 import { DEFAULT_RECOMMENDATION_CONFIG } from '../../engines/recommendation';
 import { DEFAULT_VERIFICATION_CONFIG } from '../../engines/verification';
 import {
-  filterReports,
-  parseReportFilters,
+  parseReportQuery,
+  ReportQueryValidationError,
   toReportGenerationInput,
   type ReportingEngine,
 } from '../../engines/reporting';
@@ -53,6 +53,7 @@ import {
   resolveRouteTenantContext,
 } from '../tenant-route-helpers';
 import {
+  validateIdempotencyKey,
   validateReportGenerateBody,
   validateWorkflowRunBody,
 } from '../../security';
@@ -286,7 +287,7 @@ function formatCompleteResponse(
 }
 
 function formatWorkflowDetailResponse(
-  record: NonNullable<ReturnType<WorkflowOrchestrator['getWorkflow']>>
+  record: NonNullable<Awaited<ReturnType<WorkflowOrchestrator['getWorkflow']>>>
 ) {
   const ctx = record.context;
   return {
@@ -572,6 +573,14 @@ export function createWorkflowRoutes(
         resourceId = validatedInput.resourceId;
         region = validatedInput.region;
 
+        // Task 4: duplicate request protection. Accept the key from the
+        // standard Idempotency-Key header, falling back to a body field.
+        const idempotencyKeyHeader = req.header('Idempotency-Key') ?? undefined;
+        const idempotencyKey = validateIdempotencyKey(
+          idempotencyKeyHeader ??
+            (req.body as Record<string, unknown> | undefined)?.idempotencyKey
+        );
+
         recordAuditEvent(req, {
           eventName: AUDIT_EVENTS.WORKFLOW_STARTED,
           outcome: 'started',
@@ -596,17 +605,49 @@ export function createWorkflowRoutes(
             region,
             mode,
             triggerSource: 'api',
+            ownerId: actor.userId ?? undefined,
+            idempotencyKey,
           });
 
         workflowId = result.workflowId;
 
         const statusCode =
-          result.status === 'failed' ? 422 : 201;
+          result.status === 'failed'
+            ? 422
+            : result.duplicate
+              ? 200
+              : 201;
 
         const durationMs =
           Date.now() - startedAt;
 
-        if (result.status === 'failed') {
+        if (result.duplicate) {
+          recordAuditEvent(req, {
+            eventName:
+              AUDIT_EVENTS.WORKFLOW_DUPLICATE_DETECTED,
+            outcome: 'success',
+            requestId,
+            correlationId,
+            actor,
+            action: 'workflow.run',
+            method: req.method,
+            path: req.path,
+            statusCode,
+            durationMs,
+            workflowId,
+            resource: {
+              type: PLUGIN_NAMES.EC2,
+              id:
+                result.candidate?.resourceId ??
+                resourceId,
+              region:
+                result.candidate?.region ??
+                region,
+            },
+            reason:
+              'Request matched an existing workflow (idempotency key or concurrent duplicate); no new workflow was created.',
+          });
+        } else if (result.status === 'failed') {
           recordAuditEvent(req, {
             eventName:
               AUDIT_EVENTS.WORKFLOW_FAILED,
@@ -664,6 +705,7 @@ export function createWorkflowRoutes(
             {
               workflowId: result.workflowId,
               status: result.status,
+              duplicate: result.duplicate ?? false,
               executionState:
                 result.executionState,
               durationMs: result.durationMs,
@@ -782,14 +824,14 @@ export function createWorkflowRoutes(
 
     try {
       const workflowId = req.params.id;
-      const status = deps.orchestrator.getWorkflowStatus(tenantId, workflowId);
+      const status = await deps.orchestrator.getWorkflowStatus(tenantId, workflowId);
 
       if (!status) {
         handleTenantScopedResourceMiss(req, {
           resourceType: 'workflow',
           resourceId: workflowId,
           ownerTenantId:
-            deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+            await deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
           label: 'Workflow',
         });
       }
@@ -823,14 +865,14 @@ export function createWorkflowRoutes(
 
     try {
       const workflowId = req.params.id;
-      const record = deps.orchestrator.getWorkflow(tenantId, workflowId);
+      const record = await deps.orchestrator.getWorkflow(tenantId, workflowId);
 
       if (!record) {
         handleTenantScopedResourceMiss(req, {
           resourceType: 'workflow',
           resourceId: workflowId,
           ownerTenantId:
-            deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+            await deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
           label: 'Workflow',
         });
       }
@@ -1313,7 +1355,7 @@ export function createVerificationRoutes(
 
         if (workflowId) {
           const record =
-            deps.learningStore.getByWorkflowId(
+            await deps.learningStore.findByWorkflowId(
               tenantId,
               workflowId
             );
@@ -1323,18 +1365,15 @@ export function createVerificationRoutes(
               resourceType: 'workflow',
               resourceId: workflowId,
               ownerTenantId:
-                deps.learningStore.resolveOwnerTenantId(workflowId),
+                await deps.learningStore.resolveOwnerTenantId(workflowId),
               label: 'Verification report',
             });
           }
 
           const report =
-            deps.learningStore
-              .listReports(tenantId)
-              .find(
-                (item) =>
-                  item.workflowId === workflowId
-              );
+            (await deps.learningStore.listReports(tenantId)).find(
+              (item) => item.workflowId === workflowId
+            );
 
           res.json(
             buildSuccessResponse(
@@ -1351,10 +1390,10 @@ export function createVerificationRoutes(
         }
 
         const reports =
-          deps.learningStore.listReports(tenantId);
+          await deps.learningStore.listReports(tenantId);
 
         const total =
-          deps.learningStore.listRecords(tenantId).length;
+          (await deps.learningStore.list(tenantId)).length;
 
         res.json(
           buildSuccessResponse(
@@ -1413,22 +1452,22 @@ export function createReportRoutes(
 
   router.get(
     '/reports',
-    (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const requestId = generateRequestId();
       const tenantId = resolveRouteTenantContext(req).tenantId;
 
       try {
-        const filters = parseReportFilters(
+        const query = parseReportQuery(
           req.query as Record<string, unknown>
         );
 
-        const allReports =
-          deps.reportingEngine.listReports(tenantId);
+        const result =
+          await deps.reportingEngine.queryReports(
+            tenantId,
+            query
+          );
 
-        const reports = filterReports(
-          allReports,
-          filters
-        );
+        const reports = result.reports;
 
         res.json(
           buildSuccessResponse(
@@ -1474,13 +1513,37 @@ export function createReportRoutes(
                 verificationStatus:
                   report.verification?.status,
               })),
-              total: reports.length,
-              filters,
+              total: result.total,
+              filters: query.filters,
+              search: query.search,
+              sort: {
+                sortBy: query.sortBy,
+                sortOrder: query.sortOrder,
+              },
+              pagination: {
+                limit: query.limit,
+                count: reports.length,
+                nextToken: result.nextToken,
+              },
             },
             requestId
           )
         );
       } catch (error) {
+        if (error instanceof ReportQueryValidationError) {
+          handleRouteError(
+            res,
+            new AppError(
+              'INVALID_REQUEST',
+              error.message,
+              400
+            ),
+            requestId,
+            'reports'
+          );
+          return;
+        }
+
         handleRouteError(
           res,
           error,
@@ -1493,25 +1556,24 @@ export function createReportRoutes(
 
   router.get(
     '/reports/:id',
-    (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const requestId = generateRequestId();
       const tenantId = resolveRouteTenantContext(req).tenantId;
 
       try {
         const reportId = req.params.id;
 
-        const report =
-          deps.reportingEngine.getReport(
-            tenantId,
-            reportId
-          );
+        const report = await deps.reportingEngine.getReport(
+          tenantId,
+          reportId
+        );
 
         if (!report) {
           handleTenantScopedResourceMiss(req, {
             resourceType: 'report',
             resourceId: reportId,
             ownerTenantId:
-              deps.reportingEngine.resolveReportOwnerTenantId(reportId),
+              await deps.reportingEngine.resolveReportOwnerTenantId(reportId),
             label: 'Report',
           });
         }
@@ -1543,7 +1605,7 @@ export function createReportRoutes(
   router.post(
     '/reports/generate',
     requireAnyRole(...ANALYSIS_ROLES),
-    (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const requestId = getRequestId(req);
       const correlationId = getCorrelationId(
         req,
@@ -1561,12 +1623,10 @@ export function createReportRoutes(
           req.body
         ).workflowId;
 
-        const existing =
-          deps.reportingEngine
-            .getReportByWorkflowId(
-              tenantId,
-              workflowId
-            );
+        const existing = await deps.reportingEngine.getReportByWorkflowId(
+          tenantId,
+          workflowId
+        );
 
         if (existing) {
           reportId = existing.reportId;
@@ -1604,7 +1664,7 @@ export function createReportRoutes(
         }
 
         const cachedReportOwner =
-          deps.reportingEngine.resolveReportOwnerTenantIdByWorkflow(
+          await deps.reportingEngine.resolveReportOwnerTenantIdByWorkflow(
             workflowId
           );
 
@@ -1621,7 +1681,7 @@ export function createReportRoutes(
         }
 
         const record =
-          deps.orchestrator.getWorkflow(
+          await deps.orchestrator.getWorkflow(
             tenantId,
             workflowId
           );
@@ -1631,7 +1691,7 @@ export function createReportRoutes(
             resourceType: 'workflow',
             resourceId: workflowId,
             ownerTenantId:
-              deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+              await deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
             label: 'Workflow',
           });
         }
@@ -1646,8 +1706,7 @@ export function createReportRoutes(
         const input =
           toReportGenerationInput(record);
 
-        const result =
-          deps.reportingEngine.execute(input);
+        const result = await deps.reportingEngine.execute(input);
 
         if (!result.success || !result.data) {
           const code =

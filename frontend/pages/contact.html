@@ -41,27 +41,106 @@
                 </div>
             </div>
 
-            <form class="contact-form" id="contact-form">
-                <h3 style="margin-bottom:1rem;color:var(--text-primary);">Consultation Request</h3>
+            <form
+                class="contact-form"
+                id="contact-form"
+                action="https://formspree.io/f/xpqvyagp"
+                method="POST"
+            >
+                <h3 style="margin-bottom:1rem;color:var(--text-primary);">
+                    Consultation Request
+                </h3>
+
                 <div class="form-group">
                     <label for="name">Name</label>
-                    <input type="text" id="name" name="name" placeholder="Your full name" required>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        placeholder="Your full name"
+                        autocomplete="name"
+                        required
+                    >
                 </div>
+
                 <div class="form-group">
                     <label for="email">Email</label>
-                    <input type="email" id="email" name="email" placeholder="you@company.com" required>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="you@company.com"
+                        autocomplete="email"
+                        required
+                    >
                 </div>
+
                 <div class="form-group">
                     <label for="company">Company</label>
-                    <input type="text" id="company" name="company" placeholder="Company name (optional)">
+                    <input
+                        type="text"
+                        id="company"
+                        name="company"
+                        placeholder="Company name (optional)"
+                        autocomplete="organization"
+                    >
                 </div>
+
                 <div class="form-group">
                     <label for="message">Message</label>
-                    <textarea id="message" name="message" rows="5" placeholder="Tell us about your AWS goals or challenges" required></textarea>
+                    <textarea
+                        id="message"
+                        name="message"
+                        rows="5"
+                        placeholder="Tell us about your AWS goals or challenges"
+                        required
+                    ></textarea>
                 </div>
-                <button type="submit" class="btn-gold">Send Message</button>
-                <div class="form-success" id="form-success">Thanks — this is a UI demo, so nothing was actually sent. Email us directly at elitewebservicesllc@gmail.com.</div>
-                <p class="form-note">Phase 1 UI mockup — form submissions aren't wired to a backend yet. Please email us directly for now.</p>
+
+                <input
+                    type="hidden"
+                    name="_subject"
+                    value="New EWS website consultation request"
+                >
+
+                <input
+                    type="text"
+                    name="_gotcha"
+                    class="form-honeypot"
+                    tabindex="-1"
+                    autocomplete="off"
+                    aria-hidden="true"
+                >
+
+                <button
+                    type="submit"
+                    class="btn-gold"
+                    id="submit-button"
+                >
+                    Send Message
+                </button>
+
+                <div
+                    class="form-success"
+                    id="form-success"
+                    role="status"
+                    aria-live="polite"
+                >
+                    Thank you. Your message has been sent successfully. Our team will respond within 1–2 business days.
+                </div>
+
+                <div
+                    class="form-error"
+                    id="form-error"
+                    role="alert"
+                    aria-live="assertive"
+                >
+                    We could not send your message. Please try again or email elitewebservicesllc@gmail.com.
+                </div>
+
+                <p class="form-note">
+                    By submitting this form, you agree that Elite Web Services may use your details to respond to your inquiry.
+                </p>
             </form>
         </section>
     </main>
@@ -70,9 +149,42 @@
 
     <script src="../js/ews-nav.js"></script>
     <script>
-        document.getElementById('contact-form').addEventListener('submit', function (e) {
-            e.preventDefault();
-            document.getElementById('form-success').classList.add('visible');
+        const contactForm = document.getElementById('contact-form');
+        const submitButton = document.getElementById('submit-button');
+        const successMessage = document.getElementById('form-success');
+        const errorMessage = document.getElementById('form-error');
+
+        contactForm.addEventListener('submit', async function (event) {
+            event.preventDefault();
+
+            successMessage.classList.remove('visible');
+            errorMessage.classList.remove('visible');
+
+            submitButton.disabled = true;
+            submitButton.textContent = 'Sending...';
+
+            try {
+                const response = await fetch(contactForm.action, {
+                    method: contactForm.method,
+                    body: new FormData(contactForm),
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Form submission failed');
+                }
+
+                contactForm.reset();
+                successMessage.classList.add('visible');
+            } catch (error) {
+                console.error('Contact form submission failed:', error);
+                errorMessage.classList.add('visible');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Send Message';
+            }
         });
     </script>
 </body>

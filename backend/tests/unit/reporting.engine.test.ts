@@ -173,9 +173,9 @@ describe('ReportingEngine', () => {
     engine = createReportingEngine();
   });
 
-  it('generates a complete optimization report from workflow data', () => {
+  it('generates a complete optimization report from workflow data', async () => {
     const input = buildCompleteInput();
-    const result = engine.execute(input);
+    const result = await engine.execute(input);
 
     assert.equal(result.success, true);
     assert.ok(result.data);
@@ -244,14 +244,14 @@ describe('ReportingEngine', () => {
     assert.equal(report.financialImpact.verifiedMonthlySavings, 0);
   });
 
-  it('rejects report generation without workflow ID', () => {
+  it('rejects report generation without workflow ID', async () => {
     const input = buildCompleteInput({ workflowId: '' });
-    const result = engine.execute(input);
+    const result = await engine.execute(input);
     assert.equal(result.success, false);
     assert.equal(result.error?.code, 'MISSING_WORKFLOW');
   });
 
-  it('filters reports by confidence level', () => {
+  it('filters reports by confidence level', async () => {
     const highInput = buildCompleteInput({ workflowId: 'wf-high' });
     const lowInput = buildCompleteInput({
       workflowId: 'wf-low',
@@ -264,10 +264,10 @@ describe('ReportingEngine', () => {
       },
     });
 
-    engine.execute(highInput);
-    engine.execute(lowInput);
+    await engine.execute(highInput);
+    await engine.execute(lowInput);
 
-    const filtered = filterReports(engine.listReports(TENANT_ID), { confidenceLevel: 'HIGH' });
+    const filtered = filterReports(await engine.listReports(TENANT_ID), { confidenceLevel: 'HIGH' });
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0].workflowId, 'wf-high');
   });
