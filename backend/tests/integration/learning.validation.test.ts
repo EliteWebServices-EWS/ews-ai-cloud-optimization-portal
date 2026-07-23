@@ -8,7 +8,9 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { docClient } from './harness';
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'sisum-learning-production';
+const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT;
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+const canRun = Boolean(DYNAMODB_ENDPOINT && TABLE_NAME);
 const TENANT_A = 'validation-tenant-a';
  
 const ITEM_KEY = {
@@ -17,6 +19,7 @@ const ITEM_KEY = {
 };
 
 async function cleanupItem() {
+  if (!canRun) return;
   await docClient.send(
     new DeleteCommand({
       TableName: TABLE_NAME,
@@ -30,7 +33,8 @@ describe('Learning table deep validation', () => {
     await cleanupItem();
   });
 
-  it('rejects duplicate creation with attribute_not_exists condition', async () => {
+  it('rejects duplicate creation with attribute_not_exists condition', { skip: !canRun }, async () => {
+    if (!canRun) return;
     const initialItem = {
       ...ITEM_KEY,
       tenantId: TENANT_A,
@@ -70,7 +74,8 @@ describe('Learning table deep validation', () => {
     assert.equal(errorThrown, true, 'Duplicate item creation should fail with conditional write');
   });
 
-  it('detects stale version updates using conditional version control', async () => {
+  it('detects stale version updates using conditional version control', { skip: !canRun }, async () => {
+    if (!canRun) return;
     const initialItem = {
       ...ITEM_KEY,
       tenantId: TENANT_A,
@@ -127,7 +132,8 @@ describe('Learning table deep validation', () => {
     assert.equal(conflictError, true, 'Stale version update should fail as a conditional conflict');
   });
 
-  it('allows one conditional update and rejects the stale concurrent attempt', async () => {
+  it('allows one conditional update and rejects the stale concurrent attempt', { skip: !canRun }, async () => {
+    if (!canRun) return;
     const initialItem = {
       ...ITEM_KEY,
       tenantId: TENANT_A,

@@ -7,8 +7,6 @@ import {
   PROVIDER_NAMES,
   RECOMMENDATION_STATUS,
   VERIFICATION_STATUS,
-  WORKFLOW_EXECUTION_STATES,
-  WORKFLOW_STATES,
 } from '../../shared/constants';
 import type { VerificationRequest } from '../../shared/types';
 
@@ -24,18 +22,6 @@ function buildVerificationRequest(overrides: Partial<VerificationRequest> = {}):
       region: 'us-east-1',
       mode: 'demo',
       startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      status: WORKFLOW_STATES.COMPLETED,
-      executionState: WORKFLOW_EXECUTION_STATES.COMPLETED,
-      triggerSource: 'api',
-      completedStages: ['execution', 'verification'],
-      failedStages: [],
-      retry: {
-        maxRetries: 3,
-        attemptCount: 0,
-        status: 'none',
-        failedAttempts: [],
-      },
     },
     recommendation: {
       status: RECOMMENDATION_STATUS.RECOMMENDED,
