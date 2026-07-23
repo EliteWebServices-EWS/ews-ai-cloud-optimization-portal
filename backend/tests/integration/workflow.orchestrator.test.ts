@@ -104,7 +104,7 @@ describe('WorkflowOrchestrator', () => {
     assert.ok(result.completedStages.includes(WORKFLOW_STAGES.VERIFICATION));
     assert.equal(result.failedStages.length, 0);
 
-    const record = orchestrator.getWorkflow(TENANT_ID, result.workflowId);
+    const record = await orchestrator.getWorkflow(TENANT_ID, result.workflowId);
     assert.ok(record);
     assert.equal(record.metadata.status, WORKFLOW_STATES.COMPLETED);
   });
@@ -116,7 +116,7 @@ describe('WorkflowOrchestrator', () => {
       mode: 'full',
     });
 
-    const status = orchestrator.getWorkflowStatus(TENANT_ID, result.workflowId);
+    const status = await orchestrator.getWorkflowStatus(TENANT_ID, result.workflowId);
     assert.ok(status);
     assert.equal(status.metadata.workflowId, result.workflowId);
     assert.equal(status.metadata.status, WORKFLOW_STATES.COMPLETED);

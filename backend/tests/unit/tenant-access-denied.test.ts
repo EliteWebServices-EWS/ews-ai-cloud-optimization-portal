@@ -465,7 +465,7 @@ describe('Report route tenant access audit', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(TENANT_B, result.workflowId);
+    const record = await orchestrator.getWorkflow(TENANT_B, result.workflowId);
     assert.ok(record);
 
     const reportResult = await reportingEngine.execute(
@@ -545,7 +545,7 @@ describe('Report route tenant access audit', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(TENANT_B, result.workflowId);
+    const record = await orchestrator.getWorkflow(TENANT_B, result.workflowId);
     assert.ok(record);
 
     const reportResult = await reportingEngine.execute(
