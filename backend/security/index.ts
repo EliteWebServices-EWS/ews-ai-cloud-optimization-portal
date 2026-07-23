@@ -21,6 +21,7 @@ export {
 export {
   validateResourceId,
   validateRegion,
+  validateIdempotencyKey,
   validateWorkflowRunBody,
   validateReportGenerateBody,
   validatePaginationToken,

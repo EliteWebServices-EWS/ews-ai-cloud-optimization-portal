@@ -8,6 +8,8 @@ import { AppError } from '../shared/utils';
 const IDENTIFIER_MAX_LENGTH = 128;
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
+const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,255}$/;
 
 export interface WorkflowRunInput {
   plugin: string;
@@ -79,6 +81,34 @@ export function validateResourceId(
   }
 
   return resourceId;
+}
+
+/**
+ * Validate an optional client-supplied idempotency key (Task 4: duplicate
+ * request protection). Accepted from the `Idempotency-Key` header or an
+ * `idempotencyKey` body field.
+ */
+export function validateIdempotencyKey(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  const key = assertNonEmptyString(
+    value,
+    'Idempotency-Key',
+    IDEMPOTENCY_KEY_MAX_LENGTH
+  );
+
+  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    throw new AppError(
+      'INVALID_REQUEST',
+      'Idempotency-Key contains unsupported characters.',
+      400,
+      'request'
+    );
+  }
+
+  return key;
 }
 
 export function validateRegion(value: unknown): string {
