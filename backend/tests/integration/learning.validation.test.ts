@@ -10,7 +10,7 @@ import { docClient } from './harness';
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'sisum-learning-production';
 const TENANT_A = 'validation-tenant-a';
-const TENANT_B = 'validation-tenant-b';
+ 
 const ITEM_KEY = {
   pk: `TENANT#${TENANT_A}`,
   sk: 'LEARNING#workflow-validation-001',

@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { BatchWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../tests/integration/harness";
 
