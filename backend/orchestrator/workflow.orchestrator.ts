@@ -22,7 +22,8 @@ import {
   WORKFLOW_STATES,
   type PluginName,
 } from '../shared/constants';
-import { createLogger, generateWorkflowId } from '../shared/utils';
+import { createLogger, deriveIdempotentWorkflowId, generateWorkflowId } from '../shared/utils';
+import { RepositoryAlreadyExistsError } from '../database';
 import { resolveWorkflowConfig, type WorkflowConfig } from './workflow.config';
 import { WorkflowStageError, toEngineError } from './workflow.errors';
 import { createRetryState, recordFailedAttempt } from './workflow.retry';
@@ -99,10 +100,28 @@ export class WorkflowOrchestrator {
   /** Start and execute a full optimization workflow with tracking. */
   async executeWorkflow(request: ExecuteWorkflowRequest): Promise<HardenedWorkflowResult> {
     const config = resolveWorkflowConfig(request.mode);
-    const workflowId = generateWorkflowId();
     const region = request.region ?? 'us-east-1';
     const startedAt = new Date().toISOString();
     const startMs = Date.now();
+
+    // Idempotent execution (Task 4): a client-supplied idempotency key always
+    // derives the same workflowId for this tenant, so a retried/duplicated
+    // request naturally lands on the same DynamoDB item instead of creating
+    // a new workflow.
+    const workflowId = request.idempotencyKey
+      ? deriveIdempotentWorkflowId(request.tenantId, request.idempotencyKey)
+      : generateWorkflowId();
+
+    if (request.idempotencyKey) {
+      const existing = await this.store.get(request.tenantId, workflowId);
+      if (existing) {
+        logger.info('Duplicate workflow request replayed via idempotency key', {
+          workflowId,
+          operation: 'executeWorkflow',
+        });
+        return this.toReplayResult(existing, startMs);
+      }
+    }
 
     const context = this.createInitialContext({
       workflowId,
@@ -117,17 +136,53 @@ export class WorkflowOrchestrator {
     const metadata: WorkflowMetadata = {
       workflowId,
       tenantId: request.tenantId,
+      ownerId: request.ownerId,
       plugin: request.plugin,
       createdAt: startedAt,
-      status: WORKFLOW_STATES.RUNNING,
+      updatedAt: startedAt,
+      status: WORKFLOW_STATES.PENDING,
       executionState: WORKFLOW_EXECUTION_STATES.INITIALIZED,
       triggerSource: request.triggerSource ?? 'api',
       resourceId: request.resourceId,
       region,
+      idempotencyKey: request.idempotencyKey,
     };
 
     const record: WorkflowRecord = { metadata, context };
-    this.store.save(record);
+
+    try {
+      // Lifecycle step 1/4 (Task 3): PENDING is durably persisted before any
+      // work begins. If the Lambda dies right after this write, the record
+      // still exists on the next cold start.
+      await this.store.save(record);
+    } catch (error) {
+      if (error instanceof RepositoryAlreadyExistsError) {
+        // Task 5: another concurrent invocation won the create race for this
+        // workflowId (only possible when idempotencyKey collides, since
+        // generateWorkflowId() is otherwise unique per call). No duplicate
+        // workflow is created — replay whatever the winner produced/is doing.
+        const winner = await this.store.get(request.tenantId, workflowId);
+        if (winner) {
+          logger.info('Concurrent duplicate workflow creation avoided', {
+            workflowId,
+            operation: 'executeWorkflow',
+          });
+          return this.toReplayResult(winner, startMs);
+        }
+      }
+      throw error;
+    }
+
+    logger.info('Workflow created', {
+      workflowId,
+      plugin: request.plugin,
+      operation: 'executeWorkflow',
+      status: WORKFLOW_STATES.PENDING,
+    });
+
+    // Lifecycle step 2/4: PENDING -> RUNNING.
+    context.status = WORKFLOW_STATES.RUNNING;
+    await this.store.updateContext(request.tenantId, workflowId, context);
 
     logger.info('Workflow started', {
       workflowId,
@@ -144,7 +199,7 @@ export class WorkflowOrchestrator {
         candidates.find((item) => item.resourceId === request.resourceId) ?? candidates[0];
 
       if (!candidate) {
-        return this.failWorkflow(context, config, WORKFLOW_STAGES.EVIDENCE, {
+        return await this.failWorkflow(context, config, WORKFLOW_STAGES.EVIDENCE, {
           engine: 'Workflow Orchestrator',
           code: 'NO_CANDIDATES',
           reason: 'No optimization candidates found',
@@ -152,7 +207,7 @@ export class WorkflowOrchestrator {
       }
 
       context.candidate = candidate;
-      this.store.updateContext(request.tenantId, workflowId, context);
+      await this.store.updateContext(request.tenantId, workflowId, context);
 
       await this.runPipeline(context, config, plugin);
 
@@ -162,9 +217,10 @@ export class WorkflowOrchestrator {
       context.status = WORKFLOW_STATES.COMPLETED;
       context.executionState = WORKFLOW_EXECUTION_STATES.COMPLETED;
 
+      // Lifecycle step 4/4: RUNNING -> COMPLETED.
       const result = this.buildWorkflowResult(context, durationMs);
-      this.store.updateContext(request.tenantId, workflowId, context);
-      this.store.updateResult(request.tenantId, workflowId, result);
+      await this.store.updateContext(request.tenantId, workflowId, context);
+      await this.store.updateResult(request.tenantId, workflowId, result);
 
       logger.info('Workflow completed', {
         workflowId,
@@ -197,25 +253,40 @@ export class WorkflowOrchestrator {
     }
   }
 
+  /** Build a HardenedWorkflowResult from an existing record for idempotent
+   * replay, instead of re-running the workflow (Task 4/5). */
+  private toReplayResult(record: WorkflowRecord, startMs: number): HardenedWorkflowResult {
+    if (record.result) {
+      return { ...record.result, duplicate: true };
+    }
+
+    // The original request is still PENDING/RUNNING — report its current
+    // state rather than fabricating a completed result.
+    return {
+      ...this.buildWorkflowResult(record.context, Date.now() - startMs),
+      duplicate: true,
+    };
+  }
+
   /** Retrieve a tracked workflow by tenant and ID. */
-  getWorkflow(tenantId: string, workflowId: string): WorkflowRecord | undefined {
+  async getWorkflow(tenantId: string, workflowId: string): Promise<WorkflowRecord | undefined> {
     return this.store.get(tenantId, workflowId);
   }
 
   /** Resolve the owning tenant for a workflow ID without exposing the record. */
-  resolveWorkflowOwnerTenantId(workflowId: string): string | undefined {
+  async resolveWorkflowOwnerTenantId(workflowId: string): Promise<string | undefined> {
     return this.store.resolveOwnerTenantId(workflowId);
   }
 
   /** Retrieve workflow status summary by tenant and ID. */
-  getWorkflowStatus(tenantId: string, workflowId: string): {
+  async getWorkflowStatus(tenantId: string, workflowId: string): Promise<{
     metadata: WorkflowMetadata;
     completedStages: string[];
     failedStages: string[];
     currentStage?: string;
     failure?: WorkflowFailure;
-  } | undefined {
-    const record = this.store.get(tenantId, workflowId);
+  } | undefined> {
+    const record = await this.store.get(tenantId, workflowId);
     if (!record) {
       return undefined;
     }
@@ -300,7 +371,7 @@ export class WorkflowOrchestrator {
     request: RunCompleteWorkflowRequest
   ): Promise<CompleteWorkflowResult> {
     const result = await this.executeWorkflow({ ...request, mode: 'full', triggerSource: 'api' });
-    const verification = this.toVerificationResultFromHardened(
+    const verification = await this.toVerificationResultFromHardened(
       result,
       request.tenantId
     );
@@ -313,7 +384,7 @@ export class WorkflowOrchestrator {
 
   async runDemoWorkflow(request: RunWorkflowRequest): Promise<WorkflowResult> {
     const hardened = await this.executeWorkflow({ ...request, mode: 'full', triggerSource: 'api' });
-    const record = this.store.get(request.tenantId, hardened.workflowId);
+    const record = await this.store.get(request.tenantId, hardened.workflowId);
     if (!record) {
       throw new Error(`Workflow record not found: ${hardened.workflowId}`);
     }
@@ -457,7 +528,7 @@ export class WorkflowOrchestrator {
 
     for (const stage of pipeline) {
       await this.executeStage(context, config, plugin, stage);
-      this.store.updateContext(context.tenantId, context.workflowId, context);
+      await this.store.updateContext(context.tenantId, context.workflowId, context);
     }
   }
 
@@ -768,13 +839,13 @@ export class WorkflowOrchestrator {
     }
   }
 
-  private failWorkflow(
+  private async failWorkflow(
     context: WorkflowContext,
     _config: WorkflowConfig,
     failedStage: import('../shared/constants').WorkflowStage,
     error: import('../shared/types').EngineError,
     startMs: number
-  ): HardenedWorkflowResult {
+  ): Promise<HardenedWorkflowResult> {
     const durationMs = Date.now() - startMs;
     const timestamp = new Date().toISOString();
 
@@ -798,8 +869,8 @@ export class WorkflowOrchestrator {
     );
 
     const result = this.buildWorkflowResult(context, durationMs);
-    this.store.updateContext(context.tenantId, context.workflowId, context);
-    this.store.updateResult(context.tenantId, context.workflowId, result);
+    await this.store.updateContext(context.tenantId, context.workflowId, context);
+    await this.store.updateResult(context.tenantId, context.workflowId, result);
 
     logger.error('Stage failed', {
       workflowId: context.workflowId,
@@ -922,11 +993,11 @@ export class WorkflowOrchestrator {
     };
   }
 
-  private toVerificationResultFromHardened(
+  private async toVerificationResultFromHardened(
     result: HardenedWorkflowResult,
     tenantId: string
-  ): VerificationWorkflowResult {
-    const record = this.store.get(tenantId, result.workflowId);
+  ): Promise<VerificationWorkflowResult> {
+    const record = await this.store.get(tenantId, result.workflowId);
     if (!record) {
       throw new Error(`Workflow record not found: ${result.workflowId}`);
     }
