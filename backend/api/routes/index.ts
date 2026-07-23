@@ -53,6 +53,7 @@ import {
   resolveRouteTenantContext,
 } from '../tenant-route-helpers';
 import {
+  validateIdempotencyKey,
   validateReportGenerateBody,
   validateWorkflowRunBody,
 } from '../../security';
@@ -286,7 +287,7 @@ function formatCompleteResponse(
 }
 
 function formatWorkflowDetailResponse(
-  record: NonNullable<ReturnType<WorkflowOrchestrator['getWorkflow']>>
+  record: NonNullable<Awaited<ReturnType<WorkflowOrchestrator['getWorkflow']>>>
 ) {
   const ctx = record.context;
   return {
@@ -572,6 +573,14 @@ export function createWorkflowRoutes(
         resourceId = validatedInput.resourceId;
         region = validatedInput.region;
 
+        // Task 4: duplicate request protection. Accept the key from the
+        // standard Idempotency-Key header, falling back to a body field.
+        const idempotencyKeyHeader = req.header('Idempotency-Key') ?? undefined;
+        const idempotencyKey = validateIdempotencyKey(
+          idempotencyKeyHeader ??
+            (req.body as Record<string, unknown> | undefined)?.idempotencyKey
+        );
+
         recordAuditEvent(req, {
           eventName: AUDIT_EVENTS.WORKFLOW_STARTED,
           outcome: 'started',
@@ -596,17 +605,49 @@ export function createWorkflowRoutes(
             region,
             mode,
             triggerSource: 'api',
+            ownerId: actor.userId ?? undefined,
+            idempotencyKey,
           });
 
         workflowId = result.workflowId;
 
         const statusCode =
-          result.status === 'failed' ? 422 : 201;
+          result.status === 'failed'
+            ? 422
+            : result.duplicate
+              ? 200
+              : 201;
 
         const durationMs =
           Date.now() - startedAt;
 
-        if (result.status === 'failed') {
+        if (result.duplicate) {
+          recordAuditEvent(req, {
+            eventName:
+              AUDIT_EVENTS.WORKFLOW_DUPLICATE_DETECTED,
+            outcome: 'success',
+            requestId,
+            correlationId,
+            actor,
+            action: 'workflow.run',
+            method: req.method,
+            path: req.path,
+            statusCode,
+            durationMs,
+            workflowId,
+            resource: {
+              type: PLUGIN_NAMES.EC2,
+              id:
+                result.candidate?.resourceId ??
+                resourceId,
+              region:
+                result.candidate?.region ??
+                region,
+            },
+            reason:
+              'Request matched an existing workflow (idempotency key or concurrent duplicate); no new workflow was created.',
+          });
+        } else if (result.status === 'failed') {
           recordAuditEvent(req, {
             eventName:
               AUDIT_EVENTS.WORKFLOW_FAILED,
@@ -664,6 +705,7 @@ export function createWorkflowRoutes(
             {
               workflowId: result.workflowId,
               status: result.status,
+              duplicate: result.duplicate ?? false,
               executionState:
                 result.executionState,
               durationMs: result.durationMs,
@@ -782,14 +824,14 @@ export function createWorkflowRoutes(
 
     try {
       const workflowId = req.params.id;
-      const status = deps.orchestrator.getWorkflowStatus(tenantId, workflowId);
+      const status = await deps.orchestrator.getWorkflowStatus(tenantId, workflowId);
 
       if (!status) {
         handleTenantScopedResourceMiss(req, {
           resourceType: 'workflow',
           resourceId: workflowId,
           ownerTenantId:
-            deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+            await deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
           label: 'Workflow',
         });
       }
@@ -823,14 +865,14 @@ export function createWorkflowRoutes(
 
     try {
       const workflowId = req.params.id;
-      const record = deps.orchestrator.getWorkflow(tenantId, workflowId);
+      const record = await deps.orchestrator.getWorkflow(tenantId, workflowId);
 
       if (!record) {
         handleTenantScopedResourceMiss(req, {
           resourceType: 'workflow',
           resourceId: workflowId,
           ownerTenantId:
-            deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+            await deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
           label: 'Workflow',
         });
       }
@@ -1639,7 +1681,7 @@ export function createReportRoutes(
         }
 
         const record =
-          deps.orchestrator.getWorkflow(
+          await deps.orchestrator.getWorkflow(
             tenantId,
             workflowId
           );
@@ -1649,7 +1691,7 @@ export function createReportRoutes(
             resourceType: 'workflow',
             resourceId: workflowId,
             ownerTenantId:
-              deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
+              await deps.orchestrator.resolveWorkflowOwnerTenantId(workflowId),
             label: 'Workflow',
           });
         }

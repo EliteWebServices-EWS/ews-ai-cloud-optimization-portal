@@ -63,7 +63,7 @@ describe('Workflow tenant isolation', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(TENANT_A, result.workflowId);
+    const record = await orchestrator.getWorkflow(TENANT_A, result.workflowId);
     assert.ok(record);
     assert.equal(record.metadata.tenantId, TENANT_A);
   });
@@ -76,11 +76,11 @@ describe('Workflow tenant isolation', () => {
     });
 
     assert.equal(
-      orchestrator.getWorkflow(TENANT_B, result.workflowId),
+      await orchestrator.getWorkflow(TENANT_B, result.workflowId),
       undefined
     );
     assert.equal(
-      orchestrator.getWorkflowStatus(TENANT_B, result.workflowId),
+      await orchestrator.getWorkflowStatus(TENANT_B, result.workflowId),
       undefined
     );
   });
@@ -92,7 +92,7 @@ describe('Workflow tenant isolation', () => {
       mode: 'dry-run',
     });
 
-    const status = orchestrator.getWorkflowStatus(
+    const status = await orchestrator.getWorkflowStatus(
       TENANT_A,
       result.workflowId
     );
@@ -113,7 +113,7 @@ describe('Report tenant isolation', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(
+    const record = await orchestrator.getWorkflow(
       TENANT_A,
       result.workflowId
     );
@@ -146,7 +146,7 @@ describe('Report tenant isolation', () => {
       mode: 'full',
     });
 
-    const recordA = orchestrator.getWorkflow(
+    const recordA = await orchestrator.getWorkflow(
       TENANT_A,
       resultA.workflowId
     );
@@ -160,7 +160,7 @@ describe('Report tenant isolation', () => {
       mode: 'full',
     });
 
-    const recordB = orchestrator.getWorkflow(
+    const recordB = await orchestrator.getWorkflow(
       TENANT_B,
       resultB.workflowId
     );
@@ -204,7 +204,7 @@ describe('Learning store tenant isolation', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(
+    const record = await orchestrator.getWorkflow(
       TENANT_A,
       result.workflowId
     );
@@ -231,7 +231,7 @@ describe('Execution tenant metadata', () => {
       mode: 'full',
     });
 
-    const record = orchestrator.getWorkflow(
+    const record = await orchestrator.getWorkflow(
       TENANT_A,
       result.workflowId
     );

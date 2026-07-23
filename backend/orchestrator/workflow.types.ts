@@ -62,14 +62,21 @@ export interface WorkflowFailure {
 export interface WorkflowMetadata {
   workflowId: string;
   tenantId: string;
+  /** Identity that owns/initiated this workflow (e.g. the authenticated user). */
+  ownerId?: string;
   plugin: PluginName;
   createdAt: string;
+  updatedAt: string;
   completedAt?: string;
   status: WorkflowState;
   executionState: WorkflowExecutionState;
   triggerSource: WorkflowTriggerSource;
   resourceId?: string;
   region: string;
+  /** Client-supplied idempotency key, when the request provided one. */
+  idempotencyKey?: string;
+  /** Optimistic-concurrency version from the persistence layer. */
+  version?: number;
 }
 
 /**
@@ -130,6 +137,10 @@ export interface HardenedWorkflowResult {
   failure?: WorkflowFailure;
   retry: WorkflowRetryState;
   completedAt?: string;
+  /** True when this result was returned from an existing workflow instead of
+   * a new execution — either a replayed idempotency-key request or a
+   * concurrent duplicate that lost the create race (Task 4/5). */
+  duplicate?: boolean;
 }
 
 /** Snapshot stored for workflow lookup APIs. */
@@ -147,6 +158,12 @@ export interface ExecuteWorkflowRequest {
   region?: string;
   triggerSource?: WorkflowTriggerSource;
   mode?: 'full' | 'dry-run';
+  /** Identity that initiated this workflow (e.g. the authenticated user). */
+  ownerId?: string;
+  /** Client-supplied key for duplicate-request protection (Task 4). Two
+   * requests from the same tenant with the same idempotencyKey always
+   * resolve to the same workflow instead of creating a duplicate. */
+  idempotencyKey?: string;
 }
 
 export type { EvidencePackage };
