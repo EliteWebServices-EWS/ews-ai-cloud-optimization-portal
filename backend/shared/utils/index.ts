@@ -8,5 +8,6 @@ export {
   generateWorkflowId,
   generateExecutionId,
   generateReportId,
+  deriveIdempotentWorkflowId,
 } from './response';
 export { isNonEmptyArray, requireNonEmptyString, requireObject } from './validation';
