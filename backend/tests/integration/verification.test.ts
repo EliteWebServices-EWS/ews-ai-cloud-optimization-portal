@@ -7,13 +7,9 @@ import {
   PROVIDER_NAMES,
   RECOMMENDATION_STATUS,
   VERIFICATION_STATUS,
-  WORKFLOW_EXECUTION_STATES,
-  WORKFLOW_STATES,
 } from '../../shared/constants';
 import type { VerificationRequest } from '../../shared/types';
-
 const TENANT_ID = 'integration-verification-tenant';
-
 function buildVerificationRequest(overrides: Partial<VerificationRequest> = {}): VerificationRequest {
   const base: VerificationRequest = {
     context: {
@@ -24,20 +20,8 @@ function buildVerificationRequest(overrides: Partial<VerificationRequest> = {}):
       region: 'us-east-1',
       mode: 'demo',
       startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      status: WORKFLOW_STATES.COMPLETED,
-      executionState: WORKFLOW_EXECUTION_STATES.COMPLETED,
-      triggerSource: 'api',
-      completedStages: ['execution', 'verification'],
-      failedStages: [],
-      retry: {
-        maxRetries: 3,
-        attemptCount: 0,
-        status: 'none',
-        failedAttempts: [],
-      },
     },
-    recommendation: {
+      recommendation: {
       status: RECOMMENDATION_STATUS.RECOMMENDED,
       summary: 'Rightsize instance from t3.large to t3.medium',
       reason: 'Low CPU utilization',
@@ -122,30 +106,24 @@ function buildVerificationRequest(overrides: Partial<VerificationRequest> = {}):
 
   return { ...base, ...overrides };
 }
-
 describe('Verification integration', () => {
   it('verifies a completed execution and builds a verification report', async () => {
     const engine = createVerificationEngine();
     const request = buildVerificationRequest();
     const result = await engine.execute(request);
-
     assert.equal(result.success, true);
     assert.equal(result.data?.status, VERIFICATION_STATUS.VERIFIED);
     assert.equal(result.data?.stateMatched, true);
-
     const report = engine.buildReport(request, result.data!);
     assert.equal(report.workflowId, request.context.workflowId);
     assert.equal(report.status, VERIFICATION_STATUS.VERIFIED);
     assert.ok(report.summary.includes('VERIFIED'));
   });
-
   it('returns INVALID_OBSERVATION when observation is not provided', async () => {
     const engine = createVerificationEngine();
     const request = buildVerificationRequest();
     const invalidRequest = { ...request, observation: undefined } as unknown as VerificationRequest;
-
     const result = await engine.execute(invalidRequest);
-
     assert.equal(result.success, false);
     assert.equal(result.error?.code, 'INVALID_OBSERVATION');
   });
