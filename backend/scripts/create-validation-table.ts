@@ -1,30 +1,48 @@
-import { CreateTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
-const endpoint = process.env.DYNAMODB_ENDPOINT ?? 'http://localhost:8000';
-const tableName = process.env.DYNAMODB_TABLE_NAME ?? 'sisum-sprint11-validation';
+import {
+  createValidationTable,
+  formatValidationTableSummary,
+  parseCreateValidationTableEnv,
+} from './lib/create-validation-table';
 
-const client = new DynamoDBClient({
-  region: process.env.AWS_REGION ?? 'us-east-1',
-  endpoint,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'local',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'local',
-  },
-});
+async function main(): Promise<void> {
+  const options = parseCreateValidationTableEnv();
+  const endpoint = options.endpoint ?? 'http://localhost:8000';
 
-await client.send(
-  new CreateTableCommand({
-    TableName: tableName,
-    BillingMode: 'PAY_PER_REQUEST',
-    AttributeDefinitions: [
-      { AttributeName: 'pk', AttributeType: 'S' },
-      { AttributeName: 'sk', AttributeType: 'S' },
-    ],
-    KeySchema: [
-      { AttributeName: 'pk', KeyType: 'HASH' },
-      { AttributeName: 'sk', KeyType: 'RANGE' },
-    ],
-  }),
-);
+  const client = new DynamoDBClient({
+    region: options.region,
+    endpoint,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'local',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'local',
+    },
+  });
 
-console.log(`Created validation table ${tableName} at ${endpoint}`);
+  await createValidationTable(client, { ...options, endpoint });
+
+  console.log(formatValidationTableSummary({ ...options, endpoint }));
+}
+
+function isExecutedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+
+  const normalized = entry.replace(/\\/g, '/');
+  return (
+    normalized.endsWith('/scripts/create-validation-table.ts')
+    || normalized.endsWith('create-validation-table.ts')
+  );
+}
+
+if (isExecutedDirectly()) {
+  main().catch((error: unknown) => {
+    console.error(
+      'Failed to create Sprint 11 validation table.',
+      error instanceof Error ? error.message : String(error),
+    );
+    process.exitCode = 1;
+  });
+}
