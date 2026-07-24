@@ -154,10 +154,10 @@ function buildCompleteInput(): ReportGenerationInput {
 }
 
 describe('Reporting integration', () => {
-  it('generates, retrieves, lists, and deletes a report', () => {
+  it('generates, retrieves, lists, and deletes a report', async () => {
     const engine = createReportingEngine();
     const input = buildCompleteInput();
-    const result = engine.execute(input);
+    const result = await engine.execute(input);
 
     assert.equal(result.success, true);
     assert.ok(result.data);
@@ -166,17 +166,17 @@ describe('Reporting integration', () => {
     assert.equal(report.workflowId, input.workflowId);
     assert.equal(report.tenantId, TENANT_ID);
 
-    const stored = engine.getReport(TENANT_ID, report.reportId);
+    const stored = await engine.getReport(TENANT_ID, report.reportId);
     assert.ok(stored);
     assert.equal(stored?.reportId, report.reportId);
 
-    const byWorkflow = engine.getReportByWorkflowId(TENANT_ID, input.workflowId);
+    const byWorkflow = await engine.getReportByWorkflowId(TENANT_ID, input.workflowId);
     assert.ok(byWorkflow);
     assert.equal(byWorkflow?.reportId, report.reportId);
 
-    assert.equal(engine.listReports(TENANT_ID).length, 1);
-    assert.equal(engine.getStore().delete(TENANT_ID, report.reportId), true);
-    assert.equal(engine.getReport(TENANT_ID, report.reportId), undefined);
-    assert.equal(engine.listReports(TENANT_ID).length, 0);
+    assert.equal((await engine.listReports(TENANT_ID)).length, 1);
+    assert.equal(await engine.getRepository().delete(TENANT_ID, report.reportId), true);
+    assert.equal(await engine.getReport(TENANT_ID, report.reportId), undefined);
+    assert.equal((await engine.listReports(TENANT_ID)).length, 0);
   });
 });
