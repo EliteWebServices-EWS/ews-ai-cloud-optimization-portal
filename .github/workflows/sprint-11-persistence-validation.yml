@@ -12,6 +12,9 @@ on:
           - 'false'
           - 'true'
 
+permissions:
+  contents: read
+
 jobs:
   dynamodb-local-validation:
     runs-on: ubuntu-latest
