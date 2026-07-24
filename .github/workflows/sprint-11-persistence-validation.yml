@@ -1,0 +1,75 @@
+name: Sprint 11 persistence validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_validation:
+        description: Run optional non-production AWS validation (requires OIDC secrets)
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  dynamodb-local-validation:
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Create DynamoDB Local tables
+        working-directory: backend
+        env:
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: us-east-1
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          DYNAMODB_TABLE_NAME: sisum-sprint11-validation
+        run: |
+          node --import tsx scripts/create-validation-table.ts
+
+      - name: Run persistence hardening tests
+        working-directory: backend
+        env:
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: us-east-1
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          DYNAMODB_TABLE_NAME: sisum-sprint11-validation
+        run: |
+          npx tsx --test \
+            tests/unit/engine-ownership.test.ts \
+            tests/unit/persistence-table-pagination.test.ts \
+            tests/unit/history-concurrent-append.test.ts \
+            tests/unit/migrate-memory-to-dynamodb.test.ts \
+            tests/integration/performance-and-validation.test.ts
+
+      - name: Write validation summary
+        working-directory: backend
+        run: |
+          node --import tsx scripts/write-sprint11-validation-report.ts
+
+      - name: Upload validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprint-11-persistence-validation
+          path: |
+            backend/reports/sprint-11-persistence-validation.json
+            backend/reports/sprint-11-persistence-validation.md
