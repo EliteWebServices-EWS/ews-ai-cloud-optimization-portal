@@ -17,8 +17,8 @@ Generated during `fix/sprint-11-workflow-persistence-build`. Evidence paths are 
 | TTL | PASS | `TimeToLiveSpecification.AttributeName: expiresAt` | — | — |
 | GSIs for access patterns | PASS | `gsi1` on workflows/reports/learning/verifications (`GlobalSecondaryIndexes`) | Ownership table has no GSI (lookup by pk only) | Acceptable for ownership access pattern |
 | Least-privilege Lambda IAM | PASS | `SisumBusinessPersistencePolicy` scoped to table ARNs + indexes; audit policy Put/Query only | Execution role ARN referenced by name (role body may live outside repo) | Confirm role definition in deployment pipeline |
-| No application Scan (SISU'M backend) | PARTIAL | TypeScript repos use `QueryCommand` only (`backend/repositories/dynamodb/*`, `backend/engines/*/dynamodb-*.repository.ts`) | `backend/src/tenants.js` uses `ScanCommand` for legacy EWS portal sync (`listTenants`) | Replace portal tenant listing with Query/GSI or isolate `backend/src` from SISU'M SAM build |
-| Conditional writes | PASS | `DynamoDbWorkflowRepository.create` Put with `attribute_not_exists`; engines adapters vary | Report/learning/verification **engine** adapters use simpler puts | Align engine adapters with contract repos or document intentional difference |
+| No application Scan (SISU'M backend) | PASS | TypeScript repos use `QueryCommand` only; legacy `backend/src/tenants.js` removed (unused Scan helper) | — | — |
+| Conditional writes | PASS | Contract repos + engine ownership/report/verification transactions | — | — |
 | Optimistic locking | PASS | `buildVersionedUpdateExpression` in `backend/repositories/dynamodb/base-dynamodb-repository.ts`; workflow updates use version condition | Engine-layer DynamoDB adapters may not version every write | Extend engine adapters if cross-Lambda write safety required for all entities |
 | Version fields | PASS | `WorkflowRecord.version`, repository models in `backend/repositories/models/persistence-models.ts` | — | — |
 | Pagination tokens | PASS | `encodeNextToken` / `decodeNextToken` in `backend/database/pagination-token.ts`; repository `listByTenant` / `listByStatus` | — | — |
@@ -58,7 +58,7 @@ Generated during `fix/sprint-11-workflow-persistence-build`. Evidence paths are 
 |-------------|--------|----------|-----|------------------------|
 | Integration tests for repositories | PASS | `backend/tests/integration/report.test.ts`, `verification.test.ts`, `workflow*.test.ts`, `workflow-concurrency.test.ts` | — | — |
 | Migration migrates supported entities | PARTIAL | `backend/scripts/migrate-memory-to-dynamodb.ts` imports JSON export sections | No automatic export from legacy in-memory Maps | Produce export JSON from operational backup before migrate |
-| Migration idempotent | PASS | Put-based batch writes (re-run safe) | — | — |
+| Migration idempotent | PASS | Default `insert-only` conditional puts; optional upsert with explicit confirmation | `migrate-memory-to-dynamodb.test.ts` | — |
 | BatchWrite retry | PASS | Bounded exponential backoff in migration script | — | — |
 | No test harness import | PASS | Script uses standalone `DynamoDBClient` factory | — | — |
 | Configurable source/target | PASS | `MIGRATION_SOURCE_PATH`, per-entity `*_TABLE_NAME`, `DYNAMODB_ENDPOINT` | — | — |
@@ -83,7 +83,7 @@ Generated during `fix/sprint-11-workflow-persistence-build`. Evidence paths are 
 | Command | Result |
 |---------|--------|
 | `npm ci` | Pass |
-| `npm test` | Pass (284 passed, 5 skipped DynamoDB Local bench) |
+| `npm test` | Pass (314 passed, 5 skipped DynamoDB Local bench) |
 | `npm run build` | Pass |
 | `sam validate --lint` | Pass |
 | `sam build --no-cached` | Pass |
@@ -93,4 +93,5 @@ Generated during `fix/sprint-11-workflow-persistence-build`. Evidence paths are 
 
 - Integration tests for reporting already `await` async repository methods and use `getRepository()` (`backend/tests/integration/report.test.ts`).
 - Verification integration test does not place `completedAt` on `OptimizationContext`; completion time remains on execution/observation structures.
-- Legacy `backend/src/tenants.js` Scan remains outside the TypeScript SISU'M Lambda (`backend/lambda.ts`) but still violates Sprint 11 “no application scans” if interpreted repo-wide.
+- Legacy portal `backend/src/tenants.js` Scan helper removed (not referenced by SISU'M Lambda).
+- See `docs/handoffs/sprint-11-final-closure.md` for go/no-go and measured validation status.
