@@ -18,8 +18,14 @@
  */
 
 import { recordBelongsToTenant } from '../auth/tenant';
-import { dynamoDbDocumentClient } from '../database';
+import {
+  decodeNextToken,
+  dynamoDbDocumentClient,
+  encodeNextToken,
+  InvalidPaginationTokenError,
+} from '../database';
 import { isPersistenceEnabled } from '../persistence/persistence-table';
+import { normalizePageSize } from '../repositories/contracts/repository-types';
 import {
   DynamoDbOwnershipRepository,
   DynamoDbWorkflowRepository,
@@ -27,6 +33,10 @@ import {
 import type { WorkflowState } from '../shared/constants';
 import { createLogger } from '../shared/utils';
 import { createRepositoryBackedWorkflowStore } from './workflow.repository-store';
+import type {
+  WorkflowListPageRequest,
+  WorkflowListPageResult,
+} from './workflow.query';
 import type { WorkflowContext, WorkflowMetadata, WorkflowRecord, HardenedWorkflowResult } from './workflow.types';
 
 const logger = createLogger('WorkflowStore');
@@ -44,7 +54,22 @@ export interface WorkflowStoreInterface {
   get(tenantId: string, workflowId: string): Promise<WorkflowRecord | undefined>;
   getMetadata(tenantId: string, workflowId: string): Promise<WorkflowMetadata | undefined>;
   list(tenantId: string, status?: WorkflowState): Promise<WorkflowMetadata[]>;
+  listPage(
+    tenantId: string,
+    request: WorkflowListPageRequest
+  ): Promise<WorkflowListPageResult<WorkflowMetadata>>;
   resolveOwnerTenantId(workflowId: string): Promise<string | undefined>;
+}
+
+/**
+ * Returns true when deployed table env vars select durable DynamoDB workflow storage.
+ */
+export function shouldUseDurableWorkflowStore(): boolean {
+  const workflowsTableName = process.env.WORKFLOWS_TABLE_NAME?.trim();
+  const ownershipTableName = process.env.OWNERSHIP_TABLE_NAME?.trim();
+  return Boolean(
+    isPersistenceEnabled() && workflowsTableName && ownershipTableName
+  );
 }
 
 /**
@@ -112,17 +137,52 @@ export class InMemoryWorkflowStore implements WorkflowStoreInterface {
   }
 
   async list(tenantId: string, status?: WorkflowState): Promise<WorkflowMetadata[]> {
+    const page = await this.listPage(tenantId, { status });
+    const all: WorkflowMetadata[] = [...page.items];
+    let nextToken = page.nextToken;
+
+    while (nextToken) {
+      const nextPage = await this.listPage(tenantId, { status, nextToken });
+      all.push(...nextPage.items);
+      nextToken = nextPage.nextToken;
+    }
+
+    return all;
+  }
+
+  async listPage(
+    tenantId: string,
+    request: WorkflowListPageRequest
+  ): Promise<WorkflowListPageResult<WorkflowMetadata>> {
     const all = Array.from(this.records.values())
       .filter((record) =>
         recordBelongsToTenant(record.metadata.tenantId, tenantId)
       )
-      .map((record) => record.metadata);
+      .map((record) => record.metadata)
+      .filter((metadata) =>
+        request.status ? metadata.status === request.status : true
+      )
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 
-    if (!status) {
-      return all;
+    let start = 0;
+    if (request.nextToken) {
+      const cursor = decodeNextToken(request.nextToken);
+      const offset = cursor?.offset;
+      if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) {
+        throw new InvalidPaginationTokenError();
+      }
+      start = offset;
     }
 
-    return all.filter((metadata) => metadata.status === status);
+    const limit = normalizePageSize(request.limit);
+    const items = all.slice(start, start + limit);
+    const nextOffset = start + limit;
+    const nextToken =
+      nextOffset < all.length
+        ? encodeNextToken({ offset: nextOffset })
+        : undefined;
+
+    return { items, nextToken };
   }
 
   async resolveOwnerTenantId(workflowId: string): Promise<string | undefined> {
@@ -140,10 +200,9 @@ export class InMemoryWorkflowStore implements WorkflowStoreInterface {
  * only for local development without those tables configured.
  */
 export function createWorkflowStore(): WorkflowStoreInterface {
-  const workflowsTableName = process.env.WORKFLOWS_TABLE_NAME?.trim();
-  const ownershipTableName = process.env.OWNERSHIP_TABLE_NAME?.trim();
-
-  if (isPersistenceEnabled() && workflowsTableName && ownershipTableName) {
+  if (shouldUseDurableWorkflowStore()) {
+    const workflowsTableName = process.env.WORKFLOWS_TABLE_NAME!.trim();
+    const ownershipTableName = process.env.OWNERSHIP_TABLE_NAME!.trim();
     const workflowRepository = new DynamoDbWorkflowRepository(
       dynamoDbDocumentClient,
       workflowsTableName

@@ -81,8 +81,13 @@ describe('Performance, concurrency, and validation benchmarks (DynamoDB)', () =>
           ConditionExpression: 'attribute_not_exists(pk)',
         })
       );
-    } catch (err: any) {
-      if (err.name === 'ConditionalCheckFailedException') {
+    } catch (err: unknown) {
+      if (
+        err &&
+        typeof err === 'object' &&
+        'name' in err &&
+        err.name === 'ConditionalCheckFailedException'
+      ) {
         conditionalCheckFailed = true;
       }
     }
