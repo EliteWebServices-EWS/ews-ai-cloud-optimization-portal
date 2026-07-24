@@ -18,6 +18,7 @@ permissions:
 jobs:
   dynamodb-local-validation:
     runs-on: ubuntu-latest
+
     services:
       dynamodb:
         image: amazon/dynamodb-local:latest
@@ -25,9 +26,11 @@ jobs:
           - 8000:8000
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: npm
@@ -45,8 +48,7 @@ jobs:
           AWS_REGION: us-east-1
           DYNAMODB_ENDPOINT: http://localhost:8000
           DYNAMODB_TABLE_NAME: sisum-sprint11-validation
-        run: |
-          npx tsx scripts/create-validation-table.ts
+        run: npx tsx scripts/create-validation-table.ts
 
       - name: Run persistence hardening tests
         working-directory: backend
@@ -58,20 +60,19 @@ jobs:
           DYNAMODB_TABLE_NAME: sisum-sprint11-validation
         run: |
           npx tsx --test \
+            tests/unit/create-validation-table.test.ts \
             tests/unit/engine-ownership.test.ts \
             tests/unit/persistence-table-pagination.test.ts \
             tests/unit/history-concurrent-append.test.ts \
             tests/unit/migrate-memory-to-dynamodb.test.ts \
-            tests/unit/create-validation-table.test.ts \
             tests/integration/performance-and-validation.test.ts
 
       - name: Write validation summary
         working-directory: backend
-        run: |
-          npx tsx scripts/write-sprint11-validation-report.ts
+        run: npx tsx scripts/write-sprint11-validation-report.ts
 
       - name: Upload validation artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sprint-11-persistence-validation
           path: |
