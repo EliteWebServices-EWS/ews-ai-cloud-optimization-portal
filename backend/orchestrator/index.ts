@@ -11,8 +11,14 @@ export type {
 export { DEFAULT_WORKFLOW_CONFIG, DRY_RUN_WORKFLOW_CONFIG, resolveWorkflowConfig } from './workflow.config';
 export type { WorkflowConfig, WorkflowFeatureFlags, WorkflowTimeoutConfig } from './workflow.config';
 
-export { createWorkflowStore, InMemoryWorkflowStore } from './workflow.store';
+export { createWorkflowStore, InMemoryWorkflowStore, shouldUseDurableWorkflowStore } from './workflow.store';
 export type { WorkflowStoreInterface } from './workflow.store';
+
+export {
+  parseWorkflowListQuery,
+  WorkflowListQueryValidationError,
+} from './workflow.query';
+export type { WorkflowListQuery } from './workflow.query';
 
 export { WorkflowStageError, WorkflowValidationError, isWorkflowStageError } from './workflow.errors';
 
