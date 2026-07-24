@@ -14,11 +14,16 @@ import {
   type WriteAuditEventInput,
 } from '../../audit';
 import type { WorkflowOrchestrator } from '../../orchestrator';
+import {
+  parseWorkflowListQuery,
+  WorkflowListQueryValidationError,
+} from '../../orchestrator';
 import type { PluginRegistry } from '../../plugins';
 import type { ProviderInterface } from '../../shared/interfaces';
 import type { ExecutionSimulatorInterface } from '../../execution';
 import type { LearningStoreInterface } from '../../engines/learning';
 import { DEFAULT_REGION, PLUGIN_NAMES, PROVIDER_NAMES } from '../../shared/constants';
+import { InvalidPaginationTokenError } from '../../database';
 import { GOVERNANCE_POLICY_CATALOG, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
 import { DEFAULT_FINANCIAL_CONFIG, generateFinancialReport } from '../../engines/financial';
 import { DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
@@ -817,6 +822,66 @@ export function createWorkflowRoutes(
       }
     }
   );
+
+  router.get('/workflows', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
+
+    try {
+      const query = parseWorkflowListQuery(
+        req.query as Record<string, unknown>
+      );
+
+      const page = await deps.orchestrator.listWorkflows(tenantId, query);
+
+      res.json(
+        buildSuccessResponse(
+          {
+            items: page.items.map((metadata) => ({
+              workflowId: metadata.workflowId,
+              status: metadata.status,
+              executionState: metadata.executionState,
+              plugin: metadata.plugin,
+              createdAt: metadata.createdAt,
+              updatedAt: metadata.updatedAt,
+              completedAt: metadata.completedAt,
+              region: metadata.region,
+              resourceId: metadata.resourceId,
+              triggerSource: metadata.triggerSource,
+            })),
+            pagination: {
+              limit: query.limit,
+              count: page.items.length,
+              nextToken: page.nextToken,
+            },
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      if (error instanceof WorkflowListQueryValidationError) {
+        handleRouteError(
+          res,
+          new AppError('INVALID_REQUEST', error.message, 400),
+          requestId,
+          'workflow'
+        );
+        return;
+      }
+
+      if (error instanceof InvalidPaginationTokenError) {
+        handleRouteError(
+          res,
+          new AppError('INVALID_REQUEST', error.message, 400),
+          requestId,
+          'workflow'
+        );
+        return;
+      }
+
+      handleRouteError(res, error, requestId, 'workflow');
+    }
+  });
 
   router.get('/workflows/status/:id', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
