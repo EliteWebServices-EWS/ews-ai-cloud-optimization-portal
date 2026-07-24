@@ -1,16 +1,5 @@
 /**
  * DynamoDB-backed LearningRepository.
- *
- * Learning records live in the dedicated Learning table (tenant partition
- * unless noted):
- *   LEARN#<workflowId>                 learning record
- *   LEARNFB#<workflowId>#<feedbackId>  feedback (append-only)
- *   LEARNCONF#<workflowId>#<seq>       confidence history (append-only)
- *
- * Cross-tenant ownership lookups (used only for tenant.access_denied
- * auditing) live in the shared Ownership table, keyed the same way the
- * report adapter keys workflow ownership so both share one fact:
- *   RESOURCE#WORKFLOW#<workflowId> -> ownerTenantId
  */
 
 import type {
@@ -26,6 +15,15 @@ import {
   ownershipPartitionKey,
   OWNERSHIP_SORT_KEY,
 } from '../../database/dynamodb-keys';
+import {
+  buildAppendOnlyKeySuffix,
+  compareAppendOnlySortKeys,
+} from '../../persistence/append-only-key';
+import {
+  ensureEngineOwnership,
+  resolveEngineOwnershipTenantId,
+} from '../../persistence/engine-ownership';
+import { computeExpiresAt, LEARNING_RETENTION_SECONDS } from '../../persistence/retention';
 import {
   toLearningMetadata,
   type ConfidenceHistoryEntry,
@@ -50,10 +48,6 @@ function confidencePrefix(workflowId?: string): string {
   return workflowId ? `LEARNCONF#${workflowId}#` : 'LEARNCONF#';
 }
 
-function confidenceSk(workflowId: string, seq: number): string {
-  return `LEARNCONF#${workflowId}#${String(seq).padStart(12, '0')}`;
-}
-
 function byRecordedAtAscending(
   left: { recordedAt: string },
   right: { recordedAt: string }
@@ -72,20 +66,22 @@ export class DynamoDbLearningRepository implements LearningRepository {
 
   async save(record: LearningRecord): Promise<LearningRecord> {
     const pk = buildTenantPartitionKey(record.tenantId);
+    const expiresAt = computeExpiresAt(LEARNING_RETENTION_SECONDS);
 
     await this.table.putItem({
       pk,
       sk: learnSk(record.workflowId),
       entityType: 'learning-record',
       recordedAt: record.recordedAt,
+      expiresAt,
       data: record,
     });
 
-    await this.ownershipTable.putItem({
+    await ensureEngineOwnership(this.ownershipTable, {
       pk: ownershipPartitionKey('WORKFLOW', record.workflowId),
-      sk: OWNERSHIP_SORT_KEY,
       entityType: 'workflow-owner-index',
-      tenantId: record.tenantId,
+      ownerTenantId: record.tenantId,
+      expiresAt,
     });
 
     return record;
@@ -103,19 +99,36 @@ export class DynamoDbLearningRepository implements LearningRepository {
     return item?.data as LearningRecord | undefined;
   }
 
-  async list(tenantId: string): Promise<LearningRecord[]> {
-    const items = await this.table.queryByPrefix(
-      buildTenantPartitionKey(tenantId),
-      'LEARN#'
-    );
+  async listPage(
+    tenantId: string,
+    options: { limit?: number; nextToken?: string } = {}
+  ): Promise<{ records: LearningRecord[]; nextToken?: string }> {
+    const page = await this.table.queryPageByPrefix({
+      pk: buildTenantPartitionKey(tenantId),
+      skPrefix: 'LEARN#',
+      limit: options.limit,
+      nextToken: options.nextToken,
+      scanIndexForward: false,
+      paginationContext: {
+        tenantId,
+        scope: 'learning:list',
+      },
+    });
 
-    return items
+    const records = page.items
       .map((item) => item.data as LearningRecord)
       .sort(
         (left, right) =>
           new Date(right.recordedAt).getTime() -
           new Date(left.recordedAt).getTime()
       );
+
+    return { records, nextToken: page.nextToken };
+  }
+
+  async list(tenantId: string): Promise<LearningRecord[]> {
+    const page = await this.listPage(tenantId, { limit: 100 });
+    return page.records;
   }
 
   async listMetadata(tenantId: string): Promise<LearningMetadata[]> {
@@ -164,6 +177,7 @@ export class DynamoDbLearningRepository implements LearningRepository {
       sk: feedbackSk(feedback.workflowId, feedback.feedbackId),
       entityType: 'learning-feedback',
       recordedAt: feedback.recordedAt,
+      expiresAt: computeExpiresAt(LEARNING_RETENTION_SECONDS),
       data: feedback,
     });
 
@@ -190,17 +204,14 @@ export class DynamoDbLearningRepository implements LearningRepository {
     await this.requireRecord(entry.tenantId, entry.workflowId);
 
     const pk = buildTenantPartitionKey(entry.tenantId);
-    const existing = await this.table.queryByPrefix(
-      pk,
-      confidencePrefix(entry.workflowId)
-    );
-    const seq = existing.length + 1;
+    const sk = `${confidencePrefix(entry.workflowId)}${buildAppendOnlyKeySuffix(entry.recordedAt)}`;
 
     await this.table.putItem({
       pk,
-      sk: confidenceSk(entry.workflowId, seq),
+      sk,
       entityType: 'learning-confidence',
       recordedAt: entry.recordedAt,
+      expiresAt: computeExpiresAt(LEARNING_RETENTION_SECONDS),
       data: entry,
     });
 
@@ -217,6 +228,9 @@ export class DynamoDbLearningRepository implements LearningRepository {
     );
 
     return items
+      .sort((left, right) =>
+        compareAppendOnlySortKeys(left.sk as string, right.sk as string)
+      )
       .map((item) => item.data as ConfidenceHistoryEntry)
       .sort(byRecordedAtAscending);
   }
@@ -228,7 +242,7 @@ export class DynamoDbLearningRepository implements LearningRepository {
       ownershipPartitionKey('WORKFLOW', workflowId),
       OWNERSHIP_SORT_KEY
     );
-    return item?.tenantId as string | undefined;
+    return resolveEngineOwnershipTenantId(item);
   }
 
   private async requireRecord(
