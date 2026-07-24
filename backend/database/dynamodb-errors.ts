@@ -31,6 +31,19 @@ export class RepositoryConflictError extends Error {
 }
 
 /**
+ * Raised when a resource ownership record already belongs to another tenant.
+ * Callers must map this to a safe miss (404) without exposing the owner tenant.
+ */
+export class OwnershipConflictError extends Error {
+  constructor(
+    message = 'The resource ownership record conflicts with an existing owner.',
+  ) {
+    super(message);
+    this.name = 'OwnershipConflictError';
+  }
+}
+
+/**
  * Identifies DynamoDB conditional-write failures without importing
  * service-specific exception classes throughout the repository layer.
  */

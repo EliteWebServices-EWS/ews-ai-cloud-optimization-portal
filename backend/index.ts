@@ -34,6 +34,7 @@ import {
   type ProviderName,
 } from './shared/constants';
 import { createLogger } from './shared/utils';
+import { validateDeployedPersistenceConfig } from './persistence/persistence-config';
 
 const logger = createLogger('Server');
 const PORT = Number(process.env.PORT ?? 3000);
@@ -58,6 +59,8 @@ export function resolveProviderName(): ProviderName {
  * Bootstrap and configure the SISU'M backend API server.
  */
 export function createApp(): express.Application {
+  validateDeployedPersistenceConfig();
+
   const activeProvider = resolveProviderName();
   const provider = createProvider(activeProvider);
   const pluginRegistry = createPluginRegistry(provider);

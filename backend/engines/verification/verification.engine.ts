@@ -12,6 +12,7 @@ import { buildVerificationReport } from './verification.report';
 import { DEFAULT_VERIFICATION_CONFIG, type VerificationConfig } from './verification.config';
 import { requireValidVerificationInputs } from './verification.validator';
 import { getVerificationsTable } from '../../persistence/persistence-table';
+import { shouldUseDurablePersistence } from '../../persistence/persistence-config';
 import { MockVerificationRepository } from './mock-verification.repository';
 import { DynamoDbVerificationRepository } from './dynamodb-verification.repository';
 import type { VerificationRepository } from './verification.repository';
@@ -169,9 +170,11 @@ export function createVerificationEngine(
   }
 
   const table = getVerificationsTable();
+  const useDurable = shouldUseDurablePersistence() && table;
+
   return new VerificationEngine({
     ...options,
-    repository: table
+    repository: useDurable
       ? new DynamoDbVerificationRepository(table)
       : undefined,
   });

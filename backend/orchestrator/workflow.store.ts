@@ -25,6 +25,11 @@ import {
   InvalidPaginationTokenError,
 } from '../database';
 import { isPersistenceEnabled } from '../persistence/persistence-table';
+import {
+  PersistenceConfigurationError,
+  shouldUseDurablePersistence,
+  validateDeployedPersistenceConfig,
+} from '../persistence/persistence-config';
 import { normalizePageSize } from '../repositories/contracts/repository-types';
 import {
   DynamoDbOwnershipRepository,
@@ -200,7 +205,9 @@ export class InMemoryWorkflowStore implements WorkflowStoreInterface {
  * only for local development without those tables configured.
  */
 export function createWorkflowStore(): WorkflowStoreInterface {
-  if (shouldUseDurableWorkflowStore()) {
+  validateDeployedPersistenceConfig();
+
+  if (shouldUseDurablePersistence() && shouldUseDurableWorkflowStore()) {
     const workflowsTableName = process.env.WORKFLOWS_TABLE_NAME!.trim();
     const ownershipTableName = process.env.OWNERSHIP_TABLE_NAME!.trim();
     const workflowRepository = new DynamoDbWorkflowRepository(
@@ -213,6 +220,12 @@ export function createWorkflowStore(): WorkflowStoreInterface {
     );
 
     return createRepositoryBackedWorkflowStore(workflowRepository, ownershipRepository);
+  }
+
+  if (shouldUseDurablePersistence()) {
+    throw new PersistenceConfigurationError(
+      'Deployed persistence is enabled but workflow tables are not fully configured.',
+    );
   }
 
   logger.warn(
