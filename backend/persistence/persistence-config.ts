@@ -6,6 +6,7 @@ const REQUIRED_TABLE_VARS = [
   'REPORTS_TABLE_NAME',
   'LEARNING_TABLE_NAME',
   'VERIFICATIONS_TABLE_NAME',
+  'TENANTS_TABLE_NAME',
 ] as const;
 
 export type PersistenceTableEnvVar = (typeof REQUIRED_TABLE_VARS)[number];
