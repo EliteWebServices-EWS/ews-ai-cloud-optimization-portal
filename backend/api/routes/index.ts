@@ -35,6 +35,8 @@ import {
   toReportGenerationInput,
   type ReportingEngine,
 } from '../../engines/reporting';
+import type { TenantRepository } from '../../repositories/contracts';
+import { createTenantAdminRoutes } from './tenant-admin.routes';
 import { MOCK_PRICING } from '../../providers/mock/data';
 import {
   AppError,
@@ -71,6 +73,7 @@ export interface ApiDependencies {
   executionSimulator: ExecutionSimulatorInterface;
   learningStore: LearningStoreInterface;
   reportingEngine: ReportingEngine;
+  tenantRepository: TenantRepository;
 }
 
 function recordAuditEvent(
@@ -2062,6 +2065,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createRecommendationRoutes(deps));
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
+  router.use(createTenantAdminRoutes(deps.tenantRepository));
   router.use(createAdminAuditRoutes());
 
   return router;

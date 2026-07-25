@@ -29,6 +29,7 @@ import { createExecutionSimulator } from './execution';
 import { createWorkflowOrchestrator } from './orchestrator';
 import { createPluginRegistry } from './plugins';
 import { createProvider } from './providers';
+import { createTenantRepository } from './services/tenant-repository-factory';
 import {
   PROVIDER_NAMES,
   type ProviderName,
@@ -68,6 +69,7 @@ export function createApp(): express.Application {
   const learningStore = createLearningStore();
   const executionSimulator = createExecutionSimulator();
   const reportingEngine = createReportingEngine();
+  const tenantRepository = createTenantRepository();
 
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
@@ -162,6 +164,7 @@ export function createApp(): express.Application {
       executionSimulator,
       learningStore,
       reportingEngine,
+      tenantRepository,
     })
   );
 

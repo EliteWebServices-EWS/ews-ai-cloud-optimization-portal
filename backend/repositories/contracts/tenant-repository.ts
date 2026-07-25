@@ -58,4 +58,13 @@ export interface TenantRepository {
     status: TenantStatus,
     page?: PageRequest,
   ): Promise<PageResult<TenantRecord>>;
+
+  /**
+   * List every tenant in the registry, platform-wide. Used only by
+   * administration listing (Platform Admin) — never by tenant-scoped
+   * callers, which must use listByOwner or a single getById instead.
+   */
+  listAll(
+    page?: PageRequest,
+  ): Promise<PageResult<TenantRecord>>;
 }

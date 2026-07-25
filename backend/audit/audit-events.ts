@@ -30,6 +30,14 @@ export const AUDIT_EVENTS = {
   TENANT_CLAIM_MISSING: 'tenant.claim_missing',
   TENANT_FALLBACK_USED: 'tenant.fallback_used',
   TENANT_ACCESS_DENIED: 'tenant.access_denied',
+
+  TENANT_CREATED: 'tenant.created',
+  TENANT_UPDATED: 'tenant.updated',
+  TENANT_SUSPENDED: 'tenant.suspended',
+  TENANT_REACTIVATED: 'tenant.reactivated',
+  TENANT_ARCHIVED: 'tenant.archived',
+  TENANT_DELETED: 'tenant.deleted',
+  TENANT_ADMINISTRATION_DENIED: 'tenant.administration_denied',
 } as const;
 
 export type AuditEventName =
