@@ -57,6 +57,9 @@ import {
   validateReportGenerateBody,
   validateWorkflowRunBody,
 } from '../../security';
+import { createMembershipRoutes } from './membership-routes';
+import type { MembershipService } from '../../membership';
+import type { MembershipRepository } from '../../repositories/contracts';
 
 export interface ApiDependencies {
   orchestrator: WorkflowOrchestrator;
@@ -66,6 +69,8 @@ export interface ApiDependencies {
   executionSimulator: ExecutionSimulatorInterface;
   learningStore: LearningStoreInterface;
   reportingEngine: ReportingEngine;
+  membershipService: MembershipService;
+  membershipRepository: MembershipRepository;
 }
 
 function recordAuditEvent(
@@ -1998,6 +2003,12 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
   router.use(createAdminAuditRoutes());
+  router.use(
+    createMembershipRoutes({
+      membershipService: deps.membershipService,
+      membershipRepository: deps.membershipRepository,
+    }),
+  );
 
   return router;
 }

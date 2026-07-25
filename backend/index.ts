@@ -35,6 +35,12 @@ import {
 } from './shared/constants';
 import { createLogger } from './shared/utils';
 
+import {
+  createInvitationRepository,
+  createMembershipRepository,
+  createMembershipService,
+} from './membership';
+
 const logger = createLogger('Server');
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -65,6 +71,13 @@ export function createApp(): express.Application {
   const learningStore = createLearningStore();
   const executionSimulator = createExecutionSimulator();
   const reportingEngine = createReportingEngine();
+
+  const membershipRepository = createMembershipRepository();
+  const invitationRepository = createInvitationRepository();
+  const membershipService = createMembershipService({
+    membershipRepository,
+    invitationRepository,
+  });
 
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
@@ -159,6 +172,8 @@ export function createApp(): express.Application {
       executionSimulator,
       learningStore,
       reportingEngine,
+      membershipService,
+      membershipRepository,
     })
   );
 
