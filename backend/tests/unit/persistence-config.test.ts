@@ -61,12 +61,25 @@ describe('validateDeployedPersistenceConfig', () => {
         REPORTS_TABLE_NAME: undefined,
         LEARNING_TABLE_NAME: undefined,
         VERIFICATIONS_TABLE_NAME: undefined,
+        TENANTS_TABLE_NAME: undefined,
       },
       () => {
         assert.throws(
           () => validateDeployedPersistenceConfig(),
           PersistenceConfigurationError
         );
+
+        try {
+          validateDeployedPersistenceConfig();
+          assert.fail('expected validateDeployedPersistenceConfig to throw');
+        } catch (error) {
+          assert.ok(error instanceof PersistenceConfigurationError);
+          assert.match(error.message, /OWNERSHIP_TABLE_NAME/);
+          assert.match(error.message, /REPORTS_TABLE_NAME/);
+          assert.match(error.message, /LEARNING_TABLE_NAME/);
+          assert.match(error.message, /VERIFICATIONS_TABLE_NAME/);
+          assert.match(error.message, /TENANTS_TABLE_NAME/);
+        }
       }
     );
   });
@@ -81,6 +94,7 @@ describe('validateDeployedPersistenceConfig', () => {
         REPORTS_TABLE_NAME: 'rep',
         LEARNING_TABLE_NAME: 'learn',
         VERIFICATIONS_TABLE_NAME: 'ver',
+        TENANTS_TABLE_NAME: 'tenants',
       },
       () => {
         assert.throws(
@@ -101,6 +115,7 @@ describe('validateDeployedPersistenceConfig', () => {
         REPORTS_TABLE_NAME: 'rep',
         LEARNING_TABLE_NAME: 'learn',
         VERIFICATIONS_TABLE_NAME: 'ver',
+        TENANTS_TABLE_NAME: 'tenants',
       },
       () => {
         assert.doesNotThrow(() => validateDeployedPersistenceConfig());
