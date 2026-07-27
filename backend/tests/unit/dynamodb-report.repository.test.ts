@@ -4,13 +4,17 @@ import {
   DynamoDbReportRepository,
   type ReportQuery,
 } from '../../engines/reporting';
+import {
+  buildReportHistorySk,
+} from '../../engines/reporting/dynamodb-report.repository';
+import { compareAppendOnlySortKeys } from '../../persistence/append-only-key';
 import type { OptimizationReport } from '../../shared/types';
 import { PLUGIN_NAMES, WORKFLOW_STATES } from '../../shared/constants';
 import { createLinkedFakePersistenceTables } from './support/fake-persistence-table';
 
-function createReportRepository() {
+function createReportRepository(now?: () => string) {
   const { reports, ownership } = createLinkedFakePersistenceTables();
-  return new DynamoDbReportRepository(reports, ownership);
+  return new DynamoDbReportRepository(reports, ownership, now);
 }
 
 function buildReport(
@@ -81,7 +85,12 @@ describe('DynamoDbReportRepository', () => {
   });
 
   it('records append-only history across create and update', async () => {
-    const repository = createReportRepository();
+    const fixedNow = '2026-07-27T20:14:54.302Z';
+    let call = 0;
+    const repository = createReportRepository(() => {
+      call += 1;
+      return fixedNow;
+    });
 
     await repository.save(buildReport());
     await repository.save(buildReport({ status: 'partial' }));
@@ -93,6 +102,88 @@ describe('DynamoDbReportRepository', () => {
     );
     assert.equal(history.length, 2);
     assert.notEqual(history[0]?.historyId, history[1]?.historyId);
+    assert.equal(call, 2);
+  });
+
+  it('orders create, update, and delete written in the same millisecond', async () => {
+    const fixedNow = '2026-07-27T20:14:54.302Z';
+    const repository = createReportRepository(() => fixedNow);
+
+    await repository.save(buildReport());
+    await repository.save(buildReport({ status: 'partial' }));
+    await repository.delete('tenant-a', 'rpt-001');
+
+    const history = await repository.getHistory('tenant-a', 'rpt-001');
+    assert.deepEqual(
+      history.map((entry) => entry.action),
+      ['created', 'updated', 'deleted'],
+    );
+  });
+
+  it('retains repeated updates recorded in the same millisecond', async () => {
+    const fixedNow = '2026-07-27T20:14:54.302Z';
+    const repository = createReportRepository(() => fixedNow);
+    const report = buildReport();
+
+    await repository.save(report);
+    await repository.save({ ...report, status: 'partial' });
+    await repository.save({ ...report, status: 'complete' });
+
+    const history = await repository.getHistory('tenant-a', 'rpt-001');
+    assert.deepEqual(
+      history.map((entry) => entry.action),
+      ['created', 'updated', 'updated'],
+    );
+    assert.equal(new Set(history.map((entry) => entry.historyId)).size, 3);
+  });
+
+  it('sorts same-timestamp lifecycle keys deterministically', () => {
+    const reportId = 'rpt-sort';
+    const recordedAt = '2026-07-27T20:14:54.302Z';
+    const created = buildReportHistorySk(reportId, recordedAt, 'created');
+    const updated = buildReportHistorySk(reportId, recordedAt, 'updated');
+
+    assert.equal(compareAppendOnlySortKeys(created, updated), -1);
+  });
+
+  it('reads legacy numeric and timestamp#uuid history keys', async () => {
+    const { reports, ownership } = createLinkedFakePersistenceTables();
+    const repository = new DynamoDbReportRepository(reports, ownership);
+    const report = buildReport();
+    const pk = `TENANT#${report.tenantId}`;
+    const prefix = `REPORTHIST#${report.reportId}#`;
+
+    await reports.putItem({
+      pk,
+      sk: `${prefix}1`,
+      entityType: 'report-history',
+      data: {
+        historyId: `${report.reportId}:1`,
+        tenantId: report.tenantId,
+        reportId: report.reportId,
+        workflowId: report.workflowId,
+        action: 'created',
+        recordedAt: '2026-07-20T00:00:00.000Z',
+        metadata: {},
+      },
+    });
+    await reports.putItem({
+      pk,
+      sk: `${prefix}2026-07-21T12:00:00.000Z#aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa`,
+      entityType: 'report-history',
+      data: {
+        historyId: `${report.reportId}:2026-07-21T12:00:00.000Z#aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa`,
+        tenantId: report.tenantId,
+        reportId: report.reportId,
+        workflowId: report.workflowId,
+        action: 'updated',
+        recordedAt: '2026-07-21T12:00:00.000Z',
+        metadata: {},
+      },
+    });
+
+    const history = await repository.getHistory(report.tenantId, report.reportId);
+    assert.deepEqual(history.map((entry) => entry.action), ['created', 'updated']);
   });
 
   it('deletes report content while retaining history and clearing ownership', async () => {

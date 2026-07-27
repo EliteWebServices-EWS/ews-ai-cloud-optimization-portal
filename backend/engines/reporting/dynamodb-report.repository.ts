@@ -5,7 +5,7 @@
  * partition unless noted):
  *   REPORT#<reportId>            report content
  *   REPORTWF#<workflowId>        workflow -> reportId pointer
- *   REPORTHIST#<reportId>#<seq|timestamp#uuid>  append-only history
+ *   REPORTHIST#<reportId>#<seq|timestamp#uuid|timestamp#event-order#uuid>  append-only history
  *
  * Cross-tenant ownership lookups use the shared Ownership table.
  */
@@ -58,8 +58,29 @@ function historyPrefix(reportId: string): string {
   return `REPORTHIST#${reportId}#`;
 }
 
-function buildHistorySk(reportId: string, recordedAt: string): string {
-  return `${historyPrefix(reportId)}${buildAppendOnlyKeySuffix(recordedAt)}`;
+const REPORT_HISTORY_ACTION_ORDER = {
+  created: '00',
+  updated: '10',
+  deleted: '20',
+} as const;
+
+export function buildReportHistorySk(
+  reportId: string,
+  recordedAt: string,
+  action: ReportHistoryEntry['action'],
+): string {
+  return `${historyPrefix(reportId)}${buildAppendOnlyKeySuffix(
+    recordedAt,
+    REPORT_HISTORY_ACTION_ORDER[action],
+  )}`;
+}
+
+function buildHistorySk(
+  reportId: string,
+  recordedAt: string,
+  action: ReportHistoryEntry['action'],
+): string {
+  return buildReportHistorySk(reportId, recordedAt, action);
 }
 
 function legacyHistorySeq(sk: string, prefix: string): number | undefined {
@@ -78,7 +99,8 @@ function legacyHistorySeq(sk: string, prefix: string): number | undefined {
 export class DynamoDbReportRepository implements ReportRepository {
   constructor(
     private readonly table: PersistenceTable,
-    private readonly ownershipTable: PersistenceTable
+    private readonly ownershipTable: PersistenceTable,
+    private readonly now: () => string = () => new Date().toISOString(),
   ) {}
 
   async save(report: OptimizationReport): Promise<OptimizationReport> {
@@ -310,8 +332,8 @@ export class DynamoDbReportRepository implements ReportRepository {
     action: ReportHistoryEntry['action']
   ): Promise<void> {
     const pk = buildTenantPartitionKey(report.tenantId);
-    const recordedAt = new Date().toISOString();
-    const sk = buildHistorySk(report.reportId, recordedAt);
+    const recordedAt = this.now();
+    const sk = buildHistorySk(report.reportId, recordedAt, action);
 
     const entry: ReportHistoryEntry = {
       historyId: `${report.reportId}:${sk.slice(historyPrefix(report.reportId).length)}`,
