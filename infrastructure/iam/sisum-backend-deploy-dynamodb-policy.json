@@ -19,7 +19,14 @@
       ],
       "Resource": [
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-audit-*",
-        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-tenants-*"
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-workflows-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-reports-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-learning-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-verifications-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-ownership-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-tenants-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-memberships-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-invitations-*"
       ]
     }
   ]
