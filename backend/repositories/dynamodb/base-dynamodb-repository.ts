@@ -24,6 +24,10 @@ const PROTECTED_FIELDS = new Set([
   'verificationId',
   'resourceId',
   'resourceType',
+  'memberId',
+  'userId',
+  'invitationId',
+  'tokenHash',
   'version',
   'createdAt',
 ]);

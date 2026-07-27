@@ -121,6 +121,78 @@ export function workflowResourceIndexPartitionKey(
 }
 
 /**
+ * Creates the sort key for a tenant membership record.
+ *
+ * Example:
+ * MEMBER#user-123
+ */
+export function membershipSortKey(userId: string): string {
+  return `MEMBER#${requireKeyValue(userId, 'userId')}`;
+}
+
+/**
+ * Creates the GSI1 partition key used to list every tenant a user belongs
+ * to, across tenants.
+ *
+ * Example:
+ * USER#user-123
+ */
+export function userMembershipIndexPartitionKey(userId: string): string {
+  return `USER#${requireKeyValue(userId, 'userId')}`;
+}
+
+/**
+ * Creates the GSI1 sort key for the user-membership index.
+ *
+ * Example:
+ * TENANT#tenant-a#MEMBER#user-123
+ */
+export function userMembershipIndexSortKey(
+  tenantId: string,
+  userId: string,
+): string {
+  return `${tenantPartitionKey(tenantId)}#${membershipSortKey(userId)}`;
+}
+
+/**
+ * Creates the GSI2 partition key used to resolve a membership by its
+ * opaque memberId (used by memberId-only routes such as
+ * PATCH/DELETE /members/{memberId}).
+ *
+ * Example:
+ * MEMBERID#mem-abc123
+ */
+export function memberIdIndexPartitionKey(memberId: string): string {
+  return `MEMBERID#${requireKeyValue(memberId, 'memberId')}`;
+}
+
+export const MEMBER_ID_INDEX_SORT_KEY = 'MEMBER';
+
+/**
+ * Creates the sort key for an invitation record.
+ *
+ * Example:
+ * INVITE#inv-123
+ */
+export function invitationSortKey(invitationId: string): string {
+  return `INVITE#${requireKeyValue(invitationId, 'invitationId')}`;
+}
+
+/**
+ * Creates the GSI1 partition key used to resolve an invitation by the hash
+ * of its bearer token (never by the raw token — the raw token is never
+ * persisted or queried against).
+ *
+ * Example:
+ * INVITETOKEN#3f9a...
+ */
+export function invitationTokenIndexPartitionKey(tokenHash: string): string {
+  return `INVITETOKEN#${requireKeyValue(tokenHash, 'tokenHash')}`;
+}
+
+export const INVITATION_TOKEN_INDEX_SORT_KEY = 'INVITE';
+
+/**
  * Creates a chronological GSI sort key.
  *
  * Example:

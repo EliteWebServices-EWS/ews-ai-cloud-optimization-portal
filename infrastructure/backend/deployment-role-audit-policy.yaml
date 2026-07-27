@@ -2,8 +2,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 
 Description: >
   Supplemental IAM permissions for SisumBackendDeployRole so GitHub Actions
-  can deploy Sprint 10.5.14 audit DynamoDB resources through CloudFormation.
-  Apply once with an administrator role before re-running backend deployment.
+  can deploy SISU'M audit and tenant registry DynamoDB resources through
+  CloudFormation. Apply with an administrator role before re-running the
+  backend deployment.
 
 Parameters:
   BackendDeployRoleName:
@@ -26,7 +27,7 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - Sid: ManageAuditDynamoDbTables
+          - Sid: ManageSisumDynamoDbTables
             Effect: Allow
             Action:
               - dynamodb:CreateTable
@@ -42,6 +43,14 @@ Resources:
               - dynamodb:UpdateContinuousBackups
             Resource:
               - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-audit-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-workflows-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-reports-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-learning-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-verifications-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-ownership-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-tenants-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-memberships-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-invitations-*
 
           - Sid: ManageAuditLambdaExecutionPolicy
             Effect: Allow

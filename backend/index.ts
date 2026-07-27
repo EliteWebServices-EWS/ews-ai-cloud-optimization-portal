@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import {
   AUDIT_EVENTS,
   auditPersistenceFlushMiddleware,
@@ -37,6 +37,12 @@ import {
 import { createLogger } from './shared/utils';
 import { validateDeployedPersistenceConfig } from './persistence/persistence-config';
 
+import {
+  createInvitationRepository,
+  createMembershipRepository,
+  createMembershipService,
+} from './membership';
+
 const logger = createLogger('Server');
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -70,6 +76,13 @@ export function createApp(): express.Application {
   const executionSimulator = createExecutionSimulator();
   const reportingEngine = createReportingEngine();
   const tenantRepository = createTenantRepository();
+
+  const membershipRepository = createMembershipRepository();
+  const invitationRepository = createInvitationRepository();
+  const membershipService = createMembershipService({
+    membershipRepository,
+    invitationRepository,
+  });
 
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
@@ -164,6 +177,8 @@ export function createApp(): express.Application {
       executionSimulator,
       learningStore,
       reportingEngine,
+      membershipService,
+      membershipRepository,
       tenantRepository,
     })
   );

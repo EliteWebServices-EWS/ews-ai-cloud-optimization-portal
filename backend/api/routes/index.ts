@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+﻿import { Router, type Request, type Response } from 'express';
 import {
   AUDIT_EVENTS,
   AuditPersistenceUnavailableError,
@@ -64,6 +64,9 @@ import {
   validateReportGenerateBody,
   validateWorkflowRunBody,
 } from '../../security';
+import { createMembershipRoutes } from './membership-routes';
+import type { MembershipService } from '../../membership';
+import type { MembershipRepository } from '../../repositories/contracts';
 
 export interface ApiDependencies {
   orchestrator: WorkflowOrchestrator;
@@ -73,6 +76,8 @@ export interface ApiDependencies {
   executionSimulator: ExecutionSimulatorInterface;
   learningStore: LearningStoreInterface;
   reportingEngine: ReportingEngine;
+  membershipService: MembershipService;
+  membershipRepository: MembershipRepository;
   tenantRepository: TenantRepository;
 }
 
@@ -541,7 +546,7 @@ export function createProviderRoutes(deps: Pick<ApiDependencies, 'activeProvider
   return router;
 }
 
-/** Workflow routes — Sprint 7 hardened workflow APIs. */
+/** Workflow routes â€” Sprint 7 hardened workflow APIs. */
 export function createWorkflowRoutes(
   deps: Pick<ApiDependencies, 'orchestrator'>
 ): Router {
@@ -563,7 +568,7 @@ export function createWorkflowRoutes(
       let workflowId: string | undefined;
 
       // Hoisted so they're visible in both the try block and the
-      // catch block below — validateWorkflowRunBody can throw before
+      // catch block below â€” validateWorkflowRunBody can throw before
       // these are ever assigned, so they need safe defaults up front.
       let plugin: string = PLUGIN_NAMES.EC2;
       let mode: 'full' | 'dry-run' = 'full';
@@ -1163,8 +1168,8 @@ export function createFinancialRoutes(
             methodology: {
               description: 'Savings estimated from provider pricing for current and projected instance types',
               formula: 'monthlySavings = currentMonthlyCost - projectedMonthlyCost',
-              annualFormula: 'annualSavings = monthlySavings × monthsPerYear',
-              percentageFormula: 'percentageReduction = (monthlySavings / currentMonthlyCost) × 100',
+              annualFormula: 'annualSavings = monthlySavings Ã— monthsPerYear',
+              percentageFormula: 'percentageReduction = (monthlySavings / currentMonthlyCost) Ã— 100',
             },
           },
           requestId
@@ -1509,7 +1514,7 @@ export function createGovernanceRoutes(): Router {
   return router;
 }
 
-/** Optimization report routes — Sprint 9 Reporting Layer. */
+/** Optimization report routes â€” Sprint 9 Reporting Layer. */
 export function createReportRoutes(
   deps: Pick<
     ApiDependencies,
@@ -1874,7 +1879,7 @@ export function createReportRoutes(
   return router;
 }
 
-/** Admin audit retrieval routes — Sprint 10.5.14. */
+/** Admin audit retrieval routes â€” Sprint 10.5.14. */
 export function createAdminAuditRoutes(): Router {
   const router = Router();
 
@@ -2067,6 +2072,12 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createReportRoutes(deps));
   router.use(createTenantAdminRoutes(deps.tenantRepository));
   router.use(createAdminAuditRoutes());
+  router.use(
+    createMembershipRoutes({
+      membershipService: deps.membershipService,
+      membershipRepository: deps.membershipRepository,
+    }),
+  );
 
   return router;
 }

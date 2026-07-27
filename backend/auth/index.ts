@@ -17,6 +17,18 @@ export {
 
 export { requireAnyRole } from './require-role';
 export { requireTenantContext } from './require-tenant';
+export { requireTenantRole } from './require-tenant-role';
+
+export {
+  TENANT_ROLES,
+  ALL_TENANT_ROLES,
+  MEMBERSHIP_MANAGEMENT_ROLES,
+  OWNER_ROLE_ASSIGNMENT_ROLES,
+  TENANT_ROLE_TO_SISUM_ROLE,
+  isTenantRole,
+  sisumRoleSatisfiesTenantRole,
+  type TenantRole,
+} from './tenant-roles';
 
 export {
   TENANT_ACCESS_TOKEN_CLAIM,
