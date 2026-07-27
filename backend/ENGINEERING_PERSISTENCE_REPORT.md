@@ -25,7 +25,13 @@
 - **Conditional writes:** create + same-owner idempotent ownership.
 - **Transactions:** report save (report + pointer + ownership); verification save (output + execution pointer).
 - **Pagination:** opaque tokens; scoped to tenant + query shape for engine list pages.
-- **History:** append-only `timestamp#uuid` sort keys (legacy numeric keys still readable).
+- **History:** append-only sort keys — legacy numeric (`#1`, `#2`), timestamp `#uuid`, and report lifecycle `timestamp#event-order#uuid` (see below). Learning confidence history remains `timestamp#uuid`.
 - **Migration:** JSON export → conditional insert-only by default; STS + confirmation guards.
 
 See `docs/handoffs/sprint-11-final-closure.md` for go/no-go.
+
+## Report history ordering (Sprint 12 fix)
+
+Report append-only history previously used `<ISO timestamp>#<random UUID>` sort-key suffixes. Two lifecycle events in the same millisecond sorted by UUID, so `updated` could appear before `created`.
+
+New report-history writes use `<ISO timestamp>#<event-order>#<uuid>` where event-order is `00` (created), `10` (updated), or `20` (deleted). UUIDs preserve collision resistance under concurrent Lambda writers. Legacy numeric keys (`REPORTHIST#<id>#1`) and existing `timestamp#uuid` rows remain readable; no migration is required. Mixed legacy numeric and ISO timestamp keys sort lexically by suffix and may not reflect wall-clock order across format changes.
