@@ -84,3 +84,13 @@ export function tenantSlugReservationPartitionKey(
 
 export const TENANT_SLUG_RESERVATION_SORT_KEY =
   'RESERVATION';
+
+/**
+ * Fixed partition key for the platform-wide tenant registry index (gsi4),
+ * used only by administration listing (Platform Admin). Every tenant
+ * shares this single partition, sorted by tenantCreatedAtSortKey — the
+ * same tradeoff the reporting engine already documents: registry sizes at
+ * this platform's scale are small enough to query and paginate fully.
+ */
+export const TENANT_REGISTRY_INDEX_PARTITION_KEY =
+  'TENANT_REGISTRY_ALL';

@@ -20,6 +20,7 @@ import {
   tenantSlugIndexPartitionKey,
   tenantSlugReservationPartitionKey,
   tenantStatusIndexPartitionKey,
+  TENANT_REGISTRY_INDEX_PARTITION_KEY,
   TENANT_REGISTRY_SORT_KEY,
   TENANT_SLUG_RESERVATION_SORT_KEY,
 } from '../../database';
@@ -63,6 +64,9 @@ interface TenantItem extends TenantRecord {
 
   gsi3pk: string;
   gsi3sk: string;
+
+  gsi4pk: string;
+  gsi4sk: string;
 }
 
 interface TenantSlugReservationItem {
@@ -155,6 +159,12 @@ export class DynamoDbTenantRepository
         record.status,
       ),
       gsi3sk: tenantCreatedAtSortKey(
+        record.createdAt,
+        record.tenantId,
+      ),
+
+      gsi4pk: TENANT_REGISTRY_INDEX_PARTITION_KEY,
+      gsi4sk: tenantCreatedAtSortKey(
         record.createdAt,
         record.tenantId,
       ),
@@ -468,6 +478,43 @@ export class DynamoDbTenantRepository
             tenantStatusIndexPartitionKey(
               status,
             ),
+        },
+        ExclusiveStartKey: decodeNextToken(
+          page?.nextToken,
+        ),
+        Limit: normalizePageSize(page?.limit),
+        ScanIndexForward: false,
+      }),
+    );
+
+    const items = (result.Items ?? []).map(
+      (item) =>
+        toTenantRecord(item as TenantItem),
+    );
+
+    return {
+      items,
+      nextToken: encodeNextToken(
+        result.LastEvaluatedKey,
+      ),
+    };
+  }
+
+  public async listAll(
+    page?: PageRequest,
+  ): Promise<PageResult<TenantRecord>> {
+    const result = await this.client.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: 'gsi4',
+        KeyConditionExpression:
+          '#gsi4pk = :gsi4pk',
+        ExpressionAttributeNames: {
+          '#gsi4pk': 'gsi4pk',
+        },
+        ExpressionAttributeValues: {
+          ':gsi4pk':
+            TENANT_REGISTRY_INDEX_PARTITION_KEY,
         },
         ExclusiveStartKey: decodeNextToken(
           page?.nextToken,
