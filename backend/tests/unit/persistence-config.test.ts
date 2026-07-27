@@ -84,6 +84,38 @@ describe('validateDeployedPersistenceConfig', () => {
     );
   });
 
+  it('requires membership and invitation tables in production', () => {
+    withEnv(
+      {
+        ENVIRONMENT: 'production',
+        PERSISTENCE_ENABLED: 'true',
+        WORKFLOWS_TABLE_NAME: 'wf',
+        OWNERSHIP_TABLE_NAME: 'own',
+        REPORTS_TABLE_NAME: 'rep',
+        LEARNING_TABLE_NAME: 'learn',
+        VERIFICATIONS_TABLE_NAME: 'ver',
+        TENANTS_TABLE_NAME: 'tenants',
+        MEMBERSHIPS_TABLE_NAME: undefined,
+        INVITATIONS_TABLE_NAME: undefined,
+      },
+      () => {
+        assert.throws(
+          () => validateDeployedPersistenceConfig(),
+          PersistenceConfigurationError,
+        );
+
+        try {
+          validateDeployedPersistenceConfig();
+          assert.fail('expected validateDeployedPersistenceConfig to throw');
+        } catch (error) {
+          assert.ok(error instanceof PersistenceConfigurationError);
+          assert.match(error.message, /MEMBERSHIPS_TABLE_NAME/);
+          assert.match(error.message, /INVITATIONS_TABLE_NAME/);
+        }
+      },
+    );
+  });
+
   it('rejects persistence disabled in production', () => {
     withEnv(
       {
@@ -95,6 +127,8 @@ describe('validateDeployedPersistenceConfig', () => {
         LEARNING_TABLE_NAME: 'learn',
         VERIFICATIONS_TABLE_NAME: 'ver',
         TENANTS_TABLE_NAME: 'tenants',
+        MEMBERSHIPS_TABLE_NAME: 'memberships',
+        INVITATIONS_TABLE_NAME: 'invitations',
       },
       () => {
         assert.throws(
@@ -116,6 +150,8 @@ describe('validateDeployedPersistenceConfig', () => {
         LEARNING_TABLE_NAME: 'learn',
         VERIFICATIONS_TABLE_NAME: 'ver',
         TENANTS_TABLE_NAME: 'tenants',
+        MEMBERSHIPS_TABLE_NAME: 'memberships',
+        INVITATIONS_TABLE_NAME: 'invitations',
       },
       () => {
         assert.doesNotThrow(() => validateDeployedPersistenceConfig());
