@@ -24,6 +24,7 @@ export const AUDIT_EVENTS = {
   TENANT_CLAIM_MISSING: 'tenant.claim_missing',
   TENANT_FALLBACK_USED: 'tenant.fallback_used',
   TENANT_ACCESS_DENIED: 'tenant.access_denied',
+  
   MEMBER_ADDED: 'member.added',
   MEMBER_UPDATED: 'member.updated',
   MEMBER_SUSPENDED: 'member.suspended',
@@ -34,6 +35,7 @@ export const AUDIT_EVENTS = {
   INVITATION_ACCEPTED: 'invitation.accepted',
   INVITATION_CANCELLED: 'invitation.cancelled',
   INVITATION_ACTION_FAILED: 'invitation.action_failed',
+
   TENANT_CREATED: 'tenant.created',
   TENANT_UPDATED: 'tenant.updated',
   TENANT_SUSPENDED: 'tenant.suspended',

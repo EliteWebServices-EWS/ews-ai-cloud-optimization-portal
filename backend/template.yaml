@@ -523,6 +523,7 @@ Resources:
           AttributeType: S
         - AttributeName: gsi4sk
           AttributeType: S
+
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
@@ -553,6 +554,7 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+
         - IndexName: gsi4
           KeySchema:
             - AttributeName: gsi4pk
@@ -561,6 +563,7 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+
       SSESpecification:
         SSEEnabled: true
       PointInTimeRecoverySpecification:
