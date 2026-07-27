@@ -28,6 +28,7 @@ import { resolveWorkflowConfig, type WorkflowConfig } from './workflow.config';
 import { WorkflowStageError, toEngineError } from './workflow.errors';
 import { createRetryState, recordFailedAttempt } from './workflow.retry';
 import { createWorkflowStore, type WorkflowStoreInterface } from './workflow.store';
+import type { WorkflowListQuery } from './workflow.query';
 import type {
   ExecuteWorkflowRequest,
   HardenedWorkflowResult,
@@ -276,6 +277,18 @@ export class WorkflowOrchestrator {
   /** Resolve the owning tenant for a workflow ID without exposing the record. */
   async resolveWorkflowOwnerTenantId(workflowId: string): Promise<string | undefined> {
     return this.store.resolveOwnerTenantId(workflowId);
+  }
+
+  /** List workflows for a tenant with cursor pagination. */
+  async listWorkflows(
+    tenantId: string,
+    query: WorkflowListQuery
+  ): Promise<{ items: WorkflowMetadata[]; nextToken?: string }> {
+    return this.store.listPage(tenantId, {
+      limit: query.limit,
+      nextToken: query.nextToken,
+      status: query.status,
+    });
   }
 
   /** Retrieve workflow status summary by tenant and ID. */

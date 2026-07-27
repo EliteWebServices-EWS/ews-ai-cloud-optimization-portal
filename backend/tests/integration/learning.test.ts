@@ -1,62 +1,59 @@
-import { GetCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient } from "./harness";
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { GetCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { docClient } from './harness';
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || "sisum-learning-production";
-const TEST_TENANT_ID = "default-tenant";
+// Guard: only run against an explicitly configured local/test DynamoDB endpoint.
+// Never fall back to a production table name or run with ambient AWS credentials.
+const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT;
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+const canRun = Boolean(DYNAMODB_ENDPOINT && TABLE_NAME);
 
-async function runIntegrationTest() {
-  console.log(`Running integration tests against table: ${TABLE_NAME}...`);
+const TEST_TENANT_ID = 'integration-test-tenant-learning';
 
-  const testItem = {
-    pk: `TENANT#${TEST_TENANT_ID}`,
-    sk: "LEARNING#module-101",
-    tenantId: TEST_TENANT_ID,
-    title: "AWS Serverless Deep Dive",
-    completed: false,
-  };
+describe('Learning table integration (DynamoDB)', () => {
+  it('puts, gets, and deletes a learning record against a test table', { skip: !canRun }, async () => {
+    if (!canRun) return;
 
-  try {
-    // 1. Put Item
+    const testItem = {
+      pk: `TENANT#${TEST_TENANT_ID}`,
+      sk: 'LEARNING#module-101',
+      tenantId: TEST_TENANT_ID,
+      title: 'AWS Serverless Deep Dive',
+      completed: false,
+    };
+
     const putRes = await docClient.send(
       new PutCommand({
         TableName: TABLE_NAME,
         Item: testItem,
       })
     );
-    console.log("✔ PutItem successful, status:", putRes.$metadata.httpStatusCode);
+    assert.equal(putRes.$metadata.httpStatusCode, 200);
 
-    // 2. Get Item
     const getRes = await docClient.send(
       new GetCommand({
         TableName: TABLE_NAME,
-        Key: {
-          pk: testItem.pk,
-          sk: testItem.sk,
-        },
+        Key: { pk: testItem.pk, sk: testItem.sk },
       })
     );
-    if (!getRes.Item || getRes.Item.title !== testItem.title) {
-      throw new Error("GetItem failed or title mismatched");
-    }
-    console.log("✔ GetItem successful:", getRes.Item.title);
+    assert.ok(getRes.Item);
+    assert.equal(getRes.Item?.title, testItem.title);
 
-    // 3. Delete Item
     const delRes = await docClient.send(
       new DeleteCommand({
         TableName: TABLE_NAME,
-        Key: {
-          pk: testItem.pk,
-          sk: testItem.sk,
-        },
+        Key: { pk: testItem.pk, sk: testItem.sk },
       })
     );
-    console.log("✔ DeleteItem cleanup successful, status:", delRes.$metadata.httpStatusCode);
+    assert.equal(delRes.$metadata.httpStatusCode, 200);
+  });
+});
 
-    console.log("\n✅ ALL INTEGRATION TESTS PASSED SUCCESSFULLY!");
-  } catch (error) {
-    console.error("❌ Integration Test Failed:", error);
-    process.exit(1);
-  }
+if (!canRun) {
+  console.log(
+    'Learning table integration test skipped: set DYNAMODB_ENDPOINT and DYNAMODB_TABLE_NAME ' +
+      '(e.g. pointing at DynamoDB Local) to run this against real DynamoDB. ' +
+      'This test intentionally never defaults to a production table.'
+  );
 }
-
-runIntegrationTest();

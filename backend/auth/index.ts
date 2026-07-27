@@ -70,3 +70,10 @@ export {
   type TenantGuardContext,
   type TenantGuardResult,
 } from './tenant-guard';
+
+export {
+  isPlatformAdministrator,
+  isTenantOwner,
+  isTenantAdministrator,
+  canAdministerTenant,
+} from './tenant-admin-authorization';

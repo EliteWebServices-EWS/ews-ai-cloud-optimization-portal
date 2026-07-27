@@ -105,3 +105,11 @@ export function generateReportId(): string {
 
   return `rpt-${timestamp}-${randomSuffix}`;
 }
+
+/** Generate a unique tenant identifier. */
+export function generateTenantId(): string {
+  const timestamp = Date.now().toString(36);
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+
+  return `tenant-${timestamp}-${randomSuffix}`;
+}

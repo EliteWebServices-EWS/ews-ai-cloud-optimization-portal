@@ -1,3 +1,11 @@
+html.auth-checking body {
+  visibility: hidden;
+}
+
+html.authenticated body {
+  visibility: visible;
+}
+
 @import './brand-colors.css';
 
 *,

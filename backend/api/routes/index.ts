@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+﻿import { Router, type Request, type Response } from 'express';
 import {
   AUDIT_EVENTS,
   AuditPersistenceUnavailableError,
@@ -14,11 +14,16 @@ import {
   type WriteAuditEventInput,
 } from '../../audit';
 import type { WorkflowOrchestrator } from '../../orchestrator';
+import {
+  parseWorkflowListQuery,
+  WorkflowListQueryValidationError,
+} from '../../orchestrator';
 import type { PluginRegistry } from '../../plugins';
 import type { ProviderInterface } from '../../shared/interfaces';
 import type { ExecutionSimulatorInterface } from '../../execution';
 import type { LearningStoreInterface } from '../../engines/learning';
 import { DEFAULT_REGION, PLUGIN_NAMES, PROVIDER_NAMES } from '../../shared/constants';
+import { InvalidPaginationTokenError } from '../../database';
 import { GOVERNANCE_POLICY_CATALOG, DEFAULT_GOVERNANCE_CONFIG } from '../../engines/governance';
 import { DEFAULT_FINANCIAL_CONFIG, generateFinancialReport } from '../../engines/financial';
 import { DEFAULT_CONFIDENCE_CONFIG } from '../../engines/confidence';
@@ -30,6 +35,8 @@ import {
   toReportGenerationInput,
   type ReportingEngine,
 } from '../../engines/reporting';
+import type { TenantRepository } from '../../repositories/contracts';
+import { createTenantAdminRoutes } from './tenant-admin.routes';
 import { MOCK_PRICING } from '../../providers/mock/data';
 import {
   AppError,
@@ -71,6 +78,7 @@ export interface ApiDependencies {
   reportingEngine: ReportingEngine;
   membershipService: MembershipService;
   membershipRepository: MembershipRepository;
+  tenantRepository: TenantRepository;
 }
 
 function recordAuditEvent(
@@ -538,7 +546,7 @@ export function createProviderRoutes(deps: Pick<ApiDependencies, 'activeProvider
   return router;
 }
 
-/** Workflow routes — Sprint 7 hardened workflow APIs. */
+/** Workflow routes â€” Sprint 7 hardened workflow APIs. */
 export function createWorkflowRoutes(
   deps: Pick<ApiDependencies, 'orchestrator'>
 ): Router {
@@ -560,7 +568,7 @@ export function createWorkflowRoutes(
       let workflowId: string | undefined;
 
       // Hoisted so they're visible in both the try block and the
-      // catch block below — validateWorkflowRunBody can throw before
+      // catch block below â€” validateWorkflowRunBody can throw before
       // these are ever assigned, so they need safe defaults up front.
       let plugin: string = PLUGIN_NAMES.EC2;
       let mode: 'full' | 'dry-run' = 'full';
@@ -822,6 +830,66 @@ export function createWorkflowRoutes(
       }
     }
   );
+
+  router.get('/workflows', async (req: Request, res: Response) => {
+    const requestId = generateRequestId();
+    const tenantId = resolveRouteTenantContext(req).tenantId;
+
+    try {
+      const query = parseWorkflowListQuery(
+        req.query as Record<string, unknown>
+      );
+
+      const page = await deps.orchestrator.listWorkflows(tenantId, query);
+
+      res.json(
+        buildSuccessResponse(
+          {
+            items: page.items.map((metadata) => ({
+              workflowId: metadata.workflowId,
+              status: metadata.status,
+              executionState: metadata.executionState,
+              plugin: metadata.plugin,
+              createdAt: metadata.createdAt,
+              updatedAt: metadata.updatedAt,
+              completedAt: metadata.completedAt,
+              region: metadata.region,
+              resourceId: metadata.resourceId,
+              triggerSource: metadata.triggerSource,
+            })),
+            pagination: {
+              limit: query.limit,
+              count: page.items.length,
+              nextToken: page.nextToken,
+            },
+          },
+          requestId
+        )
+      );
+    } catch (error) {
+      if (error instanceof WorkflowListQueryValidationError) {
+        handleRouteError(
+          res,
+          new AppError('INVALID_REQUEST', error.message, 400),
+          requestId,
+          'workflow'
+        );
+        return;
+      }
+
+      if (error instanceof InvalidPaginationTokenError) {
+        handleRouteError(
+          res,
+          new AppError('INVALID_REQUEST', error.message, 400),
+          requestId,
+          'workflow'
+        );
+        return;
+      }
+
+      handleRouteError(res, error, requestId, 'workflow');
+    }
+  });
 
   router.get('/workflows/status/:id', async (req: Request, res: Response) => {
     const requestId = generateRequestId();
@@ -1100,8 +1168,8 @@ export function createFinancialRoutes(
             methodology: {
               description: 'Savings estimated from provider pricing for current and projected instance types',
               formula: 'monthlySavings = currentMonthlyCost - projectedMonthlyCost',
-              annualFormula: 'annualSavings = monthlySavings × monthsPerYear',
-              percentageFormula: 'percentageReduction = (monthlySavings / currentMonthlyCost) × 100',
+              annualFormula: 'annualSavings = monthlySavings Ã— monthsPerYear',
+              percentageFormula: 'percentageReduction = (monthlySavings / currentMonthlyCost) Ã— 100',
             },
           },
           requestId
@@ -1446,7 +1514,7 @@ export function createGovernanceRoutes(): Router {
   return router;
 }
 
-/** Optimization report routes — Sprint 9 Reporting Layer. */
+/** Optimization report routes â€” Sprint 9 Reporting Layer. */
 export function createReportRoutes(
   deps: Pick<
     ApiDependencies,
@@ -1811,7 +1879,7 @@ export function createReportRoutes(
   return router;
 }
 
-/** Admin audit retrieval routes — Sprint 10.5.14. */
+/** Admin audit retrieval routes â€” Sprint 10.5.14. */
 export function createAdminAuditRoutes(): Router {
   const router = Router();
 
@@ -2002,6 +2070,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createRecommendationRoutes(deps));
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
+  router.use(createTenantAdminRoutes(deps.tenantRepository));
   router.use(createAdminAuditRoutes());
   router.use(
     createMembershipRoutes({

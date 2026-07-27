@@ -13,7 +13,8 @@ export type AuditSource =
   | 'workflow'
   | 'reporting'
   | 'execution'
-  | 'audit';
+  | 'audit'
+  | 'tenant-admin';
 
 export interface AuditActor {
   authenticated: boolean;

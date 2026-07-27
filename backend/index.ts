@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import {
   AUDIT_EVENTS,
   auditPersistenceFlushMiddleware,
@@ -29,11 +29,13 @@ import { createExecutionSimulator } from './execution';
 import { createWorkflowOrchestrator } from './orchestrator';
 import { createPluginRegistry } from './plugins';
 import { createProvider } from './providers';
+import { createTenantRepository } from './services/tenant-repository-factory';
 import {
   PROVIDER_NAMES,
   type ProviderName,
 } from './shared/constants';
 import { createLogger } from './shared/utils';
+import { validateDeployedPersistenceConfig } from './persistence/persistence-config';
 
 import {
   createInvitationRepository,
@@ -64,6 +66,8 @@ export function resolveProviderName(): ProviderName {
  * Bootstrap and configure the SISU'M backend API server.
  */
 export function createApp(): express.Application {
+  validateDeployedPersistenceConfig();
+
   const activeProvider = resolveProviderName();
   const provider = createProvider(activeProvider);
   const pluginRegistry = createPluginRegistry(provider);
@@ -71,6 +75,7 @@ export function createApp(): express.Application {
   const learningStore = createLearningStore();
   const executionSimulator = createExecutionSimulator();
   const reportingEngine = createReportingEngine();
+  const tenantRepository = createTenantRepository();
 
   const membershipRepository = createMembershipRepository();
   const invitationRepository = createInvitationRepository();
@@ -174,6 +179,7 @@ export function createApp(): express.Application {
       reportingEngine,
       membershipService,
       membershipRepository,
+      tenantRepository,
     })
   );
 

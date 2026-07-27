@@ -13,6 +13,11 @@ import {
   ownershipPartitionKey,
 } from '../../database';
 
+import {
+  buildSameOwnerConditionValues,
+  SAME_OWNER_CONDITION,
+} from '../../persistence/engine-ownership';
+
 import type {
   CreateOwnershipInput,
   OwnershipRepository,
@@ -83,12 +88,19 @@ export class DynamoDbOwnershipRepository
         new PutCommand({
           TableName: this.tableName,
           Item: item,
-          ConditionExpression:
-            'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+          ConditionExpression: SAME_OWNER_CONDITION,
+          ExpressionAttributeValues: buildSameOwnerConditionValues(
+            record.ownerTenantId,
+          ),
         }),
       );
     } catch (error) {
       if (isConditionalCheckFailure(error)) {
+        const existing = await this.get(record.resourceType, record.resourceId);
+        if (existing?.ownerTenantId === record.ownerTenantId) {
+          return existing;
+        }
+
         throw new RepositoryAlreadyExistsError(
           `Ownership record for ${record.resourceType} ${record.resourceId} already exists.`,
         );

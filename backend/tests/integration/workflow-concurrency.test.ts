@@ -16,6 +16,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 import {
   createConfidenceEngine,
@@ -27,7 +28,7 @@ import {
   createVerificationEngine,
 } from '../../engines';
 import { createExecutionSimulator } from '../../execution';
-import { createWorkflowOrchestrator } from '../../orchestrator';
+import { createWorkflowOrchestrator, createRetryState } from '../../orchestrator';
 import { RepositoryBackedWorkflowStore } from '../../orchestrator/workflow.repository-store';
 import { createPluginRegistry } from '../../plugins';
 import { createProvider } from '../../providers';
@@ -36,6 +37,21 @@ import { PLUGIN_NAMES, PROVIDER_NAMES } from '../../shared/constants';
 
 const TENANT_ID = 'sisum-default';
 const TABLE_NAME = 'fake-workflows-table';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid DynamoDB command input');
+  }
+  return value as Record<string, unknown>;
+}
+
+function readString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== 'string') {
+    throw new Error(`Expected string field ${key}`);
+  }
+  return value;
+}
 
 /**
  * Minimal in-memory stand-in for a DynamoDB table. Models the two
@@ -65,55 +81,77 @@ class FakeDynamoTable {
     return error;
   }
 
-  async send(command: { constructor: { name: string }; input: Record<string, any> }): Promise<any> {
+  async send(command: {
+    constructor: { name: string };
+    input: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
     await this.latency();
 
     switch (command.constructor.name) {
       case 'PutCommand': {
-        const { Item, ConditionExpression } = command.input;
-        const k = this.key(Item.pk, Item.sk);
-        if (ConditionExpression?.includes('attribute_not_exists') && this.items.has(k)) {
+        const input = asRecord(command.input);
+        const item = asRecord(input.Item);
+        const pk = readString(item, 'pk');
+        const sk = readString(item, 'sk');
+        const k = this.key(pk, sk);
+        const condition = input.ConditionExpression;
+        if (
+          typeof condition === 'string' &&
+          condition.includes('attribute_not_exists') &&
+          this.items.has(k)
+        ) {
           throw this.conditionalCheckFailure();
         }
-        this.items.set(k, { ...Item });
+        this.items.set(k, { ...item });
         return {};
       }
 
       case 'GetCommand': {
-        const { Key } = command.input;
-        const item = this.items.get(this.key(Key.pk, Key.sk));
+        const input = asRecord(command.input);
+        const key = asRecord(input.Key);
+        const item = this.items.get(
+          this.key(readString(key, 'pk'), readString(key, 'sk'))
+        );
         return item ? { Item: { ...item } } : {};
       }
 
       case 'UpdateCommand': {
-        const { Key, ExpressionAttributeNames, ExpressionAttributeValues } = command.input;
-        const k = this.key(Key.pk, Key.sk);
+        const input = asRecord(command.input);
+        const key = asRecord(input.Key);
+        const k = this.key(readString(key, 'pk'), readString(key, 'sk'));
         const existing = this.items.get(k);
 
         if (!existing) {
           throw this.conditionalCheckFailure();
         }
 
-        const expectedVersion = ExpressionAttributeValues[':expectedVersion'];
+        const expressionAttributeValues = asRecord(
+          input.ExpressionAttributeValues ?? {}
+        );
+        const expectedVersion = expressionAttributeValues[':expectedVersion'];
         if (expectedVersion !== undefined && existing.version !== expectedVersion) {
           throw this.conditionalCheckFailure();
         }
 
         const updated: Record<string, unknown> = { ...existing };
+        const expressionAttributeNames = asRecord(
+          input.ExpressionAttributeNames ?? {}
+        );
         for (const [namePlaceholder, fieldName] of Object.entries(
-          ExpressionAttributeNames ?? {}
+          expressionAttributeNames
         )) {
           if (fieldName === 'version') {
             updated.version = (existing.version as number) + 1;
             continue;
           }
           if (fieldName === 'updatedAt') {
-            updated.updatedAt = ExpressionAttributeValues[':updatedAt'];
+            updated.updatedAt = expressionAttributeValues[':updatedAt'];
             continue;
           }
           const match = /^#field(\d+)$/.exec(namePlaceholder);
           if (match) {
-            updated[fieldName as string] = ExpressionAttributeValues[`:value${match[1]}`];
+            updated[fieldName as string] =
+              expressionAttributeValues[`:value${match[1]}`];
           }
         }
 
@@ -122,8 +160,11 @@ class FakeDynamoTable {
       }
 
       case 'DeleteCommand': {
-        const { Key } = command.input;
-        this.items.delete(this.key(Key.pk, Key.sk));
+        const input = asRecord(command.input);
+        const key = asRecord(input.Key);
+        this.items.delete(
+          this.key(readString(key, 'pk'), readString(key, 'sk'))
+        );
         return {};
       }
 
@@ -135,6 +176,10 @@ class FakeDynamoTable {
   size(): number {
     return this.items.size;
   }
+}
+
+function asDocumentClient(table: FakeDynamoTable): DynamoDBDocumentClient {
+  return table as unknown as DynamoDBDocumentClient;
 }
 
 function buildOrchestrator(store: RepositoryBackedWorkflowStore) {
@@ -158,8 +203,9 @@ function buildOrchestrator(store: RepositoryBackedWorkflowStore) {
 describe('Workflow concurrency (Task 5)', () => {
   it('two concurrent requests with the same idempotency key never create duplicate workflows', async () => {
     const table = new FakeDynamoTable();
-    const workflowRepository = new DynamoDbWorkflowRepository(table as any, TABLE_NAME);
-    const ownershipRepository = new DynamoDbOwnershipRepository(table as any, TABLE_NAME);
+    const client = asDocumentClient(table);
+    const workflowRepository = new DynamoDbWorkflowRepository(client, TABLE_NAME);
+    const ownershipRepository = new DynamoDbOwnershipRepository(client, TABLE_NAME);
     const store = new RepositoryBackedWorkflowStore(workflowRepository, ownershipRepository);
     const orchestrator = buildOrchestrator(store);
 
@@ -189,8 +235,9 @@ describe('Workflow concurrency (Task 5)', () => {
 
   it('concurrent context updates to the same workflow are never lost', async () => {
     const table = new FakeDynamoTable();
-    const workflowRepository = new DynamoDbWorkflowRepository(table as any, TABLE_NAME);
-    const ownershipRepository = new DynamoDbOwnershipRepository(table as any, TABLE_NAME);
+    const client = asDocumentClient(table);
+    const workflowRepository = new DynamoDbWorkflowRepository(client, TABLE_NAME);
+    const ownershipRepository = new DynamoDbOwnershipRepository(client, TABLE_NAME);
     const store = new RepositoryBackedWorkflowStore(workflowRepository, ownershipRepository);
 
     const workflowId = 'wf-concurrency-test';
@@ -211,15 +258,17 @@ describe('Workflow concurrency (Task 5)', () => {
       plugin: PLUGIN_NAMES.EC2,
       provider: PROVIDER_NAMES.MOCK,
       region: 'us-east-1',
+      mode: 'demo' as const,
+      triggerSource: 'api' as const,
       status: 'running' as const,
       executionState: 'initialized' as const,
       startedAt: new Date().toISOString(),
-      completedStages: [] as string[],
-      failedStages: [] as string[],
-      retry: { attempts: [] as unknown[] },
+      completedStages: [],
+      failedStages: [],
+      retry: createRetryState(3),
     };
 
-    await store.save({ metadata: baseMetadata, context: baseContext as any });
+    await store.save({ metadata: baseMetadata, context: baseContext });
 
     // Two "concurrent Lambda invocations" each read the same starting
     // version and try to update the context independently.
@@ -227,11 +276,11 @@ describe('Workflow concurrency (Task 5)', () => {
       store.updateContext(TENANT_ID, workflowId, {
         ...baseContext,
         currentStage: 'evidence',
-      } as any),
+      }),
       store.updateContext(TENANT_ID, workflowId, {
         ...baseContext,
         currentStage: 'governance',
-      } as any),
+      }),
     ]);
 
     const record = await store.get(TENANT_ID, workflowId);

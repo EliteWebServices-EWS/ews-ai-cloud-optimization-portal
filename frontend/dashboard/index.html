@@ -1,6 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="auth-checking">
 <head>
+  <style>
+    html {
+      background: #0A0A0A;
+    }
+
+    html.auth-checking body {
+      visibility: hidden;
+      opacity: 0;
+    }
+
+    html.authenticated body {
+      visibility: visible;
+      opacity: 1;
+    }
+  </style>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SISU'M Decision Dashboard | EWS Cloud Optimization</title>

@@ -38,6 +38,9 @@ function displayAuthenticatedUser(): void {
 async function initializeReports(): Promise<void> {
   await requireAuthentication();
 
+  document.documentElement.classList.remove('auth-checking');
+  document.documentElement.classList.add('authenticated');
+
   displayAuthenticatedUser();
   attachLogoutButton();
 
@@ -69,8 +72,20 @@ async function initializeReports(): Promise<void> {
 void initializeReports().catch((error: unknown) => {
   if (
     error instanceof Error &&
-    error.message !== 'Redirecting to sign-in.'
+    error.message === 'Redirecting to sign-in.'
   ) {
-    console.error('Reports initialization failed:', error);
+    return;
   }
+
+  console.error('Reports initialization failed:', error);
+
+  document.body.innerHTML = `
+    <main class="authentication-error" role="alert">
+      <h1>Unable to verify your session</h1>
+      <p>Please refresh the page or try signing in again.</p>
+    </main>
+  `;
+
+  document.documentElement.classList.remove('auth-checking');
+  document.documentElement.classList.add('authenticated');
 });

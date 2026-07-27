@@ -5,21 +5,13 @@
  * partition unless noted):
  *   REPORT#<reportId>            report content
  *   REPORTWF#<workflowId>        workflow -> reportId pointer
- *   REPORTHIST#<reportId>#<seq>  append-only history entries
+ *   REPORTHIST#<reportId>#<seq|timestamp#uuid>  append-only history
  *
- * Cross-tenant ownership lookups (used only for tenant.access_denied
- * auditing) live in the shared Ownership table, keyed by the same
- * resourceType/resourceId scheme main's repository contracts use so any
- * future consumer of that table stays compatible:
- *   RESOURCE#REPORT#<reportId>    -> ownerTenantId
- *   RESOURCE#WORKFLOW#<workflowId> -> ownerTenantId
- *
- * Search, filter, sort, and pagination reuse the shared pure query functions
- * so behavior matches the mock exactly. A GSI-backed push-down is a future
- * optimization; per-tenant report volumes are small enough to query fully.
+ * Cross-tenant ownership lookups use the shared Ownership table.
  */
 
 import type { OptimizationReport } from '../../shared/types';
+import { OwnershipConflictError } from '../../database';
 import {
   buildTenantPartitionKey,
   type PersistedItem,
@@ -30,16 +22,29 @@ import {
   OWNERSHIP_SORT_KEY,
 } from '../../database/dynamodb-keys';
 import {
+  buildAppendOnlyKeySuffix,
+  compareAppendOnlySortKeys,
+} from '../../persistence/append-only-key';
+import {
+  buildSameOwnerConditionValues,
+  resolveEngineOwnershipTenantId,
+  SAME_OWNER_CONDITION,
+} from '../../persistence/engine-ownership';
+import { computeExpiresAt, REPORT_RETENTION_SECONDS } from '../../persistence/retention';
+import { executeTransactWrite } from '../../persistence/transact-write';
+import {
   toReportMetadata,
   type ReportHistoryEntry,
   type ReportMetadata,
   type ReportRepository,
 } from './report.repository';
 import {
-  applyReportQuery,
+  searchReports,
+  sortReports,
   type ReportQuery,
   type ReportQueryResult,
 } from './report.query';
+import { filterReports } from './report.filter';
 
 function reportSk(reportId: string): string {
   return `REPORT#${reportId}`;
@@ -53,8 +58,21 @@ function historyPrefix(reportId: string): string {
   return `REPORTHIST#${reportId}#`;
 }
 
-function historySk(reportId: string, seq: number): string {
-  return `${historyPrefix(reportId)}${String(seq).padStart(12, '0')}`;
+function buildHistorySk(reportId: string, recordedAt: string): string {
+  return `${historyPrefix(reportId)}${buildAppendOnlyKeySuffix(recordedAt)}`;
+}
+
+function legacyHistorySeq(sk: string, prefix: string): number | undefined {
+  if (!sk.startsWith(prefix)) {
+    return undefined;
+  }
+
+  const suffix = sk.slice(prefix.length);
+  if (/^\d+$/.test(suffix)) {
+    return Number(suffix);
+  }
+
+  return undefined;
 }
 
 export class DynamoDbReportRepository implements ReportRepository {
@@ -72,38 +90,63 @@ export class DynamoDbReportRepository implements ReportRepository {
       await this.table.deleteItem(pk, workflowPointerSk(existing.workflowId));
     }
 
-    const items: PersistedItem[] = [
-      {
-        pk,
-        sk: reportSk(report.reportId),
-        entityType: 'report',
-        createdAt: report.createdAt,
-        data: report,
-      },
-      {
-        pk,
-        sk: workflowPointerSk(report.workflowId),
-        entityType: 'report-workflow-index',
-        reportId: report.reportId,
-      },
-    ];
+    const expiresAt = computeExpiresAt(REPORT_RETENTION_SECONDS);
+    const reportItem: PersistedItem = {
+      pk,
+      sk: reportSk(report.reportId),
+      entityType: 'report',
+      createdAt: report.createdAt,
+      expiresAt,
+      data: report,
+    };
+    const pointerItem: PersistedItem = {
+      pk,
+      sk: workflowPointerSk(report.workflowId),
+      entityType: 'report-workflow-index',
+      reportId: report.reportId,
+      expiresAt,
+    };
 
-    await this.table.putItems(items);
+    const ownerValues = buildSameOwnerConditionValues(report.tenantId);
+    const reportOwnerItem: PersistedItem = {
+      pk: ownershipPartitionKey('REPORT', report.reportId),
+      sk: OWNERSHIP_SORT_KEY,
+      entityType: 'report-owner-index',
+      ownerTenantId: report.tenantId,
+      expiresAt,
+    };
+    const workflowOwnerItem: PersistedItem = {
+      pk: ownershipPartitionKey('WORKFLOW', report.workflowId),
+      sk: OWNERSHIP_SORT_KEY,
+      entityType: 'workflow-owner-index',
+      ownerTenantId: report.tenantId,
+      expiresAt,
+    };
 
-    await this.ownershipTable.putItems([
-      {
-        pk: ownershipPartitionKey('REPORT', report.reportId),
-        sk: OWNERSHIP_SORT_KEY,
-        entityType: 'report-owner-index',
-        tenantId: report.tenantId,
-      },
-      {
-        pk: ownershipPartitionKey('WORKFLOW', report.workflowId),
-        sk: OWNERSHIP_SORT_KEY,
-        entityType: 'workflow-owner-index',
-        tenantId: report.tenantId,
-      },
-    ]);
+    try {
+      await executeTransactWrite(this.table.documentClient, [
+        { tableName: this.table.name, item: reportItem },
+        { tableName: this.table.name, item: pointerItem },
+        {
+          tableName: this.ownershipTable.name,
+          item: reportOwnerItem,
+          conditionExpression: SAME_OWNER_CONDITION,
+          expressionAttributeValues: ownerValues,
+        },
+        {
+          tableName: this.ownershipTable.name,
+          item: workflowOwnerItem,
+          conditionExpression: SAME_OWNER_CONDITION,
+          expressionAttributeValues: ownerValues,
+        },
+      ]);
+    } catch (error) {
+      if (error instanceof OwnershipConflictError) {
+        throw error;
+      }
+
+      throw error;
+    }
 
     await this.appendHistory(report, existing ? 'updated' : 'created');
 
@@ -135,19 +178,36 @@ export class DynamoDbReportRepository implements ReportRepository {
     return reportId ? this.findById(tenantId, reportId) : undefined;
   }
 
-  async list(tenantId: string): Promise<OptimizationReport[]> {
-    const items = await this.table.queryByPrefix(
-      buildTenantPartitionKey(tenantId),
-      'REPORT#'
-    );
+  async listPage(
+    tenantId: string,
+    options: { limit?: number; nextToken?: string } = {}
+  ): Promise<{ reports: OptimizationReport[]; nextToken?: string }> {
+    const page = await this.table.queryPageByPrefix({
+      pk: buildTenantPartitionKey(tenantId),
+      skPrefix: 'REPORT#',
+      limit: options.limit,
+      nextToken: options.nextToken,
+      scanIndexForward: false,
+      paginationContext: {
+        tenantId,
+        scope: 'reports:list',
+      },
+    });
 
-    return items
+    const reports = page.items
       .map((item) => item.data as OptimizationReport)
       .sort(
         (left, right) =>
           new Date(right.createdAt).getTime() -
           new Date(left.createdAt).getTime()
       );
+
+    return { reports, nextToken: page.nextToken };
+  }
+
+  async list(tenantId: string): Promise<OptimizationReport[]> {
+    const page = await this.listPage(tenantId, { limit: 100 });
+    return page.reports;
   }
 
   async listMetadata(tenantId: string): Promise<ReportMetadata[]> {
@@ -158,19 +218,47 @@ export class DynamoDbReportRepository implements ReportRepository {
     tenantId: string,
     query: ReportQuery
   ): Promise<ReportQueryResult> {
-    return applyReportQuery(await this.list(tenantId), query);
+    const page = await this.listPage(tenantId, {
+      limit: query.limit,
+      nextToken: query.nextToken,
+    });
+
+    const searched = query.search
+      ? searchReports(page.reports, query.search)
+      : page.reports;
+    const filtered = filterReports(searched, query.filters);
+    const sorted = sortReports(filtered, query.sortBy, query.sortOrder);
+
+    return {
+      reports: sorted.slice(0, query.limit),
+      total: sorted.length,
+      nextToken: page.nextToken,
+    };
   }
 
   async getHistory(
     tenantId: string,
     reportId: string
   ): Promise<ReportHistoryEntry[]> {
+    const prefix = historyPrefix(reportId);
     const items = await this.table.queryByPrefix(
       buildTenantPartitionKey(tenantId),
-      historyPrefix(reportId)
+      prefix
     );
 
-    return items.map((item) => item.data as ReportHistoryEntry);
+    return items
+      .sort((left, right) =>
+        compareAppendOnlySortKeys(left.sk as string, right.sk as string)
+      )
+      .map((item) => {
+        const entry = item.data as ReportHistoryEntry;
+        const legacySeq = legacyHistorySeq(item.sk as string, prefix);
+        if (legacySeq !== undefined && entry.historyId.endsWith(`:${legacySeq}`)) {
+          return entry;
+        }
+
+        return entry;
+      });
   }
 
   async delete(tenantId: string, reportId: string): Promise<boolean> {
@@ -204,7 +292,7 @@ export class DynamoDbReportRepository implements ReportRepository {
       ownershipPartitionKey('REPORT', reportId),
       OWNERSHIP_SORT_KEY
     );
-    return item?.tenantId as string | undefined;
+    return resolveEngineOwnershipTenantId(item);
   }
 
   async resolveOwnerTenantIdByWorkflow(
@@ -214,7 +302,7 @@ export class DynamoDbReportRepository implements ReportRepository {
       ownershipPartitionKey('WORKFLOW', workflowId),
       OWNERSHIP_SORT_KEY
     );
-    return item?.tenantId as string | undefined;
+    return resolveEngineOwnershipTenantId(item);
   }
 
   private async appendHistory(
@@ -222,27 +310,25 @@ export class DynamoDbReportRepository implements ReportRepository {
     action: ReportHistoryEntry['action']
   ): Promise<void> {
     const pk = buildTenantPartitionKey(report.tenantId);
-    const existing = await this.table.queryByPrefix(
-      pk,
-      historyPrefix(report.reportId)
-    );
-    const seq = existing.length + 1;
+    const recordedAt = new Date().toISOString();
+    const sk = buildHistorySk(report.reportId, recordedAt);
 
     const entry: ReportHistoryEntry = {
-      historyId: `${report.reportId}:${seq}`,
+      historyId: `${report.reportId}:${sk.slice(historyPrefix(report.reportId).length)}`,
       tenantId: report.tenantId,
       reportId: report.reportId,
       workflowId: report.workflowId,
       action,
-      recordedAt: new Date().toISOString(),
+      recordedAt,
       metadata: toReportMetadata(report),
       ...(action === 'deleted' ? {} : { report }),
     };
 
     await this.table.putItem({
       pk,
-      sk: historySk(report.reportId, seq),
+      sk,
       entityType: 'report-history',
+      expiresAt: computeExpiresAt(REPORT_RETENTION_SECONDS),
       data: entry,
     });
   }

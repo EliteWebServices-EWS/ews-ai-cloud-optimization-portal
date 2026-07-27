@@ -1,4 +1,4 @@
-export * from './base-dynamodb-repository';
+﻿export * from './base-dynamodb-repository';
 export * from './dynamodb-workflow-repository';
 export * from './dynamodb-report-repository';
 export * from './dynamodb-learning-repository';
@@ -6,3 +6,4 @@ export * from './dynamodb-verification-repository';
 export * from './dynamodb-ownership-repository';
 export * from './dynamodb-membership-repository';
 export * from './dynamodb-invitation-repository';
+export * from './dynamodb-tenant-repository';

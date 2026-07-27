@@ -38,6 +38,9 @@ function displayAuthenticatedUser(): void {
 async function initializeDashboard(): Promise<void> {
   await requireAuthentication();
 
+  document.documentElement.classList.remove('auth-checking');
+  document.documentElement.classList.add('authenticated');
+
   displayAuthenticatedUser();
   attachLogoutButton();
 
@@ -64,8 +67,20 @@ async function initializeDashboard(): Promise<void> {
 void initializeDashboard().catch((error: unknown) => {
   if (
     error instanceof Error &&
-    error.message !== 'Redirecting to sign-in.'
+    error.message === 'Redirecting to sign-in.'
   ) {
-    console.error('Dashboard initialization failed:', error);
+    return;
   }
+
+  console.error('Dashboard initialization failed:', error);
+
+  document.body.innerHTML = `
+    <main role="alert" style="padding:2rem;color:#ffffff;background:#0A0A0A;">
+      <h1>Unable to verify your session</h1>
+      <p>Please refresh the page or try signing in again.</p>
+    </main>
+  `;
+
+  document.documentElement.classList.remove('auth-checking');
+  document.documentElement.classList.add('authenticated');
 });

@@ -1,5 +1,6 @@
 import type { LearningRecord, OptimizationOutcome } from '../../shared/types';
 import { getLearningTable, getOwnershipTable } from '../../persistence/persistence-table';
+import { shouldUseDurablePersistence } from '../../persistence/persistence-config';
 import { MockLearningRepository } from './mock-learning.repository';
 import { DynamoDbLearningRepository } from './dynamodb-learning.repository';
 import type { LearningRepository } from './learning.repository';
@@ -31,7 +32,9 @@ export function buildLearningRecord(tenantId: string, outcome: OptimizationOutco
 export function createLearningStore(): LearningRepository {
   const table = getLearningTable();
   const ownershipTable = getOwnershipTable();
-  return table && ownershipTable
+  const useDurable = shouldUseDurablePersistence() && table && ownershipTable;
+
+  return useDurable
     ? new DynamoDbLearningRepository(table, ownershipTable)
     : new MockLearningRepository();
 }

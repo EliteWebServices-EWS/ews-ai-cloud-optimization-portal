@@ -191,3 +191,31 @@
 .form-success.visible {
     display: block;
 }
+
+.form-error {
+    display: none;
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(220, 70, 70, 0.35);
+    border-radius: 8px;
+    background: rgba(220, 70, 70, 0.08);
+    color: #ff8c8c;
+    font-size: 0.9rem;
+}
+
+.form-error.visible {
+    display: block;
+}
+
+.form-honeypot {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.contact-form button:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}

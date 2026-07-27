@@ -21,6 +21,21 @@ import {
   type QueryCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 
+import { isConditionalCheckFailure, RepositoryConflictError } from '../database';
+import {
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+  normalizePageSize,
+} from '../repositories/contracts/repository-types';
+import { decodeNextToken, encodeNextToken } from '../database/pagination-token';
+
+import {
+  decodeScopedNextToken,
+  encodeScopedNextToken,
+  type ScopedPaginationContext,
+} from './scoped-pagination-token';
+import { executeTransactWrite, type TransactPutOperation } from './transact-write';
+
 /** A stored item: envelope keys plus arbitrary domain attributes. */
 export type PersistedItem = Record<string, unknown> & {
   pk: string;
@@ -55,9 +70,56 @@ export class PersistenceTable {
       });
   }
 
+  get name(): string {
+    return this.tableName;
+  }
+
+  get documentClient(): DynamoDBDocumentClient {
+    return this.client;
+  }
+
   async putItem(item: PersistedItem): Promise<void> {
     await this.client.send(
       new PutCommand({ TableName: this.tableName, Item: item })
+    );
+  }
+
+  async putItemConditional(
+    item: PersistedItem,
+    options: {
+      conditionExpression: string;
+      expressionAttributeNames?: Record<string, string>;
+      expressionAttributeValues?: Record<string, unknown>;
+    }
+  ): Promise<void> {
+    try {
+      await this.client.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: item,
+          ConditionExpression: options.conditionExpression,
+          ExpressionAttributeNames: options.expressionAttributeNames,
+          ExpressionAttributeValues: options.expressionAttributeValues,
+        })
+      );
+    } catch (error) {
+      if (isConditionalCheckFailure(error)) {
+        throw new RepositoryConflictError();
+      }
+
+      throw error;
+    }
+  }
+
+  async transactPutItems(
+    operations: Omit<TransactPutOperation, 'tableName'>[]
+  ): Promise<void> {
+    await executeTransactWrite(
+      this.client,
+      operations.map((operation) => ({
+        ...operation,
+        tableName: this.tableName,
+      }))
     );
   }
 
@@ -127,6 +189,62 @@ export class PersistenceTable {
     } while (exclusiveStartKey);
 
     return items;
+  }
+
+  /**
+   * Query one DynamoDB page under a tenant partition key prefix.
+   */
+  async queryPageByPrefix(options: {
+    pk: string;
+    skPrefix: string;
+    limit?: number;
+    nextToken?: string;
+    scanIndexForward?: boolean;
+    paginationContext?: ScopedPaginationContext;
+  }): Promise<{
+    items: PersistedItem[];
+    nextToken?: string;
+  }> {
+    const limit = normalizePageSize(options.limit ?? DEFAULT_PAGE_SIZE);
+    if (limit > MAX_PAGE_SIZE) {
+      throw new Error(`Pagination limit cannot exceed ${MAX_PAGE_SIZE}.`);
+    }
+
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    if (options.nextToken) {
+      if (options.paginationContext) {
+        exclusiveStartKey = decodeScopedNextToken(
+          options.nextToken,
+          options.paginationContext
+        );
+      } else {
+        exclusiveStartKey = decodeNextToken(options.nextToken);
+      }
+    }
+
+    const input: QueryCommandInput = {
+      TableName: this.tableName,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
+      ExpressionAttributeValues: {
+        ':pk': options.pk,
+        ':skPrefix': options.skPrefix,
+      },
+      ExclusiveStartKey: exclusiveStartKey,
+      Limit: limit,
+      ScanIndexForward: options.scanIndexForward ?? true,
+    };
+
+    const result = await this.client.send(new QueryCommand(input));
+    const items = (result.Items ?? []).map((item) => item as PersistedItem);
+
+    const nextToken = options.paginationContext
+      ? encodeScopedNextToken(
+          options.paginationContext,
+          result.LastEvaluatedKey as Record<string, unknown> | undefined
+        )
+      : encodeNextToken(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+
+    return { items, nextToken };
   }
 }
 

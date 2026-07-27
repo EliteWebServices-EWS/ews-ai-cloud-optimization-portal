@@ -11,6 +11,31 @@ export type WorkflowStatus =
   | 'COMPLETED'
   | 'FAILED';
 
+export type TenantStatus =
+  | 'PROVISIONING'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'ARCHIVED'
+  | 'DELETED';
+
+export interface TenantPrimaryContact {
+  name: string;
+  email: string;
+}
+
+export interface TenantRecord extends VersionedRecord {
+  tenantId: string;
+  organizationName: string;
+  displayName: string;
+  slug: string;
+  ownerUserId: string;
+  primaryContact: TenantPrimaryContact;
+  status: TenantStatus;
+  region: string;
+  subscriptionPlan: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface WorkflowRecord
   extends TenantRecordIdentity,
     VersionedRecord {

@@ -8,6 +8,7 @@ import { createLogger } from '../../shared/utils';
 import { REPORT_ERROR_CODES, createReportError } from './report.errors';
 import { generateReport } from './report.generator';
 import { getReportsTable, getOwnershipTable } from '../../persistence/persistence-table';
+import { shouldUseDurablePersistence } from '../../persistence/persistence-config';
 import { MockReportRepository } from './mock-report.repository';
 import { DynamoDbReportRepository } from './dynamodb-report.repository';
 import type { ReportRepository } from './report.repository';
@@ -182,10 +183,12 @@ export function createReportingEngine(options?: ReportingEngineOptions): Reporti
 
   const table = getReportsTable();
   const ownershipTable = getOwnershipTable();
+  const useDurable = shouldUseDurablePersistence() && table && ownershipTable;
+
   return new ReportingEngine({
     ...options,
     repository:
-      table && ownershipTable
+      useDurable
         ? new DynamoDbReportRepository(table, ownershipTable)
         : undefined,
   });

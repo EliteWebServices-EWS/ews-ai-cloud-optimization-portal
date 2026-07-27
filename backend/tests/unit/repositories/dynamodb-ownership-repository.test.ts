@@ -18,24 +18,31 @@ import { DynamoDbOwnershipRepository } from '../../../repositories/dynamodb/dyna
 interface FakeClient {
   commands: unknown[];
   response: unknown;
-  error?: Error;
+  putError?: Error;
+  deleteError?: Error;
   send(command: unknown): Promise<unknown>;
 }
 
 function createFakeClient(
   response: unknown = {},
   error?: Error,
+  errorCommand: 'put' | 'delete' | 'any' = 'any',
 ): FakeClient {
   return {
     commands: [],
     response,
-    error,
+    putError: errorCommand === 'put' || errorCommand === 'any' ? error : undefined,
+    deleteError: errorCommand === 'delete' || errorCommand === 'any' ? error : undefined,
 
     async send(command: unknown): Promise<unknown> {
       this.commands.push(command);
 
-      if (this.error) {
-        throw this.error;
+      if (this.putError && command instanceof PutCommand) {
+        throw this.putError;
+      }
+
+      if (this.deleteError && command instanceof DeleteCommand) {
+        throw this.deleteError;
       }
 
       return this.response;
@@ -74,7 +81,7 @@ describe('DynamoDbOwnershipRepository', () => {
 
     assert.equal(
       command.input.ConditionExpression,
-      'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+      'attribute_not_exists(pk) OR ownerTenantId = :owner OR tenantId = :owner',
     );
 
     assert.equal(
@@ -93,10 +100,23 @@ describe('DynamoDbOwnershipRepository', () => {
     );
   });
 
-  it('rejects duplicate ownership records', async () => {
+  it('rejects duplicate ownership records for a different tenant', async () => {
     const fakeClient = createFakeClient(
-      {},
+      {
+        Item: {
+          pk: 'RESOURCE#WORKFLOW#wf-123',
+          sk: 'OWNERSHIP',
+          entityType: 'OWNERSHIP',
+          resourceType: 'WORKFLOW',
+          resourceId: 'wf-123',
+          ownerTenantId: 'tenant-b',
+          version: 1,
+          createdAt: '2026-07-22T10:00:00.000Z',
+          updatedAt: '2026-07-22T10:00:00.000Z',
+        },
+      },
       conditionalFailure(),
+      'put',
     );
 
     const repository =
@@ -114,6 +134,40 @@ describe('DynamoDbOwnershipRepository', () => {
         }),
       RepositoryAlreadyExistsError,
     );
+  });
+
+  it('returns existing ownership for same-tenant replay', async () => {
+    const existing = {
+      pk: 'RESOURCE#WORKFLOW#wf-123',
+      sk: 'OWNERSHIP',
+      entityType: 'OWNERSHIP',
+      resourceType: 'WORKFLOW' as const,
+      resourceId: 'wf-123',
+      ownerTenantId: 'tenant-a',
+      version: 1,
+      createdAt: '2026-07-22T10:00:00.000Z',
+      updatedAt: '2026-07-22T10:00:00.000Z',
+    };
+
+    const fakeClient = createFakeClient(
+      { Item: existing },
+      conditionalFailure(),
+      'put',
+    );
+
+    const repository =
+      new DynamoDbOwnershipRepository(
+        fakeClient as unknown as DynamoDBDocumentClient,
+        'ownership-table',
+      );
+
+    const result = await repository.create({
+      resourceType: 'WORKFLOW',
+      resourceId: 'wf-123',
+      ownerTenantId: 'tenant-a',
+    });
+
+    assert.equal(result.ownerTenantId, 'tenant-a');
   });
 
   it('gets ownership using resource-scoped keys', async () => {
@@ -243,6 +297,7 @@ describe('DynamoDbOwnershipRepository', () => {
     const fakeClient = createFakeClient(
       {},
       conditionalFailure(),
+      'delete',
     );
 
     const repository =

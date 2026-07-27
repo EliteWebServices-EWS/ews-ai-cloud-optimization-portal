@@ -26,6 +26,10 @@ import type {
 } from '../repositories';
 import type { WorkflowStoreInterface } from './workflow.store';
 import type {
+  WorkflowListPageRequest,
+  WorkflowListPageResult,
+} from './workflow.query';
+import type {
   WorkflowContext,
   WorkflowMetadata,
   WorkflowRecord,
@@ -238,22 +242,33 @@ export class RepositoryBackedWorkflowStore implements WorkflowStoreInterface {
     let nextToken: string | undefined;
 
     do {
-      const page = status
-        ? await this.workflowRepository.listByStatus(
-            tenantId,
-            toPersistedStatus(status),
-            { nextToken }
-          )
-        : await this.workflowRepository.listByTenant(tenantId, { nextToken });
-
-      for (const item of page.items) {
-        metadata.push(toOrchestratorRecord(item).metadata);
-      }
-
+      const page = await this.listPage(tenantId, { status, nextToken });
+      metadata.push(...page.items);
       nextToken = page.nextToken;
     } while (nextToken);
 
     return metadata;
+  }
+
+  async listPage(
+    tenantId: string,
+    request: WorkflowListPageRequest
+  ): Promise<WorkflowListPageResult<WorkflowMetadata>> {
+    const page = request.status
+      ? await this.workflowRepository.listByStatus(
+          tenantId,
+          toPersistedStatus(request.status),
+          { limit: request.limit, nextToken: request.nextToken }
+        )
+      : await this.workflowRepository.listByTenant(tenantId, {
+          limit: request.limit,
+          nextToken: request.nextToken,
+        });
+
+    return {
+      items: page.items.map((item) => toOrchestratorRecord(item).metadata),
+      nextToken: page.nextToken,
+    };
   }
 
   async resolveOwnerTenantId(workflowId: string): Promise<string | undefined> {
