@@ -11,7 +11,10 @@ import {
 import {
   ADMIN_ROLES,
   MEMBERSHIP_MANAGEMENT_ROLES,
+  OWNER_ROLE_ASSIGNMENT_ROLES,
+  assertPrivilegedRoleChangeMfa,
   getRequestSecurityContext,
+  isTenantRole,
   requireAnyRole,
   requireTenantRole,
 } from '../../auth';
@@ -415,9 +418,37 @@ export function createMembershipRoutes(deps: MembershipRouteDeps): Router {
         return;
       }
 
+      const requesterMembership = await membershipRepository.get(
+        trustedTenantId,
+        actor.userId ?? '',
+      );
+
       const role = optionalBodyString(req.body, 'role');
       const status = optionalBodyString(req.body, 'status');
       const expectedVersion = optionalBodyVersion(req.body);
+
+      if (role !== undefined && isTenantRole(role) && role === 'tenant_owner') {
+        const requesterRole = requesterMembership?.role;
+        if (
+          !requesterRole ||
+          !OWNER_ROLE_ASSIGNMENT_ROLES.includes(requesterRole)
+        ) {
+          throw new AppError(
+            'FORBIDDEN',
+            'Only the Tenant Owner may assign the Tenant Owner role.',
+            403,
+          );
+        }
+      }
+
+      if (
+        !assertPrivilegedRoleChangeMfa(req, res, {
+          targetRole: role,
+          requesterTenantRole: requesterMembership?.role,
+        })
+      ) {
+        return;
+      }
 
       if (status !== undefined && status !== 'ACTIVE' && status !== 'SUSPENDED') {
         throw new AppError(

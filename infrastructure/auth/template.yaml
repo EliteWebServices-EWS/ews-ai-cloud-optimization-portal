@@ -200,6 +200,7 @@ Resources:
         - openid
         - email
         - profile
+        - aws.cognito.signin.user.admin
 
       SupportedIdentityProviders:
         - COGNITO

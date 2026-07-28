@@ -77,3 +77,38 @@ export {
   isTenantAdministrator,
   canAdministerTenant,
 } from './tenant-admin-authorization';
+
+export {
+  PRIVILEGED_OPERATIONS,
+  MFA_ASSURANCE_STATE,
+  SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM,
+  isAcceptedSessionMfaVerifiedClaim,
+  evaluatePrivilegedMfa,
+  hasTrustedSessionMfaEvidence,
+  hasTrustedMfaEvidence,
+  identityRequiresMfaForOperation,
+  isPrivilegedTenantRole,
+  operationRequiresMfa,
+  type PrivilegedOperation,
+  type MfaAssuranceState,
+} from './privileged-mfa';
+
+export {
+  stripUntrustedIdentityHeaders,
+  stripInternalIdentityHeaders,
+  stripSessionMfaVerifiedHeaders,
+  INTERNAL_IDENTITY_HEADERS,
+  INTERNAL_IDENTITY_HEADER_PREFIX,
+} from './internal-identity-headers';
+
+export {
+  createIdentitySourceMiddleware,
+  resolveIdentitySource,
+  type CreateAppIdentityOptions,
+  type IdentitySource,
+} from './identity-source';
+
+export {
+  requirePrivilegedMfa,
+  assertPrivilegedRoleChangeMfa,
+} from './require-privileged-mfa';

@@ -36,7 +36,9 @@ import {
   ALL_AUTHENTICATED_ROLES,
   canAdministerTenant,
   getRequestSecurityContext,
+  PRIVILEGED_OPERATIONS,
   requireAnyRole,
+  requirePrivilegedMfa,
 } from '../../auth';
 import {
   RepositoryAlreadyExistsError,
@@ -249,6 +251,7 @@ export function createTenantAdminRoutes(
   router.post(
     '/admin/tenants',
     requireAnyRole(...ADMIN_ROLES),
+    requirePrivilegedMfa(PRIVILEGED_OPERATIONS.TENANT_CREATE),
     async (req: Request, res: Response) => {
       const requestId = getRequestId(req);
 
@@ -373,6 +376,7 @@ export function createTenantAdminRoutes(
   router.post(
     '/admin/tenants/:tenantId/suspend',
     requireAnyRole(...ALL_AUTHENTICATED_ROLES),
+    requirePrivilegedMfa(PRIVILEGED_OPERATIONS.TENANT_SUSPEND),
     (req: Request, res: Response) =>
       transitionTenant(
         req,
@@ -415,6 +419,7 @@ export function createTenantAdminRoutes(
   router.delete(
     '/admin/tenants/:tenantId',
     requireAnyRole(...ALL_AUTHENTICATED_ROLES),
+    requirePrivilegedMfa(PRIVILEGED_OPERATIONS.TENANT_DELETE),
     (req: Request, res: Response) =>
       transitionTenant(
         req,

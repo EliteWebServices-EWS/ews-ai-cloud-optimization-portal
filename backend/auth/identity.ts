@@ -2,8 +2,8 @@
  * Reads API Gateway-validated identity details from internal request headers.
  *
  * These headers are created by backend/lambda.ts after API Gateway validates
- * the Cognito access token. Client-supplied versions are removed and replaced
- * before the event reaches Express.
+ * the Cognito access token. On direct HTTP, createApp({ identitySource: 'direct-http' })
+ * strips all x-sisum-* headers before handlers run; client-supplied values are never trusted.
  */
 
 import type { Request } from 'express';
@@ -22,6 +22,12 @@ export interface AuthenticatedIdentity {
   clientId: string | null;
   /** Trusted tenant_id access-token claim — never from client headers or body. */
   tenantId: string | null;
+  /**
+   * Current-session MFA completed — true only when lambda sets the internal
+   * header after API Gateway validated JWT claim mfa_session_verified === true.
+   * Not read from body, query, cookies, or client-facing request fields.
+   */
+  sessionMfaVerified?: boolean;
 }
 
 function normalizeClaim(value: string | undefined): string | null {
@@ -94,5 +100,8 @@ export function getAuthenticatedIdentity(
 
     tenantId:
       normalizeClaim(req.header('x-sisum-tenant-id')),
+
+    sessionMfaVerified:
+      req.header('x-sisum-mfa-session-verified') === 'true',
   };
 }

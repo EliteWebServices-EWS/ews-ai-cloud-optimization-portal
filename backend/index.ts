@@ -42,6 +42,13 @@ import {
   createMembershipRepository,
   createMembershipService,
 } from './membership';
+import {
+  createIdentitySourceMiddleware,
+  resolveIdentitySource,
+  type CreateAppIdentityOptions,
+} from './auth/identity-source';
+
+export type CreateAppOptions = CreateAppIdentityOptions;
 
 const logger = createLogger('Server');
 const PORT = Number(process.env.PORT ?? 3000);
@@ -64,8 +71,13 @@ export function resolveProviderName(): ProviderName {
 
 /**
  * Bootstrap and configure the SISU'M backend API server.
+ *
+ * @param options.identitySource — `lambda-adapter` trusts headers from lambda.ts;
+ *   `direct-http` (default) strips all x-sisum-* identity headers fail-closed.
  */
-export function createApp(): express.Application {
+export function createApp(options?: CreateAppOptions): express.Application {
+  const identitySource = resolveIdentitySource(options);
+
   validateDeployedPersistenceConfig();
 
   const activeProvider = resolveProviderName();
@@ -104,6 +116,8 @@ export function createApp(): express.Application {
   app.use(createCorsMiddleware());
   app.use(createJsonBodyParser());
   app.use(createJsonErrorHandler());
+
+  app.use(createIdentitySourceMiddleware(identitySource));
 
   app.use(auditPersistenceFlushMiddleware);
 
@@ -190,7 +204,7 @@ export function createApp(): express.Application {
  * Start the local Express server.
  */
 export function startServer(): void {
-  const app = createApp();
+  const app = createApp({ identitySource: 'direct-http' });
 
   app.listen(PORT, () => {
     logger.info(
