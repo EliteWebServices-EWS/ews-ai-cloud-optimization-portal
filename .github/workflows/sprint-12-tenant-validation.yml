@@ -1,0 +1,70 @@
+name: Sprint 12 tenant validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_validation:
+        description: Run optional non-production AWS/Cognito validation
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  sprint12-tenant-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run Sprint 12 validation tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          PERSISTENCE_ENABLED: 'false'
+        run: npm run test:sprint12
+
+      - name: TypeScript build
+        working-directory: backend
+        run: npm run build
+
+      - name: SAM validate
+        working-directory: backend
+        run: sam validate --lint
+
+      - name: Optional Cognito offline template validation
+        if: inputs.aws_validation == 'true'
+        working-directory: backend
+        env:
+          COGNITO_VALIDATION_ENABLED: 'true'
+          COGNITO_VALIDATION_CONFIRM: I_UNDERSTAND_NON_PRODUCTION
+          COGNITO_USER_POOL_ID: sprint12-offline-check
+          ENVIRONMENT: staging
+        run: npx tsx scripts/validate-cognito-mfa-offline.ts
+
+      - name: Upload Sprint 12 documentation artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: sprint-12-tenant-validation-docs
+          path: |
+            docs/validation/sprint-12-tenant-identity-validation-report.md
+            docs/security/sprint-12-tenant-identity-security-report.md
+            docs/performance/sprint-12-tenant-administration-performance-report.md
+            docs/operations/privileged-mfa-validation-runbook.md

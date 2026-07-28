@@ -38,5 +38,5 @@ export const authConfig = {
   logoutUri: isLocalEnvironment()
     ? LOCAL_LOGOUT_URI
     : PRODUCTION_LOGOUT_URI,
-  scopes: ['openid', 'email', 'profile'],
+  scopes: ['openid', 'email', 'profile', 'aws.cognito.signin.user.admin'],
 } as const;

@@ -8,6 +8,8 @@
     "start": "node dist/index.js",
     "dev": "tsx watch index.ts",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:sprint12": "tsx --test tests/integration/tenant-administration/**/*.test.ts tests/unit/privileged-mfa.test.ts tests/unit/direct-http-identity.test.ts",
+    "validate:tenant-admin": "npm run test:sprint12",
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"
   },
   "dependencies": {

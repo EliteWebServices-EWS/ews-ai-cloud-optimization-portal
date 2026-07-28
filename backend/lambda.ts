@@ -5,10 +5,17 @@ import type {
 } from 'aws-lambda';
 import serverlessExpress from '@codegenie/serverless-express';
 import { extractTrustedTenantClaim } from './auth/tenant-claims';
+import {
+  isAcceptedSessionMfaVerifiedClaim,
+  SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM,
+} from './auth/privileged-mfa';
+import {
+  stripUntrustedIdentityHeaders,
+} from './auth/internal-identity-headers';
 import { createApp } from './index';
 
 interface JwtAuthorizerContext {
-  claims?: Record<string, string | undefined>;
+  claims?: Record<string, unknown>;
   scopes?: string[] | null;
 }
 
@@ -28,11 +35,13 @@ type PromiseServerlessExpressHandler = (
   context: Context
 ) => Promise<APIGatewayProxyResultV2>;
 
-const app = createApp();
+const app = createApp({ identitySource: 'lambda-adapter' });
 
 const serverlessExpressHandler = serverlessExpress({
   app,
 }) as unknown as PromiseServerlessExpressHandler;
+
+const SESSION_MFA_HEADER_CANONICAL = 'x-sisum-mfa-session-verified';
 
 /**
  * Copy API Gateway-validated Cognito claims into internal request headers.
@@ -49,20 +58,15 @@ export function attachValidatedIdentityHeaders(
     ...(event.headers ?? {}),
   };
 
-  delete event.headers['x-sisum-authenticated'];
-  delete event.headers['x-sisum-user-id'];
-  delete event.headers['x-sisum-user-email'];
-  delete event.headers['x-sisum-user-groups'];
-  delete event.headers['x-sisum-token-use'];
-  delete event.headers['x-sisum-client-id'];
-  delete event.headers['x-sisum-tenant-id'];
-  delete event.headers['x-tenant-id'];
+  stripUntrustedIdentityHeaders(
+    event.headers as Record<string, string | string[] | undefined>,
+  );
 
   if (!claims) {
     return;
   }
 
-  const tokenUse = (claims.token_use ?? '').trim();
+  const tokenUse = String(claims.token_use ?? '').trim();
 
   /*
    * API Gateway validates access tokens. Reject other token_use values
@@ -72,26 +76,21 @@ export function attachValidatedIdentityHeaders(
     return;
   }
 
-  const groups =
-    claims['cognito:groups'] ??
-    claims.groups ??
-    '';
+  const groups = String(
+    claims['cognito:groups'] ?? claims.groups ?? '',
+  );
 
-  const userId =
-    claims.sub ??
-    claims['cognito:username'] ??
-    '';
+  const userId = String(
+    claims.sub ?? claims['cognito:username'] ?? '',
+  );
 
-  const email = (claims.email ?? '').trim();
-  const normalizedClientId =
-    claims.client_id ??
-    claims.aud ??
-    '';
+  const email = String(claims.email ?? '').trim();
+  const normalizedClientId = claims.client_id ?? claims.aud ?? '';
 
   const clientId =
     typeof normalizedClientId === 'string'
       ? normalizedClientId.trim()
-      : '';
+      : String(normalizedClientId ?? '').trim();
 
   if (!userId.trim()) {
     return;
@@ -104,10 +103,18 @@ export function attachValidatedIdentityHeaders(
   event.headers['x-sisum-token-use'] = tokenUse || 'access';
   event.headers['x-sisum-client-id'] = clientId;
 
-  const tenantClaim = extractTrustedTenantClaim(claims);
+  const tenantClaim = extractTrustedTenantClaim(
+    claims as Record<string, string | undefined>,
+  );
 
   if (tenantClaim) {
     event.headers['x-sisum-tenant-id'] = tenantClaim;
+  }
+
+  const sessionMfaClaim = claims[SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM];
+
+  if (isAcceptedSessionMfaVerifiedClaim(sessionMfaClaim)) {
+    event.headers[SESSION_MFA_HEADER_CANONICAL] = 'true';
   }
 }
 

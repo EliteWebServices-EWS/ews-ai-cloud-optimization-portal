@@ -43,6 +43,9 @@ export const AUDIT_EVENTS = {
   TENANT_ARCHIVED: 'tenant.archived',
   TENANT_DELETED: 'tenant.deleted',
   TENANT_ADMINISTRATION_DENIED: 'tenant.administration_denied',
+  PRIVILEGED_MFA_REQUIRED: 'privileged.mfa_required',
+  PRIVILEGED_MFA_VERIFIED: 'privileged.mfa_verified',
+  PRIVILEGED_MFA_DENIED: 'privileged.mfa_denied',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];
