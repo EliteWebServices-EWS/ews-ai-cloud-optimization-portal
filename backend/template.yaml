@@ -576,6 +576,60 @@ Resources:
         - Key: Purpose
           Value: TenantRegistry
 
+  SisumExecutionPlansTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-execution-plans-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+        - AttributeName: gsi2pk
+          AttributeType: S
+        - AttributeName: gsi2sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi2
+          KeySchema:
+            - AttributeName: gsi2pk
+              KeyType: HASH
+            - AttributeName: gsi2sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: ExecutionPlanPersistence
+
   SisumBusinessPersistencePolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -611,6 +665,8 @@ Resources:
               - !Sub "${SisumInvitationsTable.Arn}/index/*"
               - !GetAtt SisumTenantsTable.Arn
               - !Sub "${SisumTenantsTable.Arn}/index/*"
+              - !GetAtt SisumExecutionPlansTable.Arn
+              - !Sub "${SisumExecutionPlansTable.Arn}/index/*"
 
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
@@ -675,6 +731,7 @@ Resources:
           MEMBERSHIPS_TABLE_NAME: !Ref SisumMembershipsTable
           INVITATIONS_TABLE_NAME: !Ref SisumInvitationsTable
           TENANTS_TABLE_NAME: !Ref SisumTenantsTable
+          EXECUTION_PLANS_TABLE_NAME: !Ref SisumExecutionPlansTable
 
       Events:
         PublicHealthRoute:
@@ -814,3 +871,15 @@ Outputs:
   TenantsTableName:
     Description: Tenant registry DynamoDB table name
     Value: !Ref SisumTenantsTable
+
+  ExecutionPlansTableName:
+    Description: DynamoDB table for durable execution plans and history.
+    Value: !Ref SisumExecutionPlansTable
+    Export:
+      Name: !Sub "${AWS::StackName}-ExecutionPlansTableName"
+
+  ExecutionPlansTableArn:
+    Description: DynamoDB execution plans table ARN.
+    Value: !GetAtt SisumExecutionPlansTable.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ExecutionPlansTableArn"

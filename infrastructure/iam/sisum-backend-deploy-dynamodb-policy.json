@@ -26,7 +26,8 @@
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-ownership-*",
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-tenants-*",
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-memberships-*",
-        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-invitations-*"
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-invitations-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-execution-plans-*"
       ]
     }
   ]

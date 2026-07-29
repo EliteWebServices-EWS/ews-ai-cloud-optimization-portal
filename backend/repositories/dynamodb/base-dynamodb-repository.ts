@@ -28,6 +28,7 @@ const PROTECTED_FIELDS = new Set([
   'userId',
   'invitationId',
   'tokenHash',
+  'executionId',
   'version',
   'createdAt',
 ]);

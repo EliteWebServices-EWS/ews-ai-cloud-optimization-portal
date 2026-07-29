@@ -9,14 +9,15 @@ export type BusinessResourceType =
   | 'WORKFLOW'
   | 'REPORT'
   | 'LEARNING'
-  | 'VERIFICATION';
+  | 'VERIFICATION'
+  | 'EXECUTION';
 
 export type OwnedResourceType = BusinessResourceType;
 
 /**
  * Validates a value before using it inside a DynamoDB composite key.
  */
-function requireKeyValue(value: string, fieldName: string): string {
+export function requireKeyValue(value: string, fieldName: string): string {
   const normalizedValue = value.trim();
 
   if (!normalizedValue) {
