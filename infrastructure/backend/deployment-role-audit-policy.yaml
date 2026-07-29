@@ -51,6 +51,7 @@ Resources:
               - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-tenants-*
               - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-memberships-*
               - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-invitations-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-execution-plans-*
 
           - Sid: ManageAuditLambdaExecutionPolicy
             Effect: Allow

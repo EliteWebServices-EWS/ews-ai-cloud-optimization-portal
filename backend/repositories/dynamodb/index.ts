@@ -7,3 +7,5 @@ export * from './dynamodb-ownership-repository';
 export * from './dynamodb-membership-repository';
 export * from './dynamodb-invitation-repository';
 export * from './dynamodb-tenant-repository';
+export * from './dynamodb-execution-plan-repository';
+export * from './dynamodb-execution-history-repository';

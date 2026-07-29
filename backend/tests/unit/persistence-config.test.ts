@@ -152,6 +152,7 @@ describe('validateDeployedPersistenceConfig', () => {
         TENANTS_TABLE_NAME: 'tenants',
         MEMBERSHIPS_TABLE_NAME: 'memberships',
         INVITATIONS_TABLE_NAME: 'invitations',
+        EXECUTION_PLANS_TABLE_NAME: 'execution-plans',
       },
       () => {
         assert.doesNotThrow(() => validateDeployedPersistenceConfig());

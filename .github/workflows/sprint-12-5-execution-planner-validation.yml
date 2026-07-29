@@ -1,0 +1,78 @@
+name: Sprint 12.5 execution planner validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sprint-12-5-execution-planner-validation:
+    runs-on: ubuntu-latest
+
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Create execution plans DynamoDB Local table
+        working-directory: backend
+        env:
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: us-east-1
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          EXECUTION_PLANS_TABLE_NAME: sisum-execution-plans-validation
+        run: npx tsx scripts/create-execution-plans-table.ts
+
+      - name: Run execution planner tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          PERSISTENCE_ENABLED: 'false'
+        run: npm run test:execution-planner
+
+      - name: Run full backend test suite
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          PERSISTENCE_ENABLED: 'false'
+        run: npm test
+
+      - name: TypeScript build
+        working-directory: backend
+        run: npm run build
+
+      - name: SAM validate
+        working-directory: backend
+        run: sam validate --lint
+
+      - name: SAM build
+        working-directory: backend
+        run: |
+          rm -rf .aws-sam
+          sam build --no-cached
+
+      - name: Upload Sprint 12.5 documentation artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: sprint-12-5-execution-planner-validation
+          path: |
+            docs/architecture/sprint-12-5-execution-plan-data-model.md
+            docs/validation/sprint-12-5-execution-planner-validation-report.md
