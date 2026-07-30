@@ -10,6 +10,11 @@
     "test": "tsx --test tests/**/*.test.ts",
     "test:sprint12": "tsx --test tests/integration/tenant-administration/**/*.test.ts tests/unit/privileged-mfa.test.ts tests/unit/direct-http-identity.test.ts",
     "test:execution-planner": "tsx --test tests/unit/execution-model.test.ts tests/unit/execution-lifecycle.test.ts tests/unit/mock-execution-plan-repository.test.ts tests/unit/dynamodb-execution-plan-repository.test.ts tests/unit/dynamodb-execution-history-repository.test.ts tests/unit/execution-repository-factory.test.ts tests/unit/execution-template.test.ts",
+    "test:execution-integration": "tsx --test tests/integration/execution-*.test.ts tests/integration/execution/**/*.test.ts",
+    "test:execution-security": "tsx --test tests/security/execution-*.test.ts",
+    "test:execution-contract": "tsx --test tests/contract/**/*.test.ts tests/unit/execution-adapters-aws.test.ts",
+    "test:execution-performance": "tsx --test tests/performance/execution-performance.test.ts",
+    "test:execution-validation": "tsx --test tests/integration/execution-*.test.ts tests/integration/execution/**/*.test.ts tests/security/execution-*.test.ts tests/contract/**/*.test.ts tests/performance/execution-performance.test.ts tests/unit/execution-orchestrator.test.ts tests/unit/execution-adapters-aws.test.ts tests/unit/execution-run-repository.test.ts tests/unit/execution-model.test.ts tests/unit/execution-lifecycle.test.ts tests/unit/mock-execution-plan-repository.test.ts",
     "validate:tenant-admin": "npm run test:sprint12",
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"
   },
