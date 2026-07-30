@@ -172,6 +172,10 @@ export function inferAuditSource(
     return 'execution';
   }
 
+  if (eventName.startsWith('rollback.')) {
+    return 'execution';
+  }
+
   if (eventName.startsWith('audit.')) {
     return 'audit';
   }

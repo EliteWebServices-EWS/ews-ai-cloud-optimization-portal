@@ -7,14 +7,17 @@ import {
 import {
   DynamoDbExecutionHistoryRepository,
   DynamoDbExecutionPlanRepository,
+  DynamoDbExecutionRunRepository,
 } from '../repositories/dynamodb';
 import {
   MockExecutionHistoryRepository,
   MockExecutionPlanRepository,
+  MockExecutionRunRepository,
 } from '../repositories/mock';
 import type {
   ExecutionHistoryRepository,
   ExecutionPlanRepository,
+  ExecutionRunRepository,
 } from '../repositories/contracts';
 import { createLogger } from '../shared/utils';
 
@@ -27,6 +30,7 @@ function shouldUseDurableExecutionRepository(): boolean {
 export interface ExecutionRepositories {
   executionPlans: ExecutionPlanRepository;
   executionHistory: ExecutionHistoryRepository;
+  executionRuns: ExecutionRunRepository;
 }
 
 export function createExecutionRepositories(): ExecutionRepositories {
@@ -41,6 +45,10 @@ export function createExecutionRepositories(): ExecutionRepositories {
         tableName,
       ),
       executionHistory: new DynamoDbExecutionHistoryRepository(
+        dynamoDbDocumentClient,
+        tableName,
+      ),
+      executionRuns: new DynamoDbExecutionRunRepository(
         dynamoDbDocumentClient,
         tableName,
       ),
@@ -62,6 +70,7 @@ export function createExecutionRepositories(): ExecutionRepositories {
   return {
     executionPlans: new MockExecutionPlanRepository(),
     executionHistory: new MockExecutionHistoryRepository(),
+    executionRuns: new MockExecutionRunRepository(),
   };
 }
 
@@ -71,4 +80,8 @@ export function createExecutionPlanRepository(): ExecutionPlanRepository {
 
 export function createExecutionHistoryRepository(): ExecutionHistoryRepository {
   return createExecutionRepositories().executionHistory;
+}
+
+export function createExecutionRunRepository(): ExecutionRunRepository {
+  return createExecutionRepositories().executionRuns;
 }

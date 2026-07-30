@@ -9,3 +9,4 @@ export * from './dynamodb-invitation-repository';
 export * from './dynamodb-tenant-repository';
 export * from './dynamodb-execution-plan-repository';
 export * from './dynamodb-execution-history-repository';
+export * from './dynamodb-execution-run-repository';

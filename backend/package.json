@@ -14,10 +14,15 @@
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-auto-scaling": "^3.0.0",
+    "@aws-sdk/client-cloudfront": "^3.0.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
     "@aws-sdk/client-cost-explorer": "^3.0.0",
     "@aws-sdk/client-dynamodb": "^3.1092.0",
     "@aws-sdk/client-ec2": "^3.0.0",
+    "@aws-sdk/client-lambda": "^3.0.0",
+    "@aws-sdk/client-rds": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/client-sts": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.1092.0",
     "@codegenie/serverless-express": "^5.0.0",

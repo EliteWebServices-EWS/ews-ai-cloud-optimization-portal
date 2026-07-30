@@ -11,6 +11,7 @@ import {
   InMemoryMembershipRepository,
 } from '../../membership/membership.store';
 import { createMembershipService } from '../../membership/membership.service';
+import { createIdentitySourceMiddleware } from '../../auth/identity-source';
 
 /**
  * Sprint 12 / Engineer 4 — Task 1 (route-level coverage) and Task 4
@@ -27,11 +28,10 @@ import { createMembershipService } from '../../membership/membership.service';
  * express app on an ephemeral port, real fetch() calls, no supertest
  * dependency added.
  *
- * Identity is simulated via the trusted internal x-sisum-* headers that
- * auth/identity.ts reads (see getAuthenticatedIdentity) -- these are the
- * headers the Lambda adapter sets from verified JWT claims in production;
- * setting them directly here is the correct way to drive these routes in
- * a test, without needing to mint or verify a real Cognito token.
+ * Identity is simulated via trusted internal x-sisum-* headers (see
+ * getAuthenticatedIdentity), with createIdentitySourceMiddleware('lambda-adapter')
+ * matching Sprint 12 tenant-administration/fixtures.ts. Privileged operations
+ * require sessionMfaVerified (x-sisum-mfa-session-verified: true).
  */
 
 interface Identity {
@@ -40,6 +40,7 @@ interface Identity {
   email?: string;
   groups?: string[];
   tenantId?: string;
+  sessionMfaVerified?: boolean;
 }
 
 function identityHeaders(identity: Identity): Record<string, string> {
@@ -49,13 +50,46 @@ function identityHeaders(identity: Identity): Record<string, string> {
 
   if (identity.authenticated !== false) {
     headers['x-sisum-authenticated'] = 'true';
+    headers['x-sisum-token-use'] = 'access';
+    headers['x-sisum-client-id'] = 'test-client';
   }
   if (identity.userId) headers['x-sisum-user-id'] = identity.userId;
-  if (identity.email) headers['x-sisum-user-email'] = identity.email;
+  if (identity.email) {
+    headers['x-sisum-user-email'] = identity.email;
+  } else if (identity.userId) {
+    headers['x-sisum-user-email'] = `${identity.userId}@example.com`;
+  }
   if (identity.groups) headers['x-sisum-user-groups'] = identity.groups.join(',');
   if (identity.tenantId) headers['x-sisum-tenant-id'] = identity.tenantId;
+  if (identity.sessionMfaVerified) {
+    headers['x-sisum-mfa-session-verified'] = 'true';
+  }
 
   return headers;
+}
+
+function platformAdminIdentity(sessionMfaVerified = false): Identity {
+  return {
+    authenticated: true,
+    userId: 'platform-admin-1',
+    groups: ['admin'],
+    tenantId: 'sisum-default',
+    sessionMfaVerified,
+  };
+}
+
+function tenantPrivilegedIdentity(
+  userId: string,
+  tenantId: string,
+  sessionMfaVerified = false,
+): Identity {
+  return {
+    authenticated: true,
+    userId,
+    groups: ['admin'],
+    tenantId,
+    sessionMfaVerified,
+  };
 }
 
 function buildApp(deps: {
@@ -65,6 +99,7 @@ function buildApp(deps: {
 }) {
   const app = express();
   app.use(express.json());
+  app.use(createIdentitySourceMiddleware('lambda-adapter'));
 
   const membershipService = createMembershipService({
     membershipRepository: deps.membershipRepository,
@@ -144,7 +179,7 @@ describe('Tenant Administration API — HTTP integration', () => {
 
     await withServer(app, async (baseUrl) => {
       const res = await call(baseUrl, 'POST', '/admin/tenants',
-        { authenticated: true, userId: 'platform-admin-1', groups: ['admin'] },
+        platformAdminIdentity(true),
         {
           organizationName: 'New Co',
           displayName: 'New Co',
@@ -306,7 +341,7 @@ describe('Membership API — HTTP integration', () => {
     });
 
     const app = buildApp({ tenantRepository, membershipRepository, invitationRepository });
-    const ownerIdentity = { authenticated: true, userId: 'owner-a', groups: ['admin'], tenantId: 'tenant-http-a' };
+    const ownerIdentity = tenantPrivilegedIdentity('owner-a', 'tenant-http-a', true);
 
     await withServer(app, async (baseUrl) => {
       const invite = await call(baseUrl, 'POST', '/tenants/tenant-http-a/invite', ownerIdentity, {

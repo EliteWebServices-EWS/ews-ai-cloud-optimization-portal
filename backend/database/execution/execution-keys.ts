@@ -89,3 +89,12 @@ export function executionHistorySortKey(
 }
 
 export const EXECUTION_PLAN_SK_PREFIX = `${EXECUTION_RESOURCE}#`;
+
+const EXECUTION_RUN_RESOURCE = 'EXECUTION_RUN' as const;
+
+/** Sort key for a durable adapter execution run record. */
+export function executionRunSortKey(runId: string): string {
+  return `${EXECUTION_RUN_RESOURCE}#${requireKeyValue(runId, 'runId')}`;
+}
+
+export const EXECUTION_RUN_SK_PREFIX = `${EXECUTION_RUN_RESOURCE}#`;
