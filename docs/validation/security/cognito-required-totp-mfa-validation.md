@@ -24,7 +24,7 @@ Repository IaC (`infrastructure/auth/template.yaml`, resource **`SisumUserPool`*
 On **`AWS::Cognito::UserPool` → `SisumUserPool`**:
 
 ```yaml
-MfaConfiguration: ON
+MfaConfiguration: 'ON'
 EnabledMfas:
   - SOFTWARE_TOKEN_MFA
 AccountRecoverySetting:
@@ -32,6 +32,8 @@ AccountRecoverySetting:
     - Name: verified_email
       Priority: 1
 ```
+
+(Unquoted `MfaConfiguration: ON` must not be used — see **CloudFormation deployment note** below.)
 
 - **SMS MFA:** not enabled (not in `EnabledMfas`).
 - **Email MFA:** not enabled (no `EMAIL_OTP` / email MFA factor).
@@ -64,6 +66,17 @@ aws cloudformation describe-stacks \
 Expected: `us-east-1_DARrpLb5p`. If the stack name differs, locate the stack whose `UserPoolId` output matches this ID. **Stop and report** if no stack manages this pool.
 
 Logical resource: **`SisumUserPool`** in `infrastructure/auth/template.yaml`.
+
+## CloudFormation deployment note (YAML boolean hazard)
+
+An attempted auth stack update failed when the template contained **`MfaConfiguration: ON`** without quotes. CloudFormation/YAML 1.1-style parsing treated **`ON`** as boolean **`true`**, which Cognito rejected:
+
+`Value 'true' at 'mfaConfiguration' failed to satisfy enum value set: [OPTIONAL, OFF, ON]`
+
+- **Stack rollback:** CloudFormation rolled back successfully; the user pool was not left in a partial update state for this change.
+- **Live MFA until redeploy:** Pool MFA remains **`OPTIONAL`** (with **`SOFTWARE_TOKEN_MFA`** enabled per stack) until a corrected template is deployed.
+- **Correct IaC:** Use **`MfaConfiguration: 'ON'`** (or **`"ON"`**). Cognito accepts only the strings **`ON`**, **`OPTIONAL`**, or **`OFF`**.
+- **Rule:** Quote **`ON`**, **`OFF`**, **`YES`**, **`NO`** (and similar YAML 1.1 boolean tokens) in CloudFormation templates when the AWS API expects string enums.
 
 ## Deployment precautions
 

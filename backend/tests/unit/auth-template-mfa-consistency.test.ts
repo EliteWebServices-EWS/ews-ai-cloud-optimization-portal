@@ -1,10 +1,44 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
   loadAuthTemplate,
   requireResourceProperties,
 } from '../helpers/cfn-auth-template-loader';
+
+const AUTH_TEMPLATE_SOURCE_PATH = path.resolve(
+  __dirname,
+  '../../../infrastructure/auth/template.yaml',
+);
+
+function sisumUserPoolTemplateBlock(source: string): string {
+  return source.slice(
+    source.indexOf('SisumUserPool:'),
+    source.indexOf('SisumPreTokenGenerationRole:'),
+  );
+}
+
+function assertMfaConfigurationQuotedOnInSource(source: string): void {
+  const poolBlock = sisumUserPoolTemplateBlock(source);
+
+  assert.doesNotMatch(
+    poolBlock,
+    /^\s*MfaConfiguration:\s*ON\s*$/m,
+    'MfaConfiguration must not be unquoted ON (YAML 1.1 boolean hazard)',
+  );
+  assert.doesNotMatch(
+    poolBlock,
+    /^\s*MfaConfiguration:\s*true\s*$/im,
+    'MfaConfiguration must not be boolean true',
+  );
+  assert.match(
+    poolBlock,
+    /^\s*MfaConfiguration:\s*['"]ON['"]\s*$/m,
+    'MfaConfiguration must be quoted string ON for CloudFormation',
+  );
+}
 
 function readString(value: unknown, field: string): string {
   if (typeof value !== 'string') {
@@ -61,6 +95,7 @@ describe('Auth template MFA policy and Lambda gate consistency', () => {
     const poolProps = requireResourceProperties(template, 'SisumUserPool');
 
     assert.equal(readString(poolProps.MfaConfiguration, 'MfaConfiguration'), 'ON');
+    assert.notEqual(poolProps.MfaConfiguration, true);
 
     const enabledMfas = readStringArray(
       poolProps.EnabledMfas,
@@ -71,6 +106,11 @@ describe('Auth template MFA policy and Lambda gate consistency', () => {
       enabledMfas.includes('SOFTWARE_TOKEN_MFA'),
       'EnabledMfas must include SOFTWARE_TOKEN_MFA',
     );
+  });
+
+  it('quotes MfaConfiguration ON in template source for CloudFormation', () => {
+    const source = readFileSync(AUTH_TEMPLATE_SOURCE_PATH, 'utf8');
+    assertMfaConfigurationQuotedOnInSource(source);
   });
 
   it('sets COGNITO_REQUIRED_MFA Lambda environment gate to string true', () => {
