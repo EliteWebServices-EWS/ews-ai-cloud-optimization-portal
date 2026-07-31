@@ -112,3 +112,8 @@ export {
   requirePrivilegedMfa,
   assertPrivilegedRoleChangeMfa,
 } from './require-privileged-mfa';
+
+export {
+  canPerformExecutionPrivilegedAction,
+  requireExecutionPrivilegedRole,
+} from './execution-api-authorization';

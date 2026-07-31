@@ -41,6 +41,15 @@ jobs:
           EXECUTION_PLANS_TABLE_NAME: sisum-execution-plans-validation
         run: npx tsx scripts/create-execution-plans-table.ts
 
+      - name: Run execution API tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          PERSISTENCE_ENABLED: 'false'
+          EXECUTION_ADAPTER_PRODUCTION_ENABLED: 'true'
+          PROVIDER_MODE: aws
+        run: npm run test:execution-api
+
       - name: Run execution validation suites
         working-directory: backend
         env:

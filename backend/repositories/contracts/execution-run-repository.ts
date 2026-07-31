@@ -1,5 +1,5 @@
 import type { ExecutionRunRecord } from '../models/execution-run-models';
-import type { UpdateOptions } from './repository-types';
+import type { PageRequest, PageResult, UpdateOptions } from './repository-types';
 
 export type CreateExecutionRunInput = Omit<
   ExecutionRunRecord,
@@ -39,4 +39,9 @@ export interface ExecutionRunRepository {
     changes: UpdateExecutionRunInput,
     options: UpdateOptions,
   ): Promise<ExecutionRunRecord>;
+
+  listByTenant(
+    tenantId: string,
+    page?: PageRequest,
+  ): Promise<PageResult<ExecutionRunRecord>>;
 }

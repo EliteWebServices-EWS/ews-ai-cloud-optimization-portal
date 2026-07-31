@@ -19,7 +19,9 @@ import {
   createVerificationEngine,
   createLearningStore,
 } from '../../../engines';
-import { createExecutionSimulator } from '../../../execution';
+import { createExecutionSimulator, createDefaultExecutionAdapterRegistry, createExecutionOrchestrator } from '../../../execution';
+import { ExecutionApiService } from '../../../services/execution-api-service';
+import { createInMemoryExecutionStores } from '../execution/fixtures';
 import { createWorkflowOrchestrator } from '../../../orchestrator';
 import { createPluginRegistry } from '../../../plugins';
 import { createProvider } from '../../../providers';
@@ -120,6 +122,18 @@ export function buildTestApp(): TestAppContext {
     getPlugin: (name) => pluginRegistry.get(name),
   });
 
+  const executionStores = createInMemoryExecutionStores();
+  const executionOrchestrator = createExecutionOrchestrator({
+    registry: createDefaultExecutionAdapterRegistry(() => ({})),
+    runs: executionStores.runs,
+  });
+  const executionApi = new ExecutionApiService({
+    plans: executionStores.plans,
+    runs: executionStores.runs,
+    history: executionStores.history,
+    orchestrator: executionOrchestrator,
+  });
+
   const app = express();
   app.use(createSecurityHeadersMiddleware());
   app.use(createCorsMiddleware());
@@ -148,6 +162,7 @@ export function buildTestApp(): TestAppContext {
       membershipService,
       membershipRepository,
       tenantRepository,
+      executionApi,
     }),
   );
 
