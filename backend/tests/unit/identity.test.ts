@@ -187,6 +187,59 @@ test('lambda attachValidatedIdentityHeaders omits tenant header when claim missi
   assert.equal(event.headers['x-sisum-tenant-id'], undefined);
 });
 
+test('sessionMfaVerified is true only when lambda sets trusted internal header', () => {
+  const verified = getAuthenticatedIdentity(
+    createMockRequest({
+      'x-sisum-authenticated': 'true',
+      'x-sisum-user-id': 'admin-1',
+      'x-sisum-user-groups': 'admin',
+      'x-sisum-mfa-session-verified': 'true',
+    })
+  );
+
+  assert.equal(verified.sessionMfaVerified, true);
+});
+
+test('sessionMfaVerified is false when claim header is missing', () => {
+  const identity = getAuthenticatedIdentity(
+    createMockRequest({
+      'x-sisum-authenticated': 'true',
+      'x-sisum-user-id': 'admin-1',
+      'x-sisum-user-groups': 'admin',
+    })
+  );
+
+  assert.notEqual(identity.sessionMfaVerified, true);
+});
+
+test('sessionMfaVerified is false when internal header is not exactly true', () => {
+  for (const headerValue of ['false', 'null', '1', '']) {
+    const identity = getAuthenticatedIdentity(
+      createMockRequest({
+        'x-sisum-authenticated': 'true',
+        'x-sisum-user-id': 'admin-1',
+        'x-sisum-user-groups': 'admin',
+        'x-sisum-mfa-session-verified': headerValue,
+      })
+    );
+
+    assert.notEqual(identity.sessionMfaVerified, true);
+  }
+});
+
+test('admin role alone does not set sessionMfaVerified', () => {
+  const identity = getAuthenticatedIdentity(
+    createMockRequest({
+      'x-sisum-authenticated': 'true',
+      'x-sisum-user-id': 'admin-1',
+      'x-sisum-user-groups': 'admin',
+    })
+  );
+
+  assert.deepEqual(identity.groups, [SISUM_ROLES.ADMIN]);
+  assert.notEqual(identity.sessionMfaVerified, true);
+});
+
 test('auth template defines custom tenantId attribute', () => {
   const templatePath = path.resolve(
     __dirname,
@@ -199,16 +252,17 @@ test('auth template defines custom tenantId attribute', () => {
   assert.match(template, /MaxLength: "64"/);
 });
 
-test('auth template enables optional TOTP MFA', () => {
+test('auth template requires TOTP MFA at the user pool', () => {
   const templatePath = path.resolve(
     __dirname,
     '../../../infrastructure/auth/template.yaml'
   );
   const template = readFileSync(templatePath, 'utf8');
 
-  assert.match(template, /MfaConfiguration:\s*OPTIONAL/);
+  assert.match(template, /MfaConfiguration:\s*ON/);
   assert.match(template, /SOFTWARE_TOKEN_MFA/);
   assert.doesNotMatch(template, /SMS_MFA/);
+  assert.match(template, /Name:\s*verified_email/);
 });
 
 // Ensure exported handler remains callable after identity hardening.

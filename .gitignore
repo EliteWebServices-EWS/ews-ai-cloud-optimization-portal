@@ -44,3 +44,5 @@ Thumbs.db
 
 # Local IAM files (do not commit)
 local-iam/
+# Local CloudFormation inspection files
+deployed-auth-template.json

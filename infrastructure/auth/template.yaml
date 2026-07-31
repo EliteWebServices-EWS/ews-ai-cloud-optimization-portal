@@ -55,7 +55,9 @@ Resources:
       AutoVerifiedAttributes:
         - email
 
-      MfaConfiguration: OPTIONAL
+      # Required TOTP (authenticator app). Pool-level ON forces enrollment on next
+      # sign-in for users without SOFTWARE_TOKEN_MFA; does not pre-bind devices.
+      MfaConfiguration: ON
 
       EnabledMfas:
         - SOFTWARE_TOKEN_MFA
@@ -128,49 +130,120 @@ Resources:
     Properties:
       FunctionName: !Sub ${ApplicationName}-${Environment}-pre-token-generation
       Description: >
-        Injects tenant_id into Cognito access tokens from custom:tenantId profile attribute.
+        Pre Token Generation V2: injects tenant_id from custom:tenantId and
+        mfa_session_verified after fresh Managed Login (TokenGeneration_HostedAuth).
       Runtime: nodejs24.x
       Handler: index.handler
       Role: !GetAtt SisumPreTokenGenerationRole.Arn
       Timeout: 5
       MemorySize: 128
+      Environment:
+        Variables:
+          # Server-controlled gate: must be true to emit mfa_session_verified on HostedAuth.
+          COGNITO_REQUIRED_MFA: 'true'
       Code:
         ZipFile: |
           const TENANT_ID_PATTERN =
             /^(?:[a-z0-9]|[a-z0-9][a-z0-9-]{0,62}[a-z0-9])$/;
 
-          exports.handler = async (event) => {
+          const FRESH_MANAGED_LOGIN_TRIGGER = 'TokenGeneration_HostedAuth';
+          const REFRESH_TOKEN_TRIGGER = 'TokenGeneration_RefreshTokens';
+          const MFA_SESSION_VERIFIED_CLAIM = 'mfa_session_verified';
+
+          function isRequiredMfaDeploymentEnabled() {
+            const raw = process.env.COGNITO_REQUIRED_MFA?.trim().toLowerCase();
+            return raw === 'true';
+          }
+
+          function readValidTenantId(userAttributes) {
             const tenantAttribute =
-              event.request.userAttributes['custom:tenantId']?.trim() ?? '';
+              userAttributes['custom:tenantId']?.trim() ?? '';
 
             if (tenantAttribute.length === 0) {
-              return event;
+              return null;
             }
 
             if (
               tenantAttribute.length > 64 ||
               !TENANT_ID_PATTERN.test(tenantAttribute)
             ) {
-              return event;
+              return null;
+            }
+
+            return tenantAttribute;
+          }
+
+          function applyAccessTokenOverrides(event, buildClaims, options) {
+            const existingDetails =
+              event.response?.claimsAndScopeOverrideDetails ?? {};
+            const existingAccess =
+              existingDetails.accessTokenGeneration ?? {};
+            const existingClaims = {
+              ...(existingAccess.claimsToAddOrOverride ?? {}),
+            };
+
+            buildClaims(existingClaims);
+
+            const claimsToSuppress = [
+              ...(existingAccess.claimsToSuppress ?? []),
+            ];
+
+            if (options?.suppressMfaSessionVerified) {
+              delete existingClaims[MFA_SESSION_VERIFIED_CLAIM];
+              if (!claimsToSuppress.includes(MFA_SESSION_VERIFIED_CLAIM)) {
+                claimsToSuppress.push(MFA_SESSION_VERIFIED_CLAIM);
+              }
             }
 
             event.response = {
               ...event.response,
               claimsAndScopeOverrideDetails: {
-                ...event.response?.claimsAndScopeOverrideDetails,
+                ...existingDetails,
                 accessTokenGeneration: {
-                  ...event.response?.claimsAndScopeOverrideDetails
-                    ?.accessTokenGeneration,
-                  claimsToAddOrOverride: {
-                    ...event.response?.claimsAndScopeOverrideDetails
-                      ?.accessTokenGeneration?.claimsToAddOrOverride,
-                    tenant_id: tenantAttribute,
-                  },
+                  ...existingAccess,
+                  claimsToAddOrOverride: existingClaims,
+                  claimsToSuppress,
                 },
               },
             };
 
             return event;
+          }
+
+          exports.handler = async (event) => {
+            const triggerSource = String(event.triggerSource ?? '');
+            const tenantId = readValidTenantId(event.request.userAttributes);
+
+            if (triggerSource === FRESH_MANAGED_LOGIN_TRIGGER) {
+              return applyAccessTokenOverrides(event, (claims) => {
+                if (tenantId) {
+                  claims.tenant_id = tenantId;
+                }
+                if (isRequiredMfaDeploymentEnabled()) {
+                  claims[MFA_SESSION_VERIFIED_CLAIM] = true;
+                }
+              });
+            }
+
+            if (triggerSource === REFRESH_TOKEN_TRIGGER) {
+              return applyAccessTokenOverrides(
+                event,
+                (claims) => {
+                  if (tenantId) {
+                    claims.tenant_id = tenantId;
+                  }
+                },
+                { suppressMfaSessionVerified: true },
+              );
+            }
+
+            if (!tenantId) {
+              return event;
+            }
+
+            return applyAccessTokenOverrides(event, (claims) => {
+              claims.tenant_id = tenantId;
+            });
           };
 
   SisumPreTokenGenerationPermission:

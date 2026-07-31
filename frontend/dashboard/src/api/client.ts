@@ -11,6 +11,9 @@ import { getOrRefreshAccessToken } from '../auth/guard';
 import { beginLogin } from '../auth/login';
 import { clearSession } from '../auth/session';
 
+export const PRIVILEGED_MFA_REAUTH_USER_MESSAGE =
+  'Your secure administrator session has expired. Sign in again to continue.';
+
 export class ApiClientError extends Error {
   constructor(
     public readonly code: string,
@@ -21,6 +24,13 @@ export class ApiClientError extends Error {
     this.name = 'ApiClientError';
   }
 }
+
+export function isMfaEvidenceUnavailableError(error: unknown): error is ApiClientError {
+  return error instanceof ApiClientError && error.code === 'MFA_EVIDENCE_UNAVAILABLE';
+}
+
+/** Clears session and starts Cognito logout (user-initiated; not used on automatic API retry). */
+export { logout as beginSecureReauthentication } from '../auth/logout';
 
 const DEFAULT_BASE =
   import.meta.env.VITE_API_BASE ?? '/api/v1';
@@ -76,9 +86,14 @@ export async function apiRequest<T>(
 
   if (!response.ok || !body.success) {
     if ('error' in body) {
+      const message =
+        body.error.code === 'MFA_EVIDENCE_UNAVAILABLE'
+          ? PRIVILEGED_MFA_REAUTH_USER_MESSAGE
+          : body.error.message;
+
       throw new ApiClientError(
         body.error.code,
-        body.error.message,
+        message,
         body.error.stage
       );
     }
