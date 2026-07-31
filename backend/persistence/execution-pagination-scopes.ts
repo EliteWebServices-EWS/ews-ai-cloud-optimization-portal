@@ -6,4 +6,5 @@ export const EXECUTION_PAGINATION_SCOPES = {
     `execution:status:${tenantId}:${status}`,
   historyList: (tenantId: string, executionId: string) =>
     `execution:history:${tenantId}:${executionId}`,
+  runList: (tenantId: string) => `execution:run:${tenantId}`,
 } as const;

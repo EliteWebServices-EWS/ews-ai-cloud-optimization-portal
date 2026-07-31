@@ -15,6 +15,9 @@
     "test:execution-contract": "tsx --test tests/contract/**/*.test.ts tests/unit/execution-adapters-aws.test.ts",
     "test:execution-performance": "tsx --test tests/performance/execution-performance.test.ts",
     "test:execution-validation": "tsx --test tests/integration/execution-*.test.ts tests/integration/execution/**/*.test.ts tests/security/execution-*.test.ts tests/contract/**/*.test.ts tests/performance/execution-performance.test.ts tests/unit/execution-orchestrator.test.ts tests/unit/execution-adapters-aws.test.ts tests/unit/execution-run-repository.test.ts tests/unit/execution-model.test.ts tests/unit/execution-lifecycle.test.ts tests/unit/mock-execution-plan-repository.test.ts",
+    "test:execution-api": "tsx --test tests/unit/execution-api-audit.test.ts tests/integration/execution-api-http.test.ts tests/integration/execution-api-rollback.test.ts tests/integration/execution-api-concurrency.test.ts tests/integration/execution-api-service.test.ts tests/security/execution-api-*.test.ts",
+    "test:execution-api-integration": "tsx --test tests/integration/execution-api-http.test.ts tests/integration/execution-api-rollback.test.ts tests/integration/execution-api-concurrency.test.ts tests/integration/execution-api-service.test.ts",
+    "test:execution-api-security": "tsx --test tests/security/execution-api-*.test.ts",
     "validate:tenant-admin": "npm run test:sprint12",
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"
   },

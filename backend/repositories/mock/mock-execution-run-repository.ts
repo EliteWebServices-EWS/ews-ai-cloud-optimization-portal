@@ -13,6 +13,17 @@ import type {
 
 import type { ExecutionRunRecord } from '../models/execution-run-models';
 
+import {
+  InvalidPaginationTokenError,
+} from '../../database';
+import {
+  decodeScopedNextToken,
+  encodeScopedNextToken,
+} from '../../persistence/scoped-pagination-token';
+import { EXECUTION_PAGINATION_SCOPES } from '../../persistence/execution-pagination-scopes';
+import { normalizePageSize } from '../contracts/repository-types';
+import type { PageRequest, PageResult } from '../contracts/repository-types';
+
 function clone(record: ExecutionRunRecord): ExecutionRunRecord {
   return structuredClone(record);
 }
@@ -80,5 +91,41 @@ export class MockExecutionRunRepository implements ExecutionRunRepository {
 
     this.store.set(id, clone(updated));
     return clone(updated);
+  }
+
+  async listByTenant(
+    tenantId: string,
+    page?: PageRequest,
+  ): Promise<PageResult<ExecutionRunRecord>> {
+    const scope = EXECUTION_PAGINATION_SCOPES.runList(tenantId);
+    const limit = normalizePageSize(page?.limit);
+    let offset = 0;
+
+    if (page?.nextToken) {
+      try {
+        const key = decodeScopedNextToken(page.nextToken, {
+          tenantId,
+          scope,
+        }) as { offset?: number } | undefined;
+        offset = key?.offset ?? 0;
+      } catch {
+        throw new InvalidPaginationTokenError();
+      }
+    }
+
+    const records = [...this.store.values()]
+      .filter((run) => run.tenantId === tenantId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+    const items = records.slice(offset, offset + limit).map(clone);
+    const nextOffset = offset + items.length;
+
+    return {
+      items,
+      nextToken:
+        nextOffset < records.length
+          ? encodeScopedNextToken({ tenantId, scope }, { offset: nextOffset })
+          : undefined,
+    };
   }
 }

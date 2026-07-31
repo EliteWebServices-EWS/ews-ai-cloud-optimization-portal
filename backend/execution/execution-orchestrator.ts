@@ -247,6 +247,144 @@ export class ExecutionOrchestrator {
     };
   }
 
+  /**
+   * Roll back a persisted execution run using stored snapshot state.
+   */
+  async rollbackRun(
+    context: AdapterExecutionContext,
+    runId: string,
+  ): Promise<OrchestratedExecutionResult> {
+    let record = await this.deps.runs.getById(context.tenantId, runId);
+    if (!record) {
+      throw new ExecutionAdapterError(
+        'RUN_NOT_FOUND',
+        'Execution run was not found.',
+        'rollback',
+      );
+    }
+
+    if (record.status === 'ROLLED_BACK') {
+      throw new ExecutionAdapterError(
+        'ALREADY_ROLLED_BACK',
+        'Execution run was already rolled back.',
+        'rollback',
+      );
+    }
+
+    if (record.status === 'ROLLBACK_PENDING') {
+      // Claimed by the execution API before rollback orchestration starts.
+    } else if (!record.rollbackState.eligible) {
+      throw new ExecutionAdapterError(
+        'ROLLBACK_NOT_ELIGIBLE',
+        record.rollbackState.reason ?? 'Rollback is not eligible for this run.',
+        'rollback',
+      );
+    }
+
+    if (
+      record.status !== 'ROLLBACK_PENDING' &&
+      record.status !== 'SUCCEEDED' &&
+      record.status !== 'FAILED' &&
+      record.status !== 'ROLLBACK_FAILED'
+    ) {
+      throw new ExecutionAdapterError(
+        'ROLLBACK_NOT_ELIGIBLE',
+        `Execution run cannot be rolled back from status ${record.status}.`,
+        'rollback',
+      );
+    }
+
+    const request: AdapterExecutionRequest = {
+      service: record.service,
+      action: record.action,
+      resourceId: record.resourceId,
+    };
+
+    const adapter = this.deps.registry.resolve(record.service);
+    const previousConfiguration =
+      record.rollbackState.previousConfiguration ??
+      record.previousConfiguration ??
+      {};
+
+    await this.emitExecutionAudit(
+      context,
+      runId,
+      request,
+      AUDIT_EVENTS.ROLLBACK_STARTED,
+      'started',
+    );
+
+    const rollback = await adapter.rollback(
+      context,
+      request,
+      previousConfiguration,
+    );
+
+    if (rollback.success) {
+      record = await this.deps.runs.update(
+        context.tenantId,
+        runId,
+        {
+          status: 'ROLLED_BACK',
+          rollbackResult: rollback as unknown as Record<string, unknown>,
+        },
+        { expectedVersion: record.version },
+      );
+
+      await this.emitExecutionAudit(
+        context,
+        runId,
+        request,
+        AUDIT_EVENTS.ROLLBACK_COMPLETED,
+        'success',
+      );
+
+      return {
+        runId,
+        mode: context.mode,
+        status: 'ROLLED_BACK',
+        rollback,
+        tenantId: context.tenantId,
+      };
+    }
+
+    const rollbackFailure =
+      rollback.error ?? {
+        code: 'ROLLBACK_FAILED',
+        message: rollback.message,
+        stage: 'rollback',
+      };
+
+    record = await this.deps.runs.update(
+      context.tenantId,
+      runId,
+      {
+        status: 'ROLLBACK_FAILED',
+        rollbackResult: rollback as unknown as Record<string, unknown>,
+        rollbackFailure,
+      },
+      { expectedVersion: record.version },
+    );
+
+    await this.emitExecutionAudit(
+      context,
+      runId,
+      request,
+      AUDIT_EVENTS.ROLLBACK_FAILED,
+      'failure',
+      rollbackFailure.code,
+    );
+
+    return {
+      runId,
+      mode: context.mode,
+      status: 'ROLLBACK_FAILED',
+      rollbackFailure,
+      rollback,
+      tenantId: context.tenantId,
+    };
+  }
+
   private async handleFailureWithRollback(
     context: AdapterExecutionContext,
     record: ExecutionRunRecord,

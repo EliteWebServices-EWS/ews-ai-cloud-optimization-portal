@@ -1,12 +1,14 @@
 import {
   GetCommand,
   PutCommand,
+  QueryCommand,
   UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
 
 import {
   executionRunSortKey,
+  EXECUTION_RUN_SK_PREFIX,
   isConditionalCheckFailure,
   RepositoryAlreadyExistsError,
   RepositoryConflictError,
@@ -24,6 +26,13 @@ import type {
 import type { ExecutionRunRecord } from '../models/execution-run-models';
 
 import { BaseDynamoDbRepository } from './base-dynamodb-repository';
+import {
+  decodeScopedNextToken,
+  encodeScopedNextToken,
+} from '../../persistence/scoped-pagination-token';
+import { EXECUTION_PAGINATION_SCOPES } from '../../persistence/execution-pagination-scopes';
+import { normalizePageSize } from '../contracts/repository-types';
+import type { PageRequest, PageResult } from '../contracts/repository-types';
 
 interface ExecutionRunItem extends ExecutionRunRecord {
   pk: string;
@@ -182,5 +191,46 @@ export class DynamoDbExecutionRunRepository
     }
 
     return refreshed;
+  }
+
+  public async listByTenant(
+    tenantId: string,
+    page?: PageRequest,
+  ): Promise<PageResult<ExecutionRunRecord>> {
+    const scope = EXECUTION_PAGINATION_SCOPES.runList(tenantId);
+
+    const result = await this.client.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression:
+          '#pk = :pk AND begins_with(#sk, :runPrefix)',
+        ExpressionAttributeNames: {
+          '#pk': 'pk',
+          '#sk': 'sk',
+        },
+        ExpressionAttributeValues: {
+          ':pk': tenantPartitionKey(tenantId),
+          ':runPrefix': EXECUTION_RUN_SK_PREFIX,
+        },
+        ExclusiveStartKey: decodeScopedNextToken(page?.nextToken, {
+          tenantId,
+          scope,
+        }),
+        Limit: normalizePageSize(page?.limit),
+        ScanIndexForward: false,
+      }),
+    );
+
+    const items = (result.Items ?? []).map((item) =>
+      toRecord(item as ExecutionRunItem),
+    );
+
+    return {
+      items,
+      nextToken: encodeScopedNextToken(
+        { tenantId, scope },
+        result.LastEvaluatedKey,
+      ),
+    };
   }
 }

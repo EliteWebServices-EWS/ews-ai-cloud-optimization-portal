@@ -25,11 +25,13 @@ import {
   createLearningStore,
   createReportingEngine,
 } from './engines';
-import { createExecutionSimulator } from './execution';
+import { createExecutionSimulator, createDefaultExecutionAdapterRegistry, createExecutionOrchestrator } from './execution';
 import { createWorkflowOrchestrator } from './orchestrator';
 import { createPluginRegistry } from './plugins';
 import { createProvider } from './providers';
 import { createTenantRepository } from './services/tenant-repository-factory';
+import { createExecutionRepositories } from './services/execution-repository-factory';
+import { ExecutionApiService } from './services/execution-api-service';
 import {
   PROVIDER_NAMES,
   type ProviderName,
@@ -94,6 +96,18 @@ export function createApp(options?: CreateAppOptions): express.Application {
   const membershipService = createMembershipService({
     membershipRepository,
     invitationRepository,
+  });
+
+  const executionRepositories = createExecutionRepositories();
+  const executionOrchestrator = createExecutionOrchestrator({
+    registry: createDefaultExecutionAdapterRegistry(() => ({})),
+    runs: executionRepositories.executionRuns,
+  });
+  const executionApi = new ExecutionApiService({
+    plans: executionRepositories.executionPlans,
+    runs: executionRepositories.executionRuns,
+    history: executionRepositories.executionHistory,
+    orchestrator: executionOrchestrator,
   });
 
   const orchestrator = createWorkflowOrchestrator({
@@ -194,6 +208,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
       membershipService,
       membershipRepository,
       tenantRepository,
+      executionApi,
     })
   );
 

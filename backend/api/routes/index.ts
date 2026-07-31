@@ -67,6 +67,8 @@ import {
 import { createMembershipRoutes } from './membership-routes';
 import type { MembershipService } from '../../membership';
 import type { MembershipRepository } from '../../repositories/contracts';
+import type { ExecutionApiService } from '../../services/execution-api-service';
+import { createExecutionRoutes } from './execution.routes';
 
 export interface ApiDependencies {
   orchestrator: WorkflowOrchestrator;
@@ -79,6 +81,7 @@ export interface ApiDependencies {
   membershipService: MembershipService;
   membershipRepository: MembershipRepository;
   tenantRepository: TenantRepository;
+  executionApi: ExecutionApiService;
 }
 
 function recordAuditEvent(
@@ -2075,6 +2078,12 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(
     createMembershipRoutes({
       membershipService: deps.membershipService,
+      membershipRepository: deps.membershipRepository,
+    }),
+  );
+  router.use(
+    createExecutionRoutes({
+      executionApi: deps.executionApi,
       membershipRepository: deps.membershipRepository,
     }),
   );
