@@ -6,7 +6,7 @@ Connect **fresh** Cognito Managed Login authentication (required TOTP pool) to t
 
 This is **policy-backed** assurance, not direct proof of a TOTP code inside the Lambda:
 
-- User pool **`MfaConfiguration: ON`** with **`SOFTWARE_TOKEN_MFA`** only.
+- User pool **`MfaConfiguration: 'ON'`** (quoted string) with **`SOFTWARE_TOKEN_MFA`** only.
 - Managed Login does not complete fresh authentication until required MFA is satisfied.
 - Pre Token Generation V2 runs on Cognito-controlled trigger sources only.
 - **`TokenGeneration_HostedAuth`** → add **`mfa_session_verified: true`** (JSON boolean in trigger override).
@@ -23,11 +23,13 @@ The Lambda does **not** read `clientMetadata`, groups, MFA preference, or `amr` 
 | `EnabledMfas` | `SOFTWARE_TOKEN_MFA` |
 | Pre Token Generation | V2_0, **`tenant_id` only** |
 
+After a failed stack update (`MfaConfiguration: ON` unquoted → boolean `true`), CloudFormation **rolled back**; live MFA stays **`OPTIONAL`** until **`MfaConfiguration: 'ON'`** is deployed.
+
 ## Target state (branch `fix/cognito-totp-mfa-enforcement`)
 
 | Setting | Target |
 |--------|--------|
-| `MfaConfiguration` | **`ON`** |
+| `MfaConfiguration` | **`'ON'`** (quoted in template) |
 | `EnabledMfas` | `SOFTWARE_TOKEN_MFA` |
 | Pre Token Generation | V2_0, **`tenant_id`** + conditional **`mfa_session_verified`** |
 

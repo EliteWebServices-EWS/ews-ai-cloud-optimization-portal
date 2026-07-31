@@ -259,7 +259,7 @@ test('auth template requires TOTP MFA at the user pool', () => {
   );
   const template = readFileSync(templatePath, 'utf8');
 
-  assert.match(template, /MfaConfiguration:\s*ON/);
+  assert.match(template, /MfaConfiguration:\s*['"]ON['"]/);
   assert.match(template, /SOFTWARE_TOKEN_MFA/);
   assert.doesNotMatch(template, /SMS_MFA/);
   assert.match(template, /Name:\s*verified_email/);

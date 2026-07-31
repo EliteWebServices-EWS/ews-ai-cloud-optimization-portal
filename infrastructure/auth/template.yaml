@@ -57,7 +57,7 @@ Resources:
 
       # Required TOTP (authenticator app). Pool-level ON forces enrollment on next
       # sign-in for users without SOFTWARE_TOKEN_MFA; does not pre-bind devices.
-      MfaConfiguration: ON
+      MfaConfiguration: 'ON'
 
       EnabledMfas:
         - SOFTWARE_TOKEN_MFA

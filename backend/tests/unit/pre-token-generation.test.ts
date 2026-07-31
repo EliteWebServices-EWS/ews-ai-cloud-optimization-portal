@@ -625,7 +625,7 @@ describe('Auth template Cognito MFA and recovery', () => {
   it('requires software-token MFA and disables SMS MFA', () => {
     const pool = userPoolBlock();
 
-    assert.match(pool, /MfaConfiguration:\s*ON/);
+    assert.match(pool, /MfaConfiguration:\s*['"]ON['"]/);
     assert.match(pool, /EnabledMfas:\s*\n\s*- SOFTWARE_TOKEN_MFA/);
     assert.doesNotMatch(pool, /SMS_MFA/);
     assert.doesNotMatch(pool, /EMAIL_OTP/);

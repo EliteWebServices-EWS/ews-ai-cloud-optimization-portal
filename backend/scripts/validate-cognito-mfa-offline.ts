@@ -49,8 +49,32 @@ function main(): void {
   );
   const template = readFileSync(templatePath, 'utf8');
 
-  if (!/MfaConfiguration:\s*ON/.test(template)) {
-    fail('Auth template MFA configuration is not ON (required TOTP) as expected.');
+  if (
+    !/MfaConfiguration:\s*['"]ON['"]/.test(
+      template.slice(
+        template.indexOf('SisumUserPool:'),
+        template.indexOf('SisumPreTokenGenerationRole:'),
+      ),
+    )
+  ) {
+    fail(
+      'Auth template MfaConfiguration must be quoted string ON (e.g. MfaConfiguration: \'ON\').',
+    );
+  }
+
+  const userPoolBlock = template.slice(
+    template.indexOf('SisumUserPool:'),
+    template.indexOf('SisumPreTokenGenerationRole:'),
+  );
+
+  if (/^\s*MfaConfiguration:\s*ON\s*$/m.test(userPoolBlock)) {
+    fail(
+      'Unquoted MfaConfiguration: ON is invalid — YAML parses ON as boolean true for CloudFormation.',
+    );
+  }
+
+  if (/^\s*MfaConfiguration:\s*true\s*$/im.test(userPoolBlock)) {
+    fail('MfaConfiguration must not be boolean true in template source.');
   }
 
   if (!/SOFTWARE_TOKEN_MFA/.test(template)) {
