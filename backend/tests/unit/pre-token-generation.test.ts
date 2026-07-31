@@ -17,6 +17,7 @@ const AUTH_TEMPLATE_PATH = path.resolve(
 );
 
 interface PreTokenEvent {
+  triggerSource?: string;
   request: {
     userAttributes: Record<string, string | undefined>;
     clientMetadata?: Record<string, string | undefined>;
@@ -24,7 +25,7 @@ interface PreTokenEvent {
   response?: {
     claimsAndScopeOverrideDetails?: {
       accessTokenGeneration?: {
-        claimsToAddOrOverride?: Record<string, string>;
+        claimsToAddOrOverride?: Record<string, string | boolean>;
         scopesToAdd?: string[];
         scopesToSuppress?: string[];
         claimsToSuppress?: string[];
@@ -88,15 +89,24 @@ function extractDeployedHandlerSource(): string {
   return codeLines.join('\n').trimEnd();
 }
 
-function loadDeployedHandler(): (
-  event: PreTokenEvent
-) => Promise<PreTokenEvent> {
+function loadDeployedHandler(
+  options: { cognitoRequiredMfa?: boolean } = {},
+): (event: PreTokenEvent) => Promise<PreTokenEvent> {
   const source = extractDeployedHandlerSource();
+  const env: Record<string, string | undefined> = {};
+
+  if (options.cognitoRequiredMfa === true) {
+    env.COGNITO_REQUIRED_MFA = 'true';
+  } else if (options.cognitoRequiredMfa === false) {
+    env.COGNITO_REQUIRED_MFA = 'false';
+  }
+
   const context = createContext({
     exports: {} as { handler?: (event: PreTokenEvent) => Promise<PreTokenEvent> },
     module: {
       exports: {} as { handler?: (event: PreTokenEvent) => Promise<PreTokenEvent> },
     },
+    process: { env },
   });
 
   context.module.exports = context.exports;
@@ -113,41 +123,55 @@ function loadDeployedHandler(): (
 
 function buildEvent(
   overrides: {
+    triggerSource?: string;
     tenantAttribute?: string;
     clientMetadataTenant?: string;
-    existingClaims?: Record<string, string>;
+    clientMetadata?: Record<string, string>;
+    existingClaims?: Record<string, string | boolean>;
     existingScopes?: string[];
+    includeResponse?: boolean;
+    userAttributes?: Record<string, string | undefined>;
   } = {}
 ): PreTokenEvent {
-  const attributes: Record<string, string | undefined> = {};
+  const attributes: Record<string, string | undefined> = {
+    ...(overrides.userAttributes ?? {}),
+  };
 
   if (overrides.tenantAttribute !== undefined) {
     attributes['custom:tenantId'] = overrides.tenantAttribute;
   }
 
-  return {
+  const event: PreTokenEvent = {
+    triggerSource: overrides.triggerSource,
     request: {
       userAttributes: attributes,
-      clientMetadata: overrides.clientMetadataTenant
-        ? { tenantId: overrides.clientMetadataTenant }
-        : undefined,
+      clientMetadata:
+        overrides.clientMetadata ??
+        (overrides.clientMetadataTenant
+          ? { tenantId: overrides.clientMetadataTenant }
+          : undefined),
     },
-    response: {
+  };
+
+  if (overrides.includeResponse !== false) {
+    event.response = {
       claimsAndScopeOverrideDetails: {
         accessTokenGeneration: {
           claimsToAddOrOverride: overrides.existingClaims ?? {
             existing_claim: 'keep-me',
           },
-          scopesToAdd: overrides.existingScopes ?? [
-            'openid',
-            'email',
-          ],
+          scopesToAdd: overrides.existingScopes ?? ['openid', 'email'],
           scopesToSuppress: ['suppress-me'],
         },
       },
-    },
-  };
+    };
+  }
+
+  return event;
 }
+
+const HOSTED_AUTH = 'TokenGeneration_HostedAuth';
+const REFRESH = 'TokenGeneration_RefreshTokens';
 
 describe('Deployed Pre Token Generation handler', () => {
   const handler = loadDeployedHandler();
@@ -346,6 +370,185 @@ describe('Deployed Pre Token Generation handler', () => {
   });
 });
 
+describe('Pre Token Generation MFA session assurance', () => {
+  const handler = loadDeployedHandler({ cognitoRequiredMfa: true });
+
+  function accessClaims(result: PreTokenEvent) {
+    return result.response?.claimsAndScopeOverrideDetails?.accessTokenGeneration
+      ?.claimsToAddOrOverride;
+  }
+
+  function accessSuppress(result: PreTokenEvent) {
+    return result.response?.claimsAndScopeOverrideDetails?.accessTokenGeneration
+      ?.claimsToSuppress;
+  }
+
+  it('TokenGeneration_HostedAuth adds mfa_session_verified and valid tenant_id', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: HOSTED_AUTH,
+        tenantAttribute: 'sisum-default',
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.tenant_id, 'sisum-default');
+    assert.equal(claims?.mfa_session_verified, true);
+  });
+
+  it('TokenGeneration_HostedAuth adds mfa_session_verified when tenantId is absent', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: HOSTED_AUTH,
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.tenant_id, undefined);
+    assert.equal(claims?.mfa_session_verified, true);
+  });
+
+  it('TokenGeneration_HostedAuth adds mfa_session_verified and omits invalid tenant_id', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: HOSTED_AUTH,
+        tenantAttribute: 'INVALID',
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.tenant_id, undefined);
+    assert.equal(claims?.mfa_session_verified, true);
+  });
+
+  it('TokenGeneration_RefreshTokens suppresses mfa_session_verified and keeps tenant_id', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: REFRESH,
+        tenantAttribute: 'sisum-default',
+        existingClaims: {
+          existing_claim: 'keep-me',
+          mfa_session_verified: true,
+        },
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.tenant_id, 'sisum-default');
+    assert.equal(claims?.mfa_session_verified, undefined);
+    assert.ok(accessSuppress(result)?.includes('mfa_session_verified'));
+  });
+
+  it('unknown trigger source does not add mfa_session_verified', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: 'TokenGeneration_Authentication',
+        tenantAttribute: 'sisum-default',
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.tenant_id, 'sisum-default');
+    assert.equal(claims?.mfa_session_verified, undefined);
+  });
+
+  it('ignores clientMetadata mfa_session_verified on non-hosted triggers', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: 'TokenGeneration_Unknown',
+        tenantAttribute: 'sisum-default',
+        clientMetadata: { mfa_session_verified: 'true' },
+      })
+    );
+
+    assert.equal(accessClaims(result)?.mfa_session_verified, undefined);
+  });
+
+  it('ignores custom user attribute that looks like MFA assurance', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: 'TokenGeneration_Unknown',
+        userAttributes: {
+          'custom:tenantId': 'sisum-default',
+          'custom:mfa_session_verified': 'true',
+        },
+      })
+    );
+
+    assert.equal(accessClaims(result)?.mfa_session_verified, undefined);
+    assert.equal(accessClaims(result)?.tenant_id, 'sisum-default');
+  });
+
+  it('admin group membership on profile does not affect assurance logic alone', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: 'TokenGeneration_Unknown',
+        userAttributes: {
+          'custom:tenantId': 'sisum-default',
+          'cognito:groups': 'admin',
+        },
+      })
+    );
+
+    assert.equal(accessClaims(result)?.mfa_session_verified, undefined);
+  });
+
+  it('preserves unrelated claims on HostedAuth', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: HOSTED_AUTH,
+        tenantAttribute: 'tenant-acme',
+        existingClaims: { existing_claim: 'keep-me' },
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.existing_claim, 'keep-me');
+    assert.equal(claims?.mfa_session_verified, true);
+  });
+
+  it('handles missing nested response objects on HostedAuth', async () => {
+    const result = await handler(
+      buildEvent({
+        triggerSource: HOSTED_AUTH,
+        tenantAttribute: 'a',
+        includeResponse: false,
+      })
+    );
+
+    assert.equal(accessClaims(result)?.tenant_id, 'a');
+    assert.equal(accessClaims(result)?.mfa_session_verified, true);
+  });
+
+  it('TokenGeneration_HostedAuth does not emit mfa_session_verified when COGNITO_REQUIRED_MFA is false', async () => {
+    const disabledHandler = loadDeployedHandler({ cognitoRequiredMfa: false });
+    const result = await disabledHandler(
+      buildEvent({
+        triggerSource: HOSTED_AUTH,
+        tenantAttribute: 'sisum-default',
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.tenant_id, 'sisum-default');
+    assert.equal(claims?.mfa_session_verified, undefined);
+  });
+
+  it('TokenGeneration_HostedAuth does not emit mfa_session_verified when COGNITO_REQUIRED_MFA is unset', async () => {
+    const unsetHandler = loadDeployedHandler();
+    const result = await unsetHandler(
+      buildEvent({
+        triggerSource: HOSTED_AUTH,
+        tenantAttribute: 'sisum-default',
+      })
+    );
+
+    const claims = accessClaims(result);
+    assert.equal(claims?.tenant_id, 'sisum-default');
+    assert.equal(claims?.mfa_session_verified, undefined);
+  });
+});
+
 describe('Auth template Pre Token Generation infrastructure', () => {
   const template = readFileSync(AUTH_TEMPLATE_PATH, 'utf8');
 
@@ -399,5 +602,92 @@ describe('Auth template Pre Token Generation infrastructure', () => {
 
     assert.doesNotMatch(permissionBlock, /DependsOn:/);
     assert.doesNotMatch(permissionBlock, /SisumUserPool/);
+  });
+});
+
+describe('Auth template Cognito MFA and recovery', () => {
+  const template = readFileSync(AUTH_TEMPLATE_PATH, 'utf8');
+
+  function userPoolBlock(): string {
+    return template.slice(
+      template.indexOf('SisumUserPool:'),
+      template.indexOf('SisumPreTokenGenerationRole:')
+    );
+  }
+
+  function userPoolClientBlock(): string {
+    return template.slice(
+      template.indexOf('SisumUserPoolClient:'),
+      template.indexOf('SisumUserPoolDomain:')
+    );
+  }
+
+  it('requires software-token MFA and disables SMS MFA', () => {
+    const pool = userPoolBlock();
+
+    assert.match(pool, /MfaConfiguration:\s*ON/);
+    assert.match(pool, /EnabledMfas:\s*\n\s*- SOFTWARE_TOKEN_MFA/);
+    assert.doesNotMatch(pool, /SMS_MFA/);
+    assert.doesNotMatch(pool, /EMAIL_OTP/);
+  });
+
+  it('uses verified email account recovery', () => {
+    const pool = userPoolBlock();
+
+    assert.match(pool, /AccountRecoverySetting:/);
+    assert.match(pool, /RecoveryMechanisms:/);
+    assert.match(pool, /Name:\s*verified_email/);
+    assert.match(pool, /Priority:\s*1/);
+    assert.doesNotMatch(pool, /verified_phone_number/);
+  });
+
+  it('retains custom tenantId schema and pre-token-generation trigger', () => {
+    const pool = userPoolBlock();
+
+    assert.match(pool, /Name:\s*tenantId/);
+    assert.match(pool, /PreTokenGenerationConfig:/);
+    assert.match(pool, /LambdaVersion:\s*V2_0/);
+    assert.match(pool, /LambdaArn:\s*!GetAtt SisumPreTokenGenerationFunction\.Arn/);
+  });
+
+  it('inline pre-token Lambda references hosted-auth assurance trigger', () => {
+    const zipStart = template.indexOf('ZipFile: |');
+    const zipBody = template.slice(
+      zipStart,
+      template.indexOf('SisumPreTokenGenerationPermission:')
+    );
+
+    assert.match(zipBody, /TokenGeneration_HostedAuth/);
+    assert.match(zipBody, /TokenGeneration_RefreshTokens/);
+    assert.match(zipBody, /mfa_session_verified/);
+    assert.match(zipBody, /COGNITO_REQUIRED_MFA/);
+    assert.match(zipBody, /isRequiredMfaDeploymentEnabled/);
+  });
+
+  it('pre-token Lambda sets COGNITO_REQUIRED_MFA environment variable', () => {
+    const fnBlock = template.slice(
+      template.indexOf('SisumPreTokenGenerationFunction:'),
+      template.indexOf('SisumPreTokenGenerationPermission:')
+    );
+
+    assert.match(fnBlock, /COGNITO_REQUIRED_MFA:\s*'true'/);
+  });
+
+  it('preserves SPA OAuth callback and logout URLs', () => {
+    const client = userPoolClientBlock();
+
+    assert.match(
+      client,
+      /https:\/\/\$\{PrimaryDomainName\}\/dashboard\/auth\/callback\.html/
+    );
+    assert.match(
+      client,
+      /https:\/\/www\.\$\{PrimaryDomainName\}\/dashboard\/auth\/callback\.html/
+    );
+    assert.match(client, /http:\/\/localhost:5173\/dashboard\/auth\/callback\.html/);
+    assert.match(client, /https:\/\/\$\{PrimaryDomainName\}\//);
+    assert.match(client, /http:\/\/localhost:5173\//);
+    assert.match(client, /- openid/);
+    assert.match(client, /- aws\.cognito\.signin\.user\.admin/);
   });
 });

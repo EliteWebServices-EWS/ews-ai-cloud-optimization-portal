@@ -235,4 +235,33 @@ describe('Cognito access-token regression (observed non-production sign-in)', ()
     assert.equal(result.required, true);
     assert.equal(result.satisfied, false);
   });
+
+  it('privileged tenant create satisfied when fresh assurance claim is boolean true', () => {
+    const event = jwtEvent({
+      ...realWorldClaims,
+      mfa_session_verified: true,
+    });
+
+    attachValidatedIdentityHeaders(event);
+
+    const req = mockRequest({
+      'x-sisum-authenticated': event.headers['x-sisum-authenticated'] ?? '',
+      'x-sisum-user-id': event.headers['x-sisum-user-id'] ?? '',
+      'x-sisum-user-groups': event.headers['x-sisum-user-groups'] ?? '',
+      'x-sisum-tenant-id': event.headers['x-sisum-tenant-id'] ?? '',
+      'x-sisum-mfa-session-verified':
+        event.headers['x-sisum-mfa-session-verified'] ?? '',
+    });
+
+    const identity = getAuthenticatedIdentity(req);
+    const context = buildRequestSecurityContext(req, identity);
+    const result = evaluatePrivilegedMfa(
+      context,
+      identity,
+      PRIVILEGED_OPERATIONS.TENANT_CREATE,
+    );
+
+    assert.equal(result.required, true);
+    assert.equal(result.satisfied, true);
+  });
 });

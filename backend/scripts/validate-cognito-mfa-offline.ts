@@ -49,8 +49,8 @@ function main(): void {
   );
   const template = readFileSync(templatePath, 'utf8');
 
-  if (!/MfaConfiguration:\s*OPTIONAL/.test(template)) {
-    fail('Auth template MFA configuration is not OPTIONAL as expected.');
+  if (!/MfaConfiguration:\s*ON/.test(template)) {
+    fail('Auth template MFA configuration is not ON (required TOTP) as expected.');
   }
 
   if (!/SOFTWARE_TOKEN_MFA/.test(template)) {
@@ -61,12 +61,54 @@ function main(): void {
     fail('SMS_MFA must not be enabled for Sprint 12 validation profile.');
   }
 
-  pass('Auth template declares OPTIONAL TOTP (SOFTWARE_TOKEN_MFA) without SMS MFA.');
+  pass('Auth template declares required TOTP (MfaConfiguration ON, SOFTWARE_TOKEN_MFA) without SMS MFA.');
+
+  if (!/LambdaVersion:\s*V2_0/.test(template)) {
+    fail('Pre Token Generation must use LambdaVersion V2_0.');
+  }
+
+  const zipStart = template.indexOf('ZipFile: |');
+  if (zipStart === -1) {
+    fail('SisumPreTokenGenerationFunction inline ZipFile not found.');
+  }
+  const zipBody = template.slice(zipStart, template.indexOf('SisumPreTokenGenerationPermission:'));
+
+  if (!/TokenGeneration_HostedAuth/.test(zipBody)) {
+    fail('Inline trigger must recognize TokenGeneration_HostedAuth for fresh assurance.');
+  }
+  if (!/TokenGeneration_RefreshTokens/.test(zipBody)) {
+    fail('Inline trigger must handle TokenGeneration_RefreshTokens without assurance.');
+  }
+  if (!/mfa_session_verified/.test(zipBody)) {
+    fail('Inline trigger must emit mfa_session_verified claim name.');
+  }
+  if (/request\.clientMetadata/.test(zipBody)) {
+    fail('Inline trigger must not read clientMetadata for MFA assurance.');
+  }
+
+  if (!/Name:\s*verified_email/.test(template)) {
+    fail('Account recovery must include verified_email.');
+  }
+  if (!/tenant_id/.test(zipBody)) {
+    fail('Inline trigger must still inject tenant_id claim.');
+  }
+
+  if (!/isRequiredMfaDeploymentEnabled/.test(zipBody)) {
+    fail('Inline trigger must gate assurance on server-controlled COGNITO_REQUIRED_MFA.');
+  }
+  if (!/COGNITO_REQUIRED_MFA/.test(template.slice(
+    template.indexOf('SisumPreTokenGenerationFunction:'),
+    template.indexOf('SisumPreTokenGenerationPermission:'),
+  ))) {
+    fail('Pre Token Generation Lambda must define COGNITO_REQUIRED_MFA environment variable.');
+  }
+
+  pass('Pre Token Generation V2_0 inline trigger declares hosted-auth assurance and refresh exclusion.');
   pass(
-    'MFA assurance states: pool/user enrollment (MFA_CAPABLE / MFA_ENROLLED) do not imply MFA_VERIFIED_FOR_CURRENT_SESSION on user-pool access tokens.',
+    'MFA assurance requires TokenGeneration_HostedAuth and COGNITO_REQUIRED_MFA=true (fail-closed).',
   );
   pass(
-    'Observed non-production access tokens may omit amr and cognito:amr after successful TOTP; application privileged operations remain fail-closed pending mfa_session_verified or another approved session-assurance design.',
+    'Application privileged routes require boolean mfa_session_verified on access tokens (via API Gateway JWT claims).',
   );
   console.log('Live user-pool inspection was not executed in this offline-safe mode.');
 }
