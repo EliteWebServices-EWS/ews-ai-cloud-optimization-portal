@@ -30,6 +30,7 @@ const PROTECTED_FIELDS = new Set([
   'executionId',
   'tokenHash',
   'executionId',
+  'accountId',
   'version',
   'createdAt',
 ]);
