@@ -153,6 +153,7 @@ describe('validateDeployedPersistenceConfig', () => {
         MEMBERSHIPS_TABLE_NAME: 'memberships',
         INVITATIONS_TABLE_NAME: 'invitations',
         EXECUTION_PLANS_TABLE_NAME: 'execution-plans',
+        AWS_ACCOUNTS_TABLE_NAME: 'aws-accounts',
       },
       () => {
         assert.doesNotThrow(() => validateDeployedPersistenceConfig());

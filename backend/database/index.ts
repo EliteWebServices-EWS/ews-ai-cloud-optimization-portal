@@ -4,3 +4,4 @@ export * from './dynamodb-keys';
 export * from './pagination-token';
 export * from './tenant-keys';
 export * from './execution';
+export * from './aws-account';

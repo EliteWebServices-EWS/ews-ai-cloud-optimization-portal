@@ -1,0 +1,78 @@
+name: AWS account onboarding validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aws-account-onboarding-validation:
+    runs-on: ubuntu-latest
+
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Create AWS accounts DynamoDB Local table
+        working-directory: backend
+        env:
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: us-east-1
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          AWS_ACCOUNTS_TABLE_NAME: sisum-aws-accounts-validation
+        run: npx tsx scripts/create-aws-accounts-table.ts
+
+      - name: Run AWS account onboarding tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          PERSISTENCE_ENABLED: 'false'
+        run: npm run test:aws-account-onboarding
+
+      - name: Run full backend test suite
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          PERSISTENCE_ENABLED: 'false'
+        run: npm test
+
+      - name: TypeScript build
+        working-directory: backend
+        run: npm run build
+
+      - name: SAM validate
+        working-directory: backend
+        run: sam validate --lint
+
+      - name: SAM build
+        working-directory: backend
+        run: |
+          rm -rf .aws-sam
+          sam build --no-cached
+
+      - name: Upload documentation artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-account-onboarding-validation
+          path: |
+            docs/architecture/aws-account-registration-data-model.md
+            docs/validation/aws-account-onboarding-validation-report.md

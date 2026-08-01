@@ -46,12 +46,46 @@ export class OwnershipConflictError extends Error {
 /**
  * Identifies DynamoDB conditional-write failures without importing
  * service-specific exception classes throughout the repository layer.
+ *
+ * Single-item writes surface {@link ConditionalCheckFailedException}.
+ * TransactWrite surfaces {@link TransactionCanceledException} with
+ * {@link CancellationReasons} entries whose `Code` is `ConditionalCheckFailed`.
  */
+export interface DynamoDbCancellationReason {
+  Code?: string;
+}
+
+export interface DynamoDbTransactionCanceledError extends Error {
+  CancellationReasons?: DynamoDbCancellationReason[];
+}
+
 export function isConditionalCheckFailure(
   error: unknown,
 ): boolean {
-  return (
-    error instanceof Error &&
-    error.name === 'ConditionalCheckFailedException'
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if (error.name === 'ConditionalCheckFailedException') {
+    return true;
+  }
+
+  if (error.name !== 'TransactionCanceledException') {
+    return false;
+  }
+
+  const cancellationReasons = (
+    error as DynamoDbTransactionCanceledError
+  ).CancellationReasons;
+
+  if (!Array.isArray(cancellationReasons)) {
+    return false;
+  }
+
+  return cancellationReasons.some(
+    (reason) =>
+      reason !== null &&
+      typeof reason === 'object' &&
+      reason.Code === 'ConditionalCheckFailed',
   );
 }
