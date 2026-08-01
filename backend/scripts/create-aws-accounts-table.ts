@@ -20,10 +20,14 @@ async function main(): Promise<void> {
   });
 
   await createAwsAccountsTable(client, options);
-  console.log(`AWS accounts table ready: ${options.tableName}`);
+
+  // Do not log environment-derived table names or endpoints.
+  console.log('AWS accounts validation table is ready.');
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch(() => {
+  // Do not log the full AWS SDK error because it can contain configuration,
+  // request metadata, endpoints, account details, or environment-derived data.
+  console.error('Failed to prepare the AWS accounts validation table.');
   process.exitCode = 1;
 });
