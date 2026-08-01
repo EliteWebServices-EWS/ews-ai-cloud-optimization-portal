@@ -61,6 +61,10 @@ export const AUDIT_EVENTS = {
   PRIVILEGED_MFA_REQUIRED: 'privileged.mfa_required',
   PRIVILEGED_MFA_VERIFIED: 'privileged.mfa_verified',
   PRIVILEGED_MFA_DENIED: 'privileged.mfa_denied',
+
+  ASSUME_ROLE_STARTED: 'assume_role.started',
+  ASSUME_ROLE_SUCCEEDED: 'assume_role.succeeded',
+  ASSUME_ROLE_FAILED: 'assume_role.failed',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];
