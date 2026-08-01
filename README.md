@@ -15,5 +15,9 @@ AI-assisted AWS cost optimization inspired by enterprise FinOps platforms.
 - Read-only access
 - No access keys
 
+## Validation & operational readiness
+
+The AWS integration path has been validated for AssumeRole, credential refresh, failure recovery, and tenant isolation. See the report in [docs/validation/aws-integration-validation-readiness.md](docs/validation/aws-integration-validation-readiness.md).
+
 ## Disclaimer
 Not affiliated with AWS, Amazon, or Mission Cloud.
