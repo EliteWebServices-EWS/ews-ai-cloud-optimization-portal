@@ -71,6 +71,10 @@ export const AUDIT_EVENTS = {
   ACCOUNT_UPDATED: 'aws_account.updated',
   ACCOUNT_REMOVED: 'aws_account.removed',
   ACCOUNT_ACTION_FAILED: 'aws_account.action_failed',
+  ACCOUNT_DISCOVERY_STARTED: 'aws_account.discovery_started',
+  ACCOUNT_DISCOVERY_SUCCEEDED: 'aws_account.discovery_succeeded',
+  ACCOUNT_DISCOVERY_FAILED: 'aws_account.discovery_failed',
+  ACCOUNT_IDENTITY_MISMATCH: 'aws_account.identity_mismatch',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];

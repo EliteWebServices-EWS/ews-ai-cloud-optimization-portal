@@ -8,7 +8,19 @@ import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import type { AwsExecutionClients } from '../aws-clients';
 import { mapAwsError } from '../aws-error-mapper';
 
-import type { PermissionCheckResult, PermissionValidationReport } from './sts-types';
+import type {
+  AwsAccountCapabilityCheck,
+  AwsAccountPermissionSummary,
+  PermissionCheckResult,
+  PermissionValidationReport,
+} from './sts-types';
+
+export interface AwsAccountDiscoveryApiClients {
+  getCallerIdentity: () => Promise<{ accountId: string; principalArn: string }>;
+  listAccountAliases: () => Promise<string[]>;
+  describeEnabledRegions: () => Promise<string[]>;
+  describeOrganizationId: () => Promise<string | undefined>;
+}
 
 interface RequiredPermissionCheck {
   service: string;
@@ -119,6 +131,139 @@ export async function validateRequiredPermissions(
   return {
     allGranted: results.every((result) => result.granted),
     results,
+  };
+}
+
+const LEAST_PRIVILEGE_DEFAULT_REASON =
+  'Successful read-only probes do not prove the role lacks write permissions. ' +
+  'Review the customer IAM policy for least privilege.';
+
+const DISCOVERY_REQUIRED_CHECKS: Array<{
+  capability: string;
+  action: string;
+  run: (clients: AwsAccountDiscoveryApiClients) => Promise<unknown>;
+}> = [
+  {
+    capability: 'caller-identity',
+    action: 'sts:GetCallerIdentity',
+    run: (clients) => clients.getCallerIdentity(),
+  },
+  {
+    capability: 'enabled-regions',
+    action: 'ec2:DescribeRegions',
+    run: (clients) => clients.describeEnabledRegions(),
+  },
+];
+
+const DISCOVERY_OPTIONAL_CHECKS: Array<{
+  capability: string;
+  action: string;
+  run: (clients: AwsAccountDiscoveryApiClients) => Promise<unknown>;
+}> = [
+  {
+    capability: 'account-alias',
+    action: 'iam:ListAccountAliases',
+    run: (clients) => clients.listAccountAliases(),
+  },
+  {
+    capability: 'organization',
+    action: 'organizations:DescribeOrganization',
+    run: (clients) => clients.describeOrganizationId(),
+  },
+];
+
+async function runCapabilityCheck(
+  capability: string,
+  action: string,
+  run: () => Promise<unknown>,
+  optional: boolean,
+): Promise<AwsAccountCapabilityCheck> {
+  try {
+    await run();
+    return { capability, action, status: 'VERIFIED' };
+  } catch (error) {
+    if (optional && isAccessDenied(error)) {
+      return {
+        capability,
+        action,
+        status: 'UNAVAILABLE',
+        errorCode: 'PERMISSION_DENIED',
+      };
+    }
+
+    if (isAccessDenied(error)) {
+      return {
+        capability,
+        action,
+        status: 'FAILED',
+        errorCode: 'PERMISSION_DENIED',
+      };
+    }
+
+    return {
+      capability,
+      action,
+      status: optional ? 'UNAVAILABLE' : 'FAILED',
+      errorCode: mapAwsError(error, 'permission-validation').code,
+    };
+  }
+}
+
+function executionChecksToCapabilities(
+  report: PermissionValidationReport,
+): AwsAccountCapabilityCheck[] {
+  return report.results.map((result) => ({
+    capability: result.service,
+    action: result.action,
+    status: result.granted ? 'VERIFIED' : 'FAILED',
+    errorCode: result.error?.code,
+  }));
+}
+
+/**
+ * Builds a structured permission summary for discovery and onboarding.
+ * Does not perform write/delete/stop probes and does not claim least
+ * privilege is proven without IAM policy evidence.
+ */
+export async function buildAwsAccountPermissionSummary(
+  executionClients: AwsExecutionClients,
+  discoveryClients: AwsAccountDiscoveryApiClients,
+): Promise<AwsAccountPermissionSummary> {
+  const executionReadReport = await validateRequiredPermissions(executionClients);
+
+  const requiredDiscovery = await Promise.all(
+    DISCOVERY_REQUIRED_CHECKS.map((check) =>
+      runCapabilityCheck(
+        check.capability,
+        check.action,
+        () => check.run(discoveryClients),
+        false,
+      ),
+    ),
+  );
+
+  const optionalDiscovery = await Promise.all(
+    DISCOVERY_OPTIONAL_CHECKS.map((check) =>
+      runCapabilityCheck(
+        check.capability,
+        check.action,
+        () => check.run(discoveryClients),
+        true,
+      ),
+    ),
+  );
+
+  const requiredReadCapabilities = [
+    ...executionChecksToCapabilities(executionReadReport),
+    ...requiredDiscovery,
+  ];
+
+  return {
+    requiredReadCapabilities,
+    optionalDiscoveryCapabilities: optionalDiscovery,
+    leastPrivilegeAssurance: 'NOT_VERIFIED',
+    leastPrivilegeReason: LEAST_PRIVILEGE_DEFAULT_REASON,
+    executionReadReport,
   };
 }
 
