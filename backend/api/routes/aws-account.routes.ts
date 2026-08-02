@@ -73,6 +73,7 @@ import {
   InvalidAwsAccountStatusConsistencyError,
 } from '../../services/aws-account-lifecycle';
 import { InvalidAwsAccountRecordError } from '../../repositories/models/aws-account-persistence-models';
+import { AwsAccountIdentityMismatchError } from '../../services/aws-account-discovery-support';
 import {
   AwsAccountQueryValidationError,
   parseAwsAccountQuery,
@@ -363,6 +364,122 @@ export function createAwsAccountRoutes(deps: AwsAccountRouteDeps): Router {
       handleAwsAccountRouteError(res, error, requestId);
     }
   });
+
+  // ---------------------------------------------------------------------
+  // Discover account metadata (AssumeRole + read-only AWS discovery)
+  // ---------------------------------------------------------------------
+  router.post(
+    '/aws-accounts/:accountId/discovery',
+    requireTenantRole(deps.membershipRepository, ...AWS_ACCOUNT_MANAGEMENT_ROLES),
+    async (req: Request, res: Response) => {
+      const requestId = getRequestId(req);
+      const correlationId = getCorrelationId(req, requestId);
+      const actor = getAuditActor(req);
+      const tenantId = resolveRouteTenantContext(req).tenantId;
+      const accountId = req.params.accountId;
+
+      const startedEvent = writeAuditEvent(
+        buildAwsAccountApiAuditInput({
+          eventName: AUDIT_EVENTS.ACCOUNT_DISCOVERY_STARTED,
+          outcome: 'started',
+          requestId,
+          correlationId,
+          actor,
+          tenantId,
+          action: 'aws_account.discovery',
+          method: req.method,
+          path: req.path,
+          statusCode: 200,
+          accountId,
+        }),
+      );
+      scheduleAuditPersistence(req, startedEvent);
+
+      try {
+        await loadTenantAwsAccountOrThrow(deps, tenantId, accountId);
+
+        const result = await deps.awsAccountApi.discover(tenantId, accountId, {
+          actor,
+          requestId,
+          correlationId,
+        });
+
+        const successEvent = writeAuditEvent(
+          buildAwsAccountApiAuditInput({
+            eventName: AUDIT_EVENTS.ACCOUNT_DISCOVERY_SUCCEEDED,
+            outcome: 'success',
+            requestId,
+            correlationId,
+            actor,
+            tenantId,
+            action: 'aws_account.discovery',
+            method: req.method,
+            path: req.path,
+            statusCode: 200,
+            accountId: result.account.accountId,
+            discoveredAccountId: result.discovery.accountId,
+            organizationId: result.discovery.organizationId,
+            enabledRegionCount: result.discovery.enabledRegions.length,
+            warningCodes: result.discovery.warnings.map((warning) => warning.code),
+            region: result.account.region,
+          }),
+        );
+        scheduleAuditPersistence(req, successEvent);
+
+        res.json(
+          buildSuccessResponse(
+            {
+              account: sanitizeAwsAccountRecord(result.account),
+              discovery: result.discovery,
+            },
+            requestId,
+          ),
+        );
+      } catch (error) {
+        if (error instanceof AwsAccountIdentityMismatchError) {
+          const mismatchEvent = writeAuditEvent(
+            buildAwsAccountApiAuditInput({
+              eventName: AUDIT_EVENTS.ACCOUNT_IDENTITY_MISMATCH,
+              outcome: 'failure',
+              requestId,
+              correlationId,
+              actor,
+              tenantId,
+              action: 'aws_account.discovery',
+              method: req.method,
+              path: req.path,
+              statusCode: 409,
+              accountId,
+              discoveredAccountId: error.discoveredAccountId,
+              errorCode: error.code,
+            }),
+          );
+          scheduleAuditPersistence(req, mismatchEvent);
+        } else {
+          const failedEvent = writeAuditEvent(
+            buildAwsAccountApiAuditInput({
+              eventName: AUDIT_EVENTS.ACCOUNT_DISCOVERY_FAILED,
+              outcome: 'failure',
+              requestId,
+              correlationId,
+              actor,
+              tenantId,
+              action: 'aws_account.discovery',
+              method: req.method,
+              path: req.path,
+              statusCode: isAppError(error) ? error.statusCode : 500,
+              accountId,
+              errorCode: isAppError(error) ? error.code : 'ENGINE_ERROR',
+              reason: error instanceof Error ? error.message : 'Discovery failed.',
+            }),
+          );
+          scheduleAuditPersistence(req, failedEvent);
+        }
+
+        handleAwsAccountRouteError(res, error, requestId);
+      }
+    },
+  );
 
   // ---------------------------------------------------------------------
   // Verify account (validate AssumeRole + required IAM permissions)

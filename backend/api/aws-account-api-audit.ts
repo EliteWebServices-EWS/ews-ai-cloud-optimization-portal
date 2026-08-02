@@ -16,6 +16,10 @@ export interface AwsAccountApiAuditPayloadInput {
   statusCode: number;
   /** The customer's 12-digit AWS account number — safe to log (not a secret). */
   accountId?: string;
+  discoveredAccountId?: string;
+  organizationId?: string;
+  enabledRegionCount?: number;
+  warningCodes?: string[];
   region?: string;
   errorCode?: string;
   reason?: string;
@@ -50,6 +54,16 @@ export function buildAwsAccountApiAuditInput(
           type: AWS_ACCOUNT_AUDIT_RESOURCE_TYPE,
           id: input.accountId,
           accountId: input.accountId,
+          ...(input.discoveredAccountId
+            ? { discoveredAccountId: input.discoveredAccountId }
+            : {}),
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          ...(input.enabledRegionCount !== undefined
+            ? { enabledRegionCount: input.enabledRegionCount }
+            : {}),
+          ...(input.warningCodes?.length
+            ? { warningCodes: input.warningCodes.join(',') }
+            : {}),
           ...(input.region ? { region: input.region } : {}),
         }
       : undefined,

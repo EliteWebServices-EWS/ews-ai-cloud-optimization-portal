@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   assertSessionNotExpired,
+  buildAwsAccountPermissionSummary,
   validateRequiredPermissions,
 } from '../../execution/adapters/sts/permission-validator';
 import type { AwsExecutionClients } from '../../execution/adapters/aws-clients';
@@ -68,6 +69,33 @@ describe('validateRequiredPermissions', () => {
       report.results.map((r) => r.service).sort(),
       ['autoscaling', 'cloudfront', 'ec2', 'lambda', 'rds', 's3'],
     );
+  });
+});
+
+describe('buildAwsAccountPermissionSummary', () => {
+  it('marks optional discovery capabilities unavailable on AccessDenied', async () => {
+    const denied = new Error('denied');
+    denied.name = 'AccessDenied';
+
+    const summary = await buildAwsAccountPermissionSummary(allGrantedClients(), {
+      getCallerIdentity: async () => ({
+        accountId: '111122223333',
+        principalArn: 'arn:aws:sts::111122223333:assumed-role/R/session',
+      }),
+      describeEnabledRegions: async () => ['us-east-1'],
+      listAccountAliases: async () => {
+        throw denied;
+      },
+      describeOrganizationId: async () => {
+        throw denied;
+      },
+    });
+
+    const alias = summary.optionalDiscoveryCapabilities.find(
+      (entry) => entry.capability === 'account-alias',
+    );
+    assert.equal(alias?.status, 'UNAVAILABLE');
+    assert.equal(summary.leastPrivilegeAssurance, 'NOT_VERIFIED');
   });
 });
 

@@ -50,6 +50,63 @@ export interface PermissionValidationReport {
   results: PermissionCheckResult[];
 }
 
+export type CapabilityVerificationStatus = 'VERIFIED' | 'FAILED' | 'UNAVAILABLE';
+
+export type LeastPrivilegeAssurance =
+  | 'VERIFIED'
+  | 'NOT_VERIFIED'
+  | 'POLICY_REVIEW_REQUIRED';
+
+export interface AwsAccountCapabilityCheck {
+  capability: string;
+  action: string;
+  status: CapabilityVerificationStatus;
+  errorCode?: string;
+}
+
+export interface AwsAccountPermissionSummary {
+  requiredReadCapabilities: AwsAccountCapabilityCheck[];
+  optionalDiscoveryCapabilities: AwsAccountCapabilityCheck[];
+  leastPrivilegeAssurance: LeastPrivilegeAssurance;
+  leastPrivilegeReason: string;
+  /** Legacy execution read checks retained for verify() compatibility. */
+  executionReadReport: PermissionValidationReport;
+}
+
+export type AwsAccountDiscoveryWarningCode =
+  | 'ACCOUNT_ALIAS_UNAVAILABLE'
+  | 'ORGANIZATION_UNAVAILABLE'
+  | 'ORGANIZATION_ACCESS_DENIED'
+  | 'OPTIONAL_CAPABILITY_UNAVAILABLE';
+
+export interface AwsAccountDiscoveryWarning {
+  code: AwsAccountDiscoveryWarningCode;
+  message: string;
+}
+
+export interface AwsAccountDiscoveryResult {
+  accountId: string;
+  principalArn: string;
+  accountAlias?: string;
+  organizationId?: string;
+  enabledRegions: string[];
+  discoveredAt: string;
+  permissionSummary: AwsAccountPermissionSummary;
+  warnings: AwsAccountDiscoveryWarning[];
+}
+
+/** Sanitized discovery payload stored under metadata.discovery. */
+export interface AwsAccountDiscoveryMetadata {
+  accountId: string;
+  principalArn: string;
+  accountAlias?: string;
+  organizationId?: string;
+  enabledRegions: string[];
+  discoveredAt: string;
+  permissionSummary: AwsAccountPermissionSummary;
+  warnings: AwsAccountDiscoveryWarning[];
+}
+
 export class StsProviderError extends Error {
   constructor(
     public readonly code: string,

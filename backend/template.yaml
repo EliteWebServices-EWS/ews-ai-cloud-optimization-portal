@@ -724,6 +724,21 @@ Resources:
               - !GetAtt SisumAwsAccountsTable.Arn
               - !Sub "${SisumAwsAccountsTable.Arn}/index/*"
 
+  SisumStsAssumeRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "sisum-sts-assume-role-${Environment}"
+      Roles:
+        - SisumLambdaExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeCustomerCrossAccountRoles
+            Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Resource: "*"
+
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:

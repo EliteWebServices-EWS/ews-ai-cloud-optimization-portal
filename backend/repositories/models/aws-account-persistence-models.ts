@@ -8,7 +8,8 @@ export const IAM_ROLE_ARN_PATTERN =
   /^arn:aws:iam::(\d{12}):role\/[\w+=,.@-]+$/;
 
 export const AWS_ACCOUNT_METADATA_MAX_KEYS = 32;
-export const AWS_ACCOUNT_METADATA_MAX_DEPTH = 3;
+export const AWS_ACCOUNT_METADATA_MAX_DEPTH = 4;
+export const AWS_ACCOUNT_METADATA_MAX_ARRAY_LENGTH = 64;
 export const AWS_ACCOUNT_EXTERNAL_ID_MAX_LENGTH = 256;
 
 export type AwsAccountStatus =
@@ -55,6 +56,60 @@ function assertIsoTimestamp(value: string, fieldName: string): void {
   }
 }
 
+function validateMetadataValue(
+  entryValue: unknown,
+  depth: number,
+): unknown {
+  if (
+    entryValue !== null &&
+    typeof entryValue === 'object' &&
+    !Array.isArray(entryValue)
+  ) {
+    return validateMetadata(entryValue, depth + 1);
+  }
+
+  if (Array.isArray(entryValue)) {
+    if (entryValue.length > AWS_ACCOUNT_METADATA_MAX_ARRAY_LENGTH) {
+      throw new InvalidAwsAccountRecordError(
+        'metadata array exceeds maximum length.',
+      );
+    }
+
+    return entryValue.map((item) => {
+      if (Array.isArray(item)) {
+        return validateMetadataValue(item, depth + 1);
+      }
+      if (item !== null && typeof item === 'object') {
+        return validateMetadata(item, depth + 1);
+      }
+      if (
+        item === null ||
+        typeof item === 'string' ||
+        typeof item === 'number' ||
+        typeof item === 'boolean'
+      ) {
+        return item;
+      }
+      throw new InvalidAwsAccountRecordError(
+        'metadata contains unsupported value types.',
+      );
+    });
+  }
+
+  if (
+    entryValue === null ||
+    typeof entryValue === 'string' ||
+    typeof entryValue === 'number' ||
+    typeof entryValue === 'boolean'
+  ) {
+    return entryValue;
+  }
+
+  throw new InvalidAwsAccountRecordError(
+    'metadata contains unsupported value types.',
+  );
+}
+
 function validateMetadata(value: unknown, depth = 0): Record<string, unknown> {
   if (value === undefined || value === null) {
     return {};
@@ -81,27 +136,13 @@ function validateMetadata(value: unknown, depth = 0): Record<string, unknown> {
 
   const normalized: Record<string, unknown> = {};
   for (const [key, entryValue] of entries) {
+    if (entryValue === undefined) {
+      continue;
+    }
     if (typeof key !== 'string' || key.trim().length === 0) {
       throw new InvalidAwsAccountRecordError('metadata keys must be strings.');
     }
-    if (
-      entryValue !== null &&
-      typeof entryValue === 'object' &&
-      !Array.isArray(entryValue)
-    ) {
-      normalized[key] = validateMetadata(entryValue, depth + 1);
-    } else if (
-      entryValue === null ||
-      typeof entryValue === 'string' ||
-      typeof entryValue === 'number' ||
-      typeof entryValue === 'boolean'
-    ) {
-      normalized[key] = entryValue;
-    } else {
-      throw new InvalidAwsAccountRecordError(
-        'metadata contains unsupported value types.',
-      );
-    }
+    normalized[key] = validateMetadataValue(entryValue, depth);
   }
 
   return normalized;

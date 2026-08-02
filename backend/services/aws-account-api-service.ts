@@ -16,7 +16,7 @@
  */
 
 import type { AuditActor } from '../audit';
-import { RepositoryNotFoundError } from '../database';
+import { RepositoryNotFoundError, RepositoryConflictError } from '../database';
 import type {
   AwsAccountRepository,
   UpdateAwsAccountPatch,
@@ -38,11 +38,20 @@ import {
   createAssumeRoleClientFactory,
   StsCredentialProvider,
   validateRequiredPermissions,
+  runAwsAccountDiscovery,
+  mapDiscoveryError,
   type AwsAccountRoleConfig,
+  type AwsAccountDiscoveryResult,
   type PermissionValidationReport,
   type StsAssumeRoleContext,
 } from '../execution/adapters/sts';
 import { generateExternalId } from '../shared/utils';
+import {
+  AwsAccountIdentityMismatchError,
+  mergeDiscoveryIntoMetadata,
+  sanitizeDiscoveryResponse,
+  toDiscoveryMetadata,
+} from './aws-account-discovery-support';
 
 /**
  * Seam between this service and Engineer 2's real per-service IAM
@@ -100,6 +109,13 @@ export interface VerifyAwsAccountResult {
   failureReason?: string;
 }
 
+export interface DiscoverAwsAccountResult {
+  account: AwsAccountRecord;
+  discovery: AwsAccountDiscoveryResult;
+}
+
+export type AwsAccountDiscoveryRunner = typeof runAwsAccountDiscovery;
+
 /** Public-facing AWS account shape — externalId is masked outside registration. */
 export interface SanitizedAwsAccountRecord
   extends Omit<AwsAccountRecord, 'externalId'> {
@@ -134,6 +150,7 @@ export class AwsAccountApiService {
     private readonly repository: AwsAccountRepository,
     private readonly credentialProvider: StsCredentialProvider = new StsCredentialProvider(),
     private readonly permissionChecker: AwsAccountPermissionChecker = new DefaultAwsAccountPermissionChecker(),
+    private readonly discoveryRunner: AwsAccountDiscoveryRunner = runAwsAccountDiscovery,
   ) {}
 
   /**
@@ -355,5 +372,80 @@ export class AwsAccountApiService {
       verificationStatus: record.verificationStatus,
       lastValidated: record.lastValidated,
     };
+  }
+
+  /**
+   * Assumes the registered role, discovers account metadata with temporary
+   * credentials, validates identity against the registered accountId, and
+   * persists sanitized metadata.discovery via optimistic locking.
+   */
+  public async discover(
+    tenantId: string,
+    accountId: string,
+    context: AwsAccountCallContext,
+  ): Promise<DiscoverAwsAccountResult> {
+    const existing = await this.repository.getById(tenantId, accountId);
+    if (!existing) {
+      throw new RepositoryNotFoundError(
+        `AWS account connection ${accountId} was not found.`,
+      );
+    }
+
+    const roleConfig: AwsAccountRoleConfig = {
+      tenantId,
+      roleArn: existing.roleArn,
+      externalId: existing.externalId,
+      sessionNamePrefix: 'sisum-discovery',
+    };
+    const stsContext: StsAssumeRoleContext = {
+      actorId: context.actor.userId ?? 'unknown',
+      actor: context.actor,
+      requestId: context.requestId,
+      correlationId: context.correlationId,
+    };
+
+    try {
+      const discovery = sanitizeDiscoveryResponse(
+        await this.discoveryRunner({
+          registeredAccountId: existing.accountId,
+          region: existing.region,
+          roleConfig,
+          credentialProvider: this.credentialProvider,
+          stsContext,
+        }),
+      );
+
+      if (discovery.accountId !== existing.accountId) {
+        throw new AwsAccountIdentityMismatchError(
+          existing.accountId,
+          discovery.accountId,
+        );
+      }
+
+      const discoveryMetadata = toDiscoveryMetadata(discovery);
+      const updated = await this.repository.update(
+        tenantId,
+        accountId,
+        {
+          metadata: mergeDiscoveryIntoMetadata(existing.metadata, discoveryMetadata),
+        },
+        { expectedVersion: existing.version },
+      );
+
+      return {
+        account: updated,
+        discovery,
+      };
+    } catch (error) {
+      if (
+        error instanceof AwsAccountIdentityMismatchError ||
+        error instanceof RepositoryNotFoundError ||
+        error instanceof RepositoryConflictError
+      ) {
+        throw error;
+      }
+
+      throw mapDiscoveryError(error);
+    }
   }
 }

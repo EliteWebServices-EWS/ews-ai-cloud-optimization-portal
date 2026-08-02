@@ -15,6 +15,7 @@ import { InMemoryMembershipRepository } from '../../membership/membership.store'
 import { MockAwsAccountRepository } from '../../repositories/mock/mock-aws-account-repository';
 import {
   AwsAccountApiService,
+  type AwsAccountDiscoveryRunner,
   type AwsAccountPermissionChecker,
 } from '../../services/aws-account-api-service';
 import { StsCredentialProvider, type StsCredentialProviderDeps } from '../../execution/adapters/sts';
@@ -86,7 +87,27 @@ interface TestContext {
   app: express.Application;
 }
 
-function buildApp(sts: 'success' | 'access-denied' = 'success'): TestContext {
+function defaultDiscoveryRunner(): AwsAccountDiscoveryRunner {
+  return async () => ({
+    accountId: '111122223333',
+    principalArn: 'arn:aws:sts::111122223333:assumed-role/SisumExecutionRole/session',
+    enabledRegions: ['us-east-1'],
+    discoveredAt: new Date().toISOString(),
+    permissionSummary: {
+      requiredReadCapabilities: [],
+      optionalDiscoveryCapabilities: [],
+      leastPrivilegeAssurance: 'NOT_VERIFIED',
+      leastPrivilegeReason: 'read probes only',
+      executionReadReport: { allGranted: true, results: [] },
+    },
+    warnings: [],
+  });
+}
+
+function buildApp(
+  sts: 'success' | 'access-denied' = 'success',
+  discoveryRunner: AwsAccountDiscoveryRunner = defaultDiscoveryRunner(),
+): TestContext {
   const membershipRepository = new InMemoryMembershipRepository();
   const credentialProvider = new StsCredentialProvider({
     stsClient: fakeStsClient(sts),
@@ -96,6 +117,7 @@ function buildApp(sts: 'success' | 'access-denied' = 'success'): TestContext {
     new MockAwsAccountRepository(),
     credentialProvider,
     allGrantedPermissionChecker(),
+    discoveryRunner,
   );
 
   const app = express();
@@ -496,6 +518,117 @@ describe('AWS Account API HTTP integration', () => {
 
         assert.equal(removed.status, 200);
         assert.equal((removed.body.data as Record<string, unknown>).status, 'DELETED');
+      });
+    });
+  });
+
+  describe('POST /api/v1/aws-accounts/:accountId/discovery', () => {
+    it('returns discovery for authorized same-tenant owner without secrets', async () => {
+      const ctx = buildApp('success');
+      await seedOwner(ctx, TENANT_A, 'owner-a');
+
+      await withHttpServer(ctx.app, async (baseUrl) => {
+        const created = await httpJson(
+          baseUrl,
+          'POST',
+          '/api/v1/aws-accounts',
+          ownerIdentity('owner-a', TENANT_A),
+          registerBody(),
+        );
+        const account = created.body.data as Record<string, unknown>;
+
+        const response = await httpJson(
+          baseUrl,
+          'POST',
+          `/api/v1/aws-accounts/${account.accountId}/discovery`,
+          ownerIdentity('owner-a', TENANT_A),
+        );
+
+        assert.equal(response.status, 200);
+        const data = response.body.data as Record<string, unknown>;
+        const discovery = data.discovery as Record<string, unknown>;
+        assert.equal(discovery.accountId, '111122223333');
+        assert.equal(JSON.stringify(response.body).includes('fake-secret'), false);
+      });
+    });
+
+    it('returns safe 404 for missing and cross-tenant accounts', async () => {
+      const ctx = buildApp('success');
+      await seedOwner(ctx, TENANT_A, 'owner-a');
+      await seedOwner(ctx, TENANT_B, 'owner-b');
+
+      await withHttpServer(ctx.app, async (baseUrl) => {
+        const created = await httpJson(
+          baseUrl,
+          'POST',
+          '/api/v1/aws-accounts',
+          ownerIdentity('owner-a', TENANT_A),
+          registerBody(),
+        );
+        const accountId = (created.body.data as Record<string, unknown>).accountId as string;
+
+        const missing = await httpJson(
+          baseUrl,
+          'POST',
+          '/api/v1/aws-accounts/999999999999/discovery',
+          ownerIdentity('owner-a', TENANT_A),
+        );
+        assert.equal(missing.status, 404);
+
+        const crossTenant = await httpJson(
+          baseUrl,
+          'POST',
+          `/api/v1/aws-accounts/${accountId}/discovery`,
+          ownerIdentity('owner-b', TENANT_B),
+        );
+        assert.equal(crossTenant.status, 404);
+      });
+    });
+
+    it('denies viewers and returns 409 on identity mismatch', async () => {
+      const mismatchRunner: AwsAccountDiscoveryRunner = async () => ({
+        accountId: '999999999999',
+        principalArn: 'arn:aws:sts::999999999999:assumed-role/R/session',
+        enabledRegions: ['us-east-1'],
+        discoveredAt: new Date().toISOString(),
+        permissionSummary: {
+          requiredReadCapabilities: [],
+          optionalDiscoveryCapabilities: [],
+          leastPrivilegeAssurance: 'NOT_VERIFIED',
+          leastPrivilegeReason: 'read probes only',
+          executionReadReport: { allGranted: true, results: [] },
+        },
+        warnings: [],
+      });
+
+      const ctx = buildApp('success', mismatchRunner);
+      await seedOwner(ctx, TENANT_A, 'owner-a');
+
+      await withHttpServer(ctx.app, async (baseUrl) => {
+        const created = await httpJson(
+          baseUrl,
+          'POST',
+          '/api/v1/aws-accounts',
+          ownerIdentity('owner-a', TENANT_A),
+          registerBody(),
+        );
+        const accountId = (created.body.data as Record<string, unknown>).accountId as string;
+
+        const viewer = await httpJson(
+          baseUrl,
+          'POST',
+          `/api/v1/aws-accounts/${accountId}/discovery`,
+          viewerIdentity('viewer-a', TENANT_A),
+        );
+        assert.equal(viewer.status, 403);
+
+        const mismatch = await httpJson(
+          baseUrl,
+          'POST',
+          `/api/v1/aws-accounts/${accountId}/discovery`,
+          ownerIdentity('owner-a', TENANT_A),
+        );
+        assert.equal(mismatch.status, 409);
       });
     });
   });
