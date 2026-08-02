@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import { API_VERSION } from '../constants';
 
@@ -112,4 +112,18 @@ export function generateTenantId(): string {
   const randomSuffix = Math.random().toString(36).slice(2, 10);
 
   return `tenant-${timestamp}-${randomSuffix}`;
+}
+
+/**
+ * Generate a cryptographically random AssumeRole external ID.
+ *
+ * The tenant embeds this in their IAM role's trust policy to prevent the
+ * confused-deputy problem (see StsProviderError EXTERNAL_ID_REQUIRED in
+ * execution/adapters/sts, which refuses to AssumeRole without one). High
+ * entropy, no client input, drawn from a CSPRNG (crypto.randomBytes) —
+ * Math.random() is not cryptographically secure and must never back a
+ * security credential.
+ */
+export function generateExternalId(): string {
+  return randomBytes(32).toString('hex');
 }

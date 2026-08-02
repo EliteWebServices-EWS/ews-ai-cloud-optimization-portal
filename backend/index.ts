@@ -32,6 +32,8 @@ import { createProvider } from './providers';
 import { createTenantRepository } from './services/tenant-repository-factory';
 import { createExecutionRepositories } from './services/execution-repository-factory';
 import { ExecutionApiService } from './services/execution-api-service';
+import { createAwsAccountRepository } from './services/aws-account-repository-factory';
+import { AwsAccountApiService } from './services/aws-account-api-service';
 import {
   PROVIDER_NAMES,
   type ProviderName,
@@ -109,6 +111,9 @@ export function createApp(options?: CreateAppOptions): express.Application {
     history: executionRepositories.executionHistory,
     orchestrator: executionOrchestrator,
   });
+
+  const awsAccountRepository = createAwsAccountRepository();
+  const awsAccountApi = new AwsAccountApiService(awsAccountRepository);
 
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
@@ -209,6 +214,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
       membershipRepository,
       tenantRepository,
       executionApi,
+      awsAccountApi,
     })
   );
 

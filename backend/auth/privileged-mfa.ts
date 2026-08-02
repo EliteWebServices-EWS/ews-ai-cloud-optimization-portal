@@ -48,6 +48,8 @@ export const PRIVILEGED_OPERATIONS = {
   EXECUTION_REJECT: 'execution.reject',
   EXECUTION_EXECUTE: 'execution.execute',
   EXECUTION_ROLLBACK: 'execution.rollback',
+  AWS_ACCOUNT_REGISTER: 'aws_account.register',
+  AWS_ACCOUNT_REMOVE: 'aws_account.remove',
 } as const;
 
 export type PrivilegedOperation =
@@ -62,6 +64,8 @@ const OPERATIONS_REQUIRING_MFA: ReadonlySet<PrivilegedOperation> = new Set([
   PRIVILEGED_OPERATIONS.EXECUTION_REJECT,
   PRIVILEGED_OPERATIONS.EXECUTION_EXECUTE,
   PRIVILEGED_OPERATIONS.EXECUTION_ROLLBACK,
+  PRIVILEGED_OPERATIONS.AWS_ACCOUNT_REGISTER,
+  PRIVILEGED_OPERATIONS.AWS_ACCOUNT_REMOVE,
 ]);
 
 const PRIVILEGED_TENANT_ROLES: ReadonlySet<TenantRole> = new Set([
