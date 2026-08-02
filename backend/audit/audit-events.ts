@@ -65,6 +65,12 @@ export const AUDIT_EVENTS = {
   ASSUME_ROLE_STARTED: 'assume_role.started',
   ASSUME_ROLE_SUCCEEDED: 'assume_role.succeeded',
   ASSUME_ROLE_FAILED: 'assume_role.failed',
+
+  ACCOUNT_REGISTERED: 'aws_account.registered',
+  ACCOUNT_VERIFIED: 'aws_account.verified',
+  ACCOUNT_UPDATED: 'aws_account.updated',
+  ACCOUNT_REMOVED: 'aws_account.removed',
+  ACCOUNT_ACTION_FAILED: 'aws_account.action_failed',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];

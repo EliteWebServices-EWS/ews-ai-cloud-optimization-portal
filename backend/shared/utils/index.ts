@@ -9,6 +9,7 @@ export {
   generateExecutionId,
   generateReportId,
   generateTenantId,
+  generateExternalId,
   deriveIdempotentWorkflowId,
 } from './response';
 export { isNonEmptyArray, requireNonEmptyString, requireObject } from './validation';

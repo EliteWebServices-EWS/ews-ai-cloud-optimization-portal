@@ -21,6 +21,8 @@ import {
 } from '../../../engines';
 import { createExecutionSimulator, createDefaultExecutionAdapterRegistry, createExecutionOrchestrator } from '../../../execution';
 import { ExecutionApiService } from '../../../services/execution-api-service';
+import { AwsAccountApiService } from '../../../services/aws-account-api-service';
+import { MockAwsAccountRepository } from '../../../repositories/mock/mock-aws-account-repository';
 import { createInMemoryExecutionStores } from '../execution/fixtures';
 import { createWorkflowOrchestrator } from '../../../orchestrator';
 import { createPluginRegistry } from '../../../plugins';
@@ -134,6 +136,8 @@ export function buildTestApp(): TestAppContext {
     orchestrator: executionOrchestrator,
   });
 
+  const awsAccountApi = new AwsAccountApiService(new MockAwsAccountRepository());
+
   const app = express();
   app.use(createSecurityHeadersMiddleware());
   app.use(createCorsMiddleware());
@@ -163,6 +167,7 @@ export function buildTestApp(): TestAppContext {
       membershipRepository,
       tenantRepository,
       executionApi,
+      awsAccountApi,
     }),
   );
 

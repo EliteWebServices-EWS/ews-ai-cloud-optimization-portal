@@ -37,7 +37,8 @@
     "@aws-sdk/client-sts": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.1092.0",
     "@codegenie/serverless-express": "^5.0.0",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.6.1"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.162",
