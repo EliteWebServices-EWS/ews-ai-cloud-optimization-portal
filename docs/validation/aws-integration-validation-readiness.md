@@ -16,13 +16,13 @@ This validation covers the production-readiness checks for the AWS account integ
 
 The following checks were executed successfully against the current branch:
 
-- Backend STS validation suite: `npm run test:sts-assumerole`  
+- Backend STS validation suite: `npm run test:sts-assumerole`
   Result: 36 tests passed, 0 failed
-- Backend TypeScript build: `npm run build`  
+- Backend TypeScript build: `npm run build`
   Result: success (`tsc` completed without errors)
-- Full backend suite: `npm test`  
+- Full backend suite: `npm test`
   Result: all tests passed
-- Frontend production build: `npm run build` in `frontend`  
+- Frontend production build: `npm run build` in `frontend`
   Result: Vite production build succeeded
 
 ## Security controls validated
@@ -57,3 +57,12 @@ Proceed to integration testing or staged production rollout only after confirmin
 - [aws-account-onboarding-validation-report.md](./aws-account-onboarding-validation-report.md)
 - [sprint-12-tenant-identity-validation-report.md](./sprint-12-tenant-identity-validation-report.md)
 - [sprint-12-5-execution-planner-validation-report.md](./sprint-12-5-execution-planner-validation-report.md)
+- **Sprint 13 (live AWS production):**
+  - [sprint-13-production-validation-report.md](./sprint-13-production-validation-report.md)
+  - [sprint-13-definition-of-done.md](./sprint-13-definition-of-done.md)
+  - [sprint-13-lessons-learned.md](./sprint-13-lessons-learned.md)
+  - [sprint-13-closeout.md](../handoff/sprint-13-closeout.md)
+  - [sprint-13-live-aws-integration.md](../architecture/sprint-13-live-aws-integration.md)
+  - [sprint-13-live-aws-integration-runbook.md](../operations/sprint-13-live-aws-integration-runbook.md)
+  - [sprint-13-security-validation.md](../security/sprint-13-security-validation.md)
+  - [sprint-13-release-notes.md](../releases/sprint-13-release-notes.md)

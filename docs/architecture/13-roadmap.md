@@ -431,4 +431,31 @@ without architectural collapse or uncontrolled complexity.
 
 ---
 
+---
+
+# 13. Sprint execution addendum (engineering tracker)
+
+This section tracks delivery status against the live codebase without replacing Phase 0–6 product phases above.
+
+## Sprint 13 — Live AWS Account Integration & Evidence Collection Foundation
+
+**Status:** **COMPLETE** (merged to `main` 2026-08-01 — 2026-08-03; production validated)
+
+**Goal:** STS AssumeRole customer integration, permission verification, live discovery, sanitized persistence.
+
+**Closeout package:**
+
+- [sprint-13-production-validation-report.md](../validation/sprint-13-production-validation-report.md)
+- [sprint-13-closeout.md](../handoff/sprint-13-closeout.md)
+- [sprint-13-live-aws-integration.md](./sprint-13-live-aws-integration.md)
+- [sprint-13-live-aws-integration-runbook.md](../operations/sprint-13-live-aws-integration-runbook.md)
+- [sprint-13-security-validation.md](../security/sprint-13-security-validation.md)
+- [sprint-13-release-notes.md](../releases/sprint-13-release-notes.md)
+- [sprint-13-definition-of-done.md](../validation/sprint-13-definition-of-done.md)
+- [sprint-13-lessons-learned.md](../validation/sprint-13-lessons-learned.md)
+
+**Merged PRs:** #185, #183, #184, #186, #187, #188, #189, #190
+
+---
+
 # End of Roadmap
