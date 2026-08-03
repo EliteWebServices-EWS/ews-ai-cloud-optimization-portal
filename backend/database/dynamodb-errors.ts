@@ -43,6 +43,16 @@ export class OwnershipConflictError extends Error {
   }
 }
 
+/** Raised when tenant-owner bootstrap has already completed for a tenant. */
+export class TenantOwnerBootstrapConflictError extends Error {
+  constructor(
+    message = 'Tenant owner bootstrap has already completed for this tenant.',
+  ) {
+    super(message);
+    this.name = 'TenantOwnerBootstrapConflictError';
+  }
+}
+
 /**
  * Identifies DynamoDB conditional-write failures without importing
  * service-specific exception classes throughout the repository layer.

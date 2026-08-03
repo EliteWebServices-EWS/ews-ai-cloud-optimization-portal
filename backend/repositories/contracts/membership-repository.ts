@@ -20,8 +20,25 @@ export type UpdateMembershipInput = Partial<
   >
 >;
 
+export interface BootstrapFirstOwnerInput {
+  tenantId: string;
+  userId: string;
+  memberId: string;
+}
+
 export interface MembershipRepository {
   create(input: CreateMembershipInput): Promise<MembershipRecord>;
+
+  /**
+   * Strongly consistent check: true when the tenant partition has any MEMBER# item.
+   */
+  tenantHasAnyMembershipRecords(tenantId: string): Promise<boolean>;
+
+  /**
+   * Atomically records one-time bootstrap completion and creates the first
+   * tenant_owner membership for the caller.
+   */
+  bootstrapFirstOwner(input: BootstrapFirstOwnerInput): Promise<MembershipRecord>;
 
   get(tenantId: string, userId: string): Promise<MembershipRecord | undefined>;
 

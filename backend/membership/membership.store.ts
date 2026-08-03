@@ -14,6 +14,7 @@ import {
   DynamoDbMembershipRepository,
 } from '../repositories/dynamodb';
 import type {
+  BootstrapFirstOwnerInput,
   CreateInvitationInput,
   CreateMembershipInput,
   InvitationRepository,
@@ -29,6 +30,7 @@ import {
   RepositoryAlreadyExistsError,
   RepositoryConflictError,
   RepositoryNotFoundError,
+  TenantOwnerBootstrapConflictError,
 } from '../database';
 import type { InvitationRecord, MembershipRecord } from '../repositories/models';
 import { createLogger } from '../shared/utils';
@@ -52,6 +54,7 @@ export function shouldUseDurableInvitationStore(): boolean {
 export class InMemoryMembershipRepository implements MembershipRepository {
   private readonly byKey = new Map<string, MembershipRecord>();
   private readonly byMemberId = new Map<string, string>();
+  private readonly bootstrapCompleted = new Set<string>();
 
   private static key(tenantId: string, userId: string): string {
     return `${tenantId}::${userId}`;
@@ -69,6 +72,54 @@ export class InMemoryMembershipRepository implements MembershipRepository {
     const now = new Date().toISOString();
     const record: MembershipRecord = { ...input, version: 1, createdAt: now, updatedAt: now };
 
+    this.byKey.set(key, record);
+    this.byMemberId.set(record.memberId, key);
+
+    return { ...record };
+  }
+
+  async tenantHasAnyMembershipRecords(tenantId: string): Promise<boolean> {
+    for (const record of this.byKey.values()) {
+      if (record.tenantId === tenantId) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async bootstrapFirstOwner(input: BootstrapFirstOwnerInput): Promise<MembershipRecord> {
+    if (await this.tenantHasAnyMembershipRecords(input.tenantId)) {
+      throw new TenantOwnerBootstrapConflictError();
+    }
+
+    if (this.bootstrapCompleted.has(input.tenantId)) {
+      throw new TenantOwnerBootstrapConflictError();
+    }
+
+    const key = InMemoryMembershipRepository.key(input.tenantId, input.userId);
+
+    if (this.byKey.has(key)) {
+      throw new TenantOwnerBootstrapConflictError();
+    }
+
+    const now = new Date().toISOString();
+    const record: MembershipRecord = {
+      tenantId: input.tenantId,
+      memberId: input.memberId,
+      userId: input.userId,
+      role: 'tenant_owner',
+      status: 'ACTIVE',
+      joinedAt: now,
+      statusChangedAt: now,
+      statusChangedBy: input.userId,
+      invitedBy: input.userId,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.bootstrapCompleted.add(input.tenantId);
     this.byKey.set(key, record);
     this.byMemberId.set(record.memberId, key);
 

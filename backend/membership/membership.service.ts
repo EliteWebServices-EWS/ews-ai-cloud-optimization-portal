@@ -12,6 +12,7 @@ import {
   RepositoryAlreadyExistsError,
   RepositoryConflictError,
   RepositoryNotFoundError,
+  TenantOwnerBootstrapConflictError,
 } from '../database';
 import type {
   InvitationRepository,
@@ -141,6 +142,32 @@ export class MembershipService {
       if (error instanceof RepositoryAlreadyExistsError) {
         throw new AppError('MEMBER_ALREADY_EXISTS', error.message, 409);
       }
+      throw error;
+    }
+  }
+
+  /**
+   * One-time bootstrap: create ACTIVE tenant_owner for the authenticated caller.
+   */
+  async bootstrapFirstOwner(input: {
+    tenantId: string;
+    userId: string;
+  }): Promise<MembershipRecord> {
+    try {
+      return await this.membershipRepository.bootstrapFirstOwner({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        memberId: generateMemberId(),
+      });
+    } catch (error) {
+      if (error instanceof TenantOwnerBootstrapConflictError) {
+        throw new AppError(
+          'TENANT_OWNER_ALREADY_BOOTSTRAPPED',
+          'This tenant already has a bootstrapped tenant owner.',
+          409,
+        );
+      }
+
       throw error;
     }
   }

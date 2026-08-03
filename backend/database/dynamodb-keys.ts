@@ -131,6 +131,9 @@ export function membershipSortKey(userId: string): string {
   return `MEMBER#${requireKeyValue(userId, 'userId')}`;
 }
 
+/** Fixed sort key for the one-time tenant-owner bootstrap marker (same table as memberships). */
+export const TENANT_OWNER_BOOTSTRAP_SORT_KEY = 'OWNER_BOOTSTRAP';
+
 /**
  * Creates the GSI1 partition key used to list every tenant a user belongs
  * to, across tenants.
