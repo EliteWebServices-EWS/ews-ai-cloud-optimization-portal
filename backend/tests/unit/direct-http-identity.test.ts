@@ -261,6 +261,34 @@ describe('lambda-adapter mode preserves adapter headers', () => {
       assert.equal(identity.sessionMfaVerified, true);
     });
   });
+
+  it('preserves MFA header when JWT claim is string "true" (API Gateway normalization)', () => {
+    const event = {
+      headers: {},
+      requestContext: {
+        authorizer: {
+          jwt: {
+            claims: {
+              sub: 'user-1',
+              'cognito:groups': 'admin',
+              token_use: 'access',
+              tenant_id: 'tenant-trusted',
+              mfa_session_verified: 'true',
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof attachValidatedIdentityHeaders>[0];
+
+    attachValidatedIdentityHeaders(event);
+
+    const middleware = createIdentitySourceMiddleware('lambda-adapter');
+    const req = createMockRequest(event.headers as Record<string, string>);
+
+    middleware(req, {} as import('express').Response, () => {
+      assert.equal(getAuthenticatedIdentity(req).sessionMfaVerified, true);
+    });
+  });
 });
 
 describe('stripSessionMfaVerifiedHeaders helper', () => {

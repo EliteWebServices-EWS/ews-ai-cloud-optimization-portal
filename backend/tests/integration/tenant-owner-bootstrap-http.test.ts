@@ -10,6 +10,7 @@ import {
   seedActiveTenant,
   seedTenantMembership,
 } from './tenant-administration/fixtures';
+import { attachValidatedIdentityHeaders } from '../../lambda';
 
 const BOOTSTRAP_PATH = '/api/v1/tenants/bootstrap-owner';
 
@@ -293,5 +294,76 @@ describe('POST /api/v1/tenants/bootstrap-owner', () => {
     );
 
     assert.equal(register.status, 201);
+  });
+
+  it('succeeds when trusted JWT claim mfa_session_verified is string "true"', async () => {
+    const ctx = buildTestApp();
+    await seedBootstrapTenant(ctx, TENANT_A);
+
+    const event = {
+      headers: {},
+      requestContext: {
+        authorizer: {
+          jwt: {
+            claims: {
+              sub: USER_PLATFORM_ADMIN,
+              'cognito:groups': 'admin',
+              token_use: 'access',
+              tenant_id: TENANT_A,
+              mfa_session_verified: 'true',
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof attachValidatedIdentityHeaders>[0];
+
+    attachValidatedIdentityHeaders(event);
+
+    const response = await httpRequest(ctx.app, 'POST', BOOTSTRAP_PATH, {
+      headers: {
+        ...(event.headers as Record<string, string>),
+        'content-type': 'application/json',
+      },
+      body: {},
+    });
+
+    assert.equal(response.status, 201);
+  });
+
+  it('returns MFA_EVIDENCE_UNAVAILABLE when JWT has no mfa_session_verified claim', async () => {
+    const ctx = buildTestApp();
+    await seedBootstrapTenant(ctx, TENANT_A);
+
+    const event = {
+      headers: { 'x-sisum-mfa-session-verified': 'true' },
+      requestContext: {
+        authorizer: {
+          jwt: {
+            claims: {
+              sub: USER_PLATFORM_ADMIN,
+              'cognito:groups': 'admin',
+              token_use: 'access',
+              tenant_id: TENANT_A,
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof attachValidatedIdentityHeaders>[0];
+
+    attachValidatedIdentityHeaders(event);
+
+    const response = await httpRequest(ctx.app, 'POST', BOOTSTRAP_PATH, {
+      headers: {
+        ...(event.headers as Record<string, string>),
+        'content-type': 'application/json',
+      },
+      body: {},
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.body as { error: { code: string } }).error.code,
+      'MFA_EVIDENCE_UNAVAILABLE',
+    );
   });
 });

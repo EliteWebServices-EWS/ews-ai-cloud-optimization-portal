@@ -20,11 +20,19 @@ import type { RequestSecurityContext } from './request-security-context';
 export const SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM = 'mfa_session_verified';
 
 /**
- * Approved token contract: only JSON boolean true satisfies session MFA evidence.
- * Rejects strings, numbers, and all other types (including string "true").
+ * Strict normalization for trusted JWT authorizer boolean claims.
+ * Only boolean true and exact lowercase string "true" are accepted.
+ */
+export function normalizeTrustedBooleanClaim(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
+/**
+ * Approved token contract for mfa_session_verified on access tokens.
+ * Rejects "TRUE", "false", 1, and other truthy values.
  */
 export function isAcceptedSessionMfaVerifiedClaim(value: unknown): boolean {
-  return value === true;
+  return normalizeTrustedBooleanClaim(value);
 }
 
 /** MFA assurance states (documentation + policy helpers). */

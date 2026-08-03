@@ -24,7 +24,8 @@ export interface AuthenticatedIdentity {
   tenantId: string | null;
   /**
    * Current-session MFA completed — true only when lambda sets the internal
-   * header after API Gateway validated JWT claim mfa_session_verified === true.
+   * header after API Gateway validated JWT claim mfa_session_verified is
+   * boolean true or exact string "true".
    * Not read from body, query, cookies, or client-facing request fields.
    */
   sessionMfaVerified?: boolean;
