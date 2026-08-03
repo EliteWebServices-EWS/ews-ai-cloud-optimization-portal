@@ -65,6 +65,7 @@ import {
   validateWorkflowRunBody,
 } from '../../security';
 import { createMembershipRoutes } from './membership-routes';
+import { createTenantBootstrapRoutes } from './tenant-bootstrap.routes';
 import type { MembershipService } from '../../membership';
 import type { MembershipRepository } from '../../repositories/contracts';
 import type { ExecutionApiService } from '../../services/execution-api-service';
@@ -2082,6 +2083,12 @@ export function createApiRoutes(deps: ApiDependencies): Router {
     createMembershipRoutes({
       membershipService: deps.membershipService,
       membershipRepository: deps.membershipRepository,
+    }),
+  );
+  router.use(
+    createTenantBootstrapRoutes({
+      membershipService: deps.membershipService,
+      tenantRepository: deps.tenantRepository,
     }),
   );
   router.use(
