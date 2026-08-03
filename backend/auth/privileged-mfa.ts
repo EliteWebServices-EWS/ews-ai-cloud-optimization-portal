@@ -47,6 +47,7 @@ export type MfaAssuranceState =
 
 export const PRIVILEGED_OPERATIONS = {
   TENANT_CREATE: 'tenant.create',
+  TENANT_ONBOARDING_COMPLETE: 'tenant.onboarding_complete',
   TENANT_DELETE: 'tenant.delete',
   TENANT_SUSPEND: 'tenant.suspend',
   TENANT_REACTIVATE: 'tenant.reactivate',
@@ -66,6 +67,7 @@ export type PrivilegedOperation =
 
 const OPERATIONS_REQUIRING_MFA: ReadonlySet<PrivilegedOperation> = new Set([
   PRIVILEGED_OPERATIONS.TENANT_CREATE,
+  PRIVILEGED_OPERATIONS.TENANT_ONBOARDING_COMPLETE,
   PRIVILEGED_OPERATIONS.TENANT_DELETE,
   PRIVILEGED_OPERATIONS.TENANT_SUSPEND,
   PRIVILEGED_OPERATIONS.TENANT_PRIVILEGED_ROLE_CHANGE,

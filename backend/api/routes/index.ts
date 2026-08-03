@@ -72,6 +72,9 @@ import type { ExecutionApiService } from '../../services/execution-api-service';
 import { createExecutionRoutes } from './execution.routes';
 import type { AwsAccountApiService } from '../../services/aws-account-api-service';
 import { createAwsAccountRoutes } from './aws-account.routes';
+import {
+  type TenantOnboardingService,
+} from '../../services/tenant-onboarding.service';
 
 export interface ApiDependencies {
   orchestrator: WorkflowOrchestrator;
@@ -84,6 +87,7 @@ export interface ApiDependencies {
   membershipService: MembershipService;
   membershipRepository: MembershipRepository;
   tenantRepository: TenantRepository;
+  tenantOnboardingService: TenantOnboardingService;
   executionApi: ExecutionApiService;
   awsAccountApi: AwsAccountApiService;
 }
@@ -2077,7 +2081,12 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createRecommendationRoutes(deps));
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
-  router.use(createTenantAdminRoutes(deps.tenantRepository));
+  router.use(
+    createTenantAdminRoutes({
+      tenantRepository: deps.tenantRepository,
+      tenantOnboardingService: deps.tenantOnboardingService,
+    }),
+  );
   router.use(createAdminAuditRoutes());
   router.use(
     createMembershipRoutes({

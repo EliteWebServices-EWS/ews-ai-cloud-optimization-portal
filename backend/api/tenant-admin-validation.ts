@@ -155,6 +155,15 @@ export function validateCreateTenantBody(
       ? (body as Record<string, unknown>)
       : {};
 
+  if (Object.prototype.hasOwnProperty.call(payload, 'tenantId')) {
+    throw new AppError(
+      'INVALID_REQUEST',
+      'tenantId is assigned by the server and must not be supplied.',
+      400,
+      'request',
+    );
+  }
+
   return {
     organizationName: assertNonEmptyString(
       payload.organizationName,

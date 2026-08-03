@@ -12,6 +12,12 @@ import {
 } from '../../membership/membership.store';
 import { createMembershipService } from '../../membership/membership.service';
 import { createIdentitySourceMiddleware } from '../../auth/identity-source';
+import {
+  InMemoryCognitoIdentityAlignment,
+} from '../../cognito/cognito-identity-alignment';
+import {
+  createTenantOnboardingService,
+} from '../../services/tenant-onboarding.service';
 
 /**
  * Sprint 12 / Engineer 4 — Task 1 (route-level coverage) and Task 4
@@ -106,7 +112,18 @@ function buildApp(deps: {
     invitationRepository: deps.invitationRepository,
   });
 
-  app.use(createTenantAdminRoutes(deps.tenantRepository));
+  const cognitoAlignment = new InMemoryCognitoIdentityAlignment();
+  const tenantOnboardingService = createTenantOnboardingService({
+    tenantRepository: deps.tenantRepository,
+    cognitoAlignment,
+  });
+
+  app.use(
+    createTenantAdminRoutes({
+      tenantRepository: deps.tenantRepository,
+      tenantOnboardingService,
+    }),
+  );
   app.use(
     createMembershipRoutes({
       membershipService,
@@ -192,8 +209,9 @@ describe('Tenant Administration API — HTTP integration', () => {
       );
 
       assert.equal(res.status, 201);
-      assert.equal(res.body.data.slug, 'new-co');
-      assert.equal(res.body.data.status, 'PROVISIONING');
+      assert.equal(res.body.data.tenant.slug, 'new-co');
+      assert.equal(res.body.data.tenant.status, 'ACTIVE');
+      assert.equal(res.body.data.reauthenticationRequired, true);
     });
   });
 

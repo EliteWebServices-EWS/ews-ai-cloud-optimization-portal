@@ -35,6 +35,13 @@ import {
 } from '../../../membership';
 import { MockTenantRepository } from '../../../repositories/mock/mock-tenant-repository';
 import {
+  InMemoryCognitoIdentityAlignment,
+} from '../../../cognito/cognito-identity-alignment';
+import {
+  createTenantOnboardingService,
+  type TenantOnboardingService,
+} from '../../../services/tenant-onboarding.service';
+import {
   createCorsMiddleware,
   createJsonBodyParser,
   createJsonErrorHandler,
@@ -72,6 +79,8 @@ export interface TestAppContext {
   tenantRepository: MockTenantRepository;
   membershipRepository: InMemoryMembershipRepository;
   invitationRepository: InMemoryInvitationRepository;
+  cognitoAlignment: InMemoryCognitoIdentityAlignment;
+  tenantOnboardingService: TenantOnboardingService;
 }
 
 export function identityHeaders(identity: IdentityFixture): Record<string, string> {
@@ -138,6 +147,12 @@ export function buildTestApp(): TestAppContext {
 
   const awsAccountApi = new AwsAccountApiService(new MockAwsAccountRepository());
 
+  const cognitoAlignment = new InMemoryCognitoIdentityAlignment();
+  const tenantOnboardingService = createTenantOnboardingService({
+    tenantRepository,
+    cognitoAlignment,
+  });
+
   const app = express();
   app.use(createSecurityHeadersMiddleware());
   app.use(createCorsMiddleware());
@@ -166,6 +181,7 @@ export function buildTestApp(): TestAppContext {
       membershipService,
       membershipRepository,
       tenantRepository,
+      tenantOnboardingService,
       executionApi,
       awsAccountApi,
     }),
@@ -176,6 +192,8 @@ export function buildTestApp(): TestAppContext {
     tenantRepository,
     membershipRepository,
     invitationRepository,
+    cognitoAlignment,
+    tenantOnboardingService,
   };
 }
 

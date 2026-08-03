@@ -739,6 +739,21 @@ Resources:
               - sts:AssumeRole
             Resource: "*"
 
+  SisumCognitoIdentityAlignmentPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "sisum-cognito-identity-alignment-${Environment}"
+      Roles:
+        - SisumLambdaExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssignTenantIdOnOwnerProfile
+            Effect: Allow
+            Action:
+              - cognito-idp:AdminUpdateUserAttributes
+            Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
