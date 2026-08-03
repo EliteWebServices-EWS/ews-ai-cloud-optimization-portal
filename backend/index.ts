@@ -35,6 +35,11 @@ import { ExecutionApiService } from './services/execution-api-service';
 import { createAwsAccountRepository } from './services/aws-account-repository-factory';
 import { AwsAccountApiService } from './services/aws-account-api-service';
 import {
+  createCognitoIdentityAlignmentPort,
+  InMemoryCognitoIdentityAlignment,
+} from './cognito/cognito-identity-alignment';
+import { createTenantOnboardingService } from './services/tenant-onboarding.service';
+import {
   PROVIDER_NAMES,
   type ProviderName,
 } from './shared/constants';
@@ -114,6 +119,16 @@ export function createApp(options?: CreateAppOptions): express.Application {
 
   const awsAccountRepository = createAwsAccountRepository();
   const awsAccountApi = new AwsAccountApiService(awsAccountRepository);
+
+  const cognitoAlignment =
+    process.env.NODE_ENV === 'test'
+      ? new InMemoryCognitoIdentityAlignment()
+      : createCognitoIdentityAlignmentPort();
+
+  const tenantOnboardingService = createTenantOnboardingService({
+    tenantRepository,
+    cognitoAlignment,
+  });
 
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
@@ -213,6 +228,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
       membershipService,
       membershipRepository,
       tenantRepository,
+      tenantOnboardingService,
       executionApi,
       awsAccountApi,
     })
