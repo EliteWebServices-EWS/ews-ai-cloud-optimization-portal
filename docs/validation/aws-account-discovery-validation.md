@@ -4,6 +4,8 @@
 
 Sprint 13 enhancement: discovery service, permission summary extension, `POST .../discovery`, audit events, tests, SAM `sts:AssumeRole` policy.
 
+Production closeout: [sprint-13-production-validation-report.md](./sprint-13-production-validation-report.md).
+
 ## Tests
 
 - `tests/unit/aws-account-discovery.test.ts`
