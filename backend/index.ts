@@ -34,6 +34,8 @@ import { createExecutionRepositories } from './services/execution-repository-fac
 import { ExecutionApiService } from './services/execution-api-service';
 import { createAwsAccountRepository } from './services/aws-account-repository-factory';
 import { AwsAccountApiService } from './services/aws-account-api-service';
+import { createEc2CloudResourceRepositories } from './services/ec2-cloud-resource-repository-factory';
+import { Ec2DiscoveryApiService } from './services/ec2-discovery-api-service';
 import {
   createCognitoIdentityAlignmentPort,
   InMemoryCognitoIdentityAlignment,
@@ -119,6 +121,13 @@ export function createApp(options?: CreateAppOptions): express.Application {
 
   const awsAccountRepository = createAwsAccountRepository();
   const awsAccountApi = new AwsAccountApiService(awsAccountRepository);
+
+  const ec2CloudResourceRepositories = createEc2CloudResourceRepositories();
+  const ec2DiscoveryApi = new Ec2DiscoveryApiService(
+    awsAccountRepository,
+    ec2CloudResourceRepositories.resources,
+    ec2CloudResourceRepositories.runs,
+  );
 
   const cognitoAlignment =
     process.env.NODE_ENV === 'test'
@@ -231,6 +240,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
       tenantOnboardingService,
       executionApi,
       awsAccountApi,
+      ec2DiscoveryApi,
     })
   );
 
