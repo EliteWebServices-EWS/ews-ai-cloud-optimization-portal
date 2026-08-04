@@ -11,3 +11,4 @@ export * from './execution-plan-repository';
 export * from './execution-history-repository';
 export * from './execution-run-repository';
 export * from './aws-account-repository';
+export * from './ec2-cloud-resource-repository';

@@ -65,6 +65,7 @@ describe('backend deploy role DynamoDB table policy', () => {
     assert.deepEqual(backendPrefixes, [
       'sisum-audit',
       'sisum-aws-accounts',
+      'sisum-cloud-resources',
       'sisum-execution-plans',
       'sisum-invitations',
       'sisum-learning',

@@ -23,6 +23,7 @@ function setFullProductionTables(): void {
   process.env.INVITATIONS_TABLE_NAME = 'inv';
   process.env.EXECUTION_PLANS_TABLE_NAME = 'exec';
   process.env.AWS_ACCOUNTS_TABLE_NAME = 'aws-accounts';
+  process.env.CLOUD_RESOURCES_TABLE_NAME = 'cloud-resources';
 }
 
 test('uses mock repository locally when persistence is disabled', () => {

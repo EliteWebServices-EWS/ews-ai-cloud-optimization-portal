@@ -87,6 +87,13 @@ export const AUDIT_EVENTS = {
   ACCOUNT_DISCOVERY_SUCCEEDED: 'aws_account.discovery_succeeded',
   ACCOUNT_DISCOVERY_FAILED: 'aws_account.discovery_failed',
   ACCOUNT_IDENTITY_MISMATCH: 'aws_account.identity_mismatch',
+  EC2_DISCOVERY_STARTED: 'ec2.discovery_started',
+  EC2_DISCOVERY_SUCCEEDED: 'ec2.discovery_succeeded',
+  EC2_DISCOVERY_PARTIAL: 'ec2.discovery_partial',
+  EC2_DISCOVERY_FAILED: 'ec2.discovery_failed',
+  EC2_RESOURCE_LISTED: 'ec2.resource_listed',
+  EC2_RESOURCE_VIEWED: 'ec2.resource_viewed',
+  EC2_DISCOVERY_DENIED: 'ec2.discovery_denied',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];
