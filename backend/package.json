@@ -21,6 +21,7 @@
     "test:execution-api-integration": "npm run test:exec -- tests/integration/execution-api-http.test.ts tests/integration/execution-api-rollback.test.ts tests/integration/execution-api-concurrency.test.ts tests/integration/execution-api-service.test.ts",
     "test:execution-api-security": "npm run test:exec -- tests/security/execution-api-*.test.ts",
     "test:sts-assumerole": "npm run test:exec -- tests/unit/sts-retry.test.ts tests/unit/sts-credential-provider.test.ts tests/unit/aws-service-client-factory.test.ts tests/unit/permission-validator.test.ts",
+    "test:ec2-security": "npm run test:exec -- tests/unit/ec2-security-analyzer.test.ts tests/integration/ec2-security-api-http.test.ts",
     "validate:tenant-admin": "npm run test:sprint12",
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"
   },
