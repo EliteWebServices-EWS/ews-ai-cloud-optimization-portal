@@ -30,4 +30,12 @@ describe('EC2 security analyzer', () => {
     assert.equal(result.summary.governanceScore, 100);
     assert.equal(result.results[0].riskLevel, 'low');
   });
+
+  it('does not allow a caller to replace the fixed naming standard', () => {
+    const result = analyzeEc2Security(
+      [{ instanceId: 'i-name', instanceType: 't3.large', tags: { Name: 'Invalid_Name', Environment: 'test', Owner: 'team' }, backupPolicy: { enabled: true } }],
+      { namingPattern: '.*' } as unknown as object,
+    );
+    assert.ok(result.results[0].governanceFindings.some((finding) => finding.check === 'naming_standard'));
+  });
 });

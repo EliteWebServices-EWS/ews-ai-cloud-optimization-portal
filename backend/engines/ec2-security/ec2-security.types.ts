@@ -21,7 +21,6 @@ export interface Ec2SecurityInventoryItem {
 
 export interface Ec2GovernancePolicy {
   requiredTags?: string[];
-  namingPattern?: string;
   approvedInstanceFamilies?: string[];
   maxInstanceAgeDays?: number;
 }

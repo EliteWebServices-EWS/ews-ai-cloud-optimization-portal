@@ -11,6 +11,6 @@ Each inventory item needs `instanceId` and `instanceType`. Optional security evi
 
 ## Defaults and integration boundary
 
-Defaults require `Name`, `Environment`, and `Owner` tags; allow common T3/M5/M6i/C5/C6i/R5/R6i families; enforce lowercase hyphenated names; and set a 365-day lifecycle review threshold. Requesters can supply an approved policy override in the POST body.
+Defaults require `Name`, `Environment`, and `Owner` tags; allow common T3/M5/M6i/C5/C6i/R5/R6i families; enforce lowercase hyphenated names; and set a 365-day lifecycle review threshold. Requesters can override tag, instance-family, and lifecycle policy fields in the POST body. The naming standard is fixed in code so untrusted requests cannot supply a potentially unsafe regular expression.
 
 The recommendation cache is deliberately process-local while mocked inventory is in use. Engineer 1's inventory/discovery provider should replace the request inventory and persistence layer without changing analyzer semantics.

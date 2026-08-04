@@ -22,7 +22,9 @@ import {
 import { createExecutionSimulator, createDefaultExecutionAdapterRegistry, createExecutionOrchestrator } from '../../../execution';
 import { ExecutionApiService } from '../../../services/execution-api-service';
 import { AwsAccountApiService } from '../../../services/aws-account-api-service';
+import { Ec2DiscoveryApiService } from '../../../services/ec2-discovery-api-service';
 import { MockAwsAccountRepository } from '../../../repositories/mock/mock-aws-account-repository';
+import { MockEc2CloudResourceRepository } from '../../../repositories/mock/mock-ec2-cloud-resource-repository';
 import { createInMemoryExecutionStores } from '../execution/fixtures';
 import { createWorkflowOrchestrator } from '../../../orchestrator';
 import { createPluginRegistry } from '../../../plugins';
@@ -145,7 +147,14 @@ export function buildTestApp(): TestAppContext {
     orchestrator: executionOrchestrator,
   });
 
-  const awsAccountApi = new AwsAccountApiService(new MockAwsAccountRepository());
+  const awsAccountRepository = new MockAwsAccountRepository();
+  const awsAccountApi = new AwsAccountApiService(awsAccountRepository);
+  const ec2ResourceRepo = new MockEc2CloudResourceRepository();
+  const ec2DiscoveryApi = new Ec2DiscoveryApiService(
+    awsAccountRepository,
+    ec2ResourceRepo,
+    ec2ResourceRepo,
+  );
 
   const cognitoAlignment = new InMemoryCognitoIdentityAlignment();
   const tenantOnboardingService = createTenantOnboardingService({
@@ -184,6 +193,7 @@ export function buildTestApp(): TestAppContext {
       tenantOnboardingService,
       executionApi,
       awsAccountApi,
+      ec2DiscoveryApi,
     }),
   );
 
