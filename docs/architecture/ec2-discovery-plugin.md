@@ -36,3 +36,5 @@ Resources are marked `NOT_SEEN` only when a discovery run **successfully complet
 - No cost, security, or rightsizing analysis in this scope.
 
 See also [Sprint 13 live AWS integration](../architecture/sprint-13-live-aws-integration.md).
+
+**Production validation (Engineer 1):** [EC2 discovery validation — production section](../validation/ec2-discovery-validation.md#production-validation-sprint-14-engineer-1).
