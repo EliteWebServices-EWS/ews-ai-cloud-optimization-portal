@@ -73,6 +73,7 @@ import { createExecutionRoutes } from './execution.routes';
 import type { AwsAccountApiService } from '../../services/aws-account-api-service';
 import type { Ec2DiscoveryApiService } from '../../services/ec2-discovery-api-service';
 import { createAwsAccountRoutes } from './aws-account.routes';
+import { createEc2SecurityRoutes } from './ec2-security.routes';
 import { createEc2Routes } from './ec2.routes';
 import {
   type TenantOnboardingService,
@@ -2082,6 +2083,7 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createGovernanceRoutes());
   router.use(createFinancialRoutes(deps));
   router.use(createRecommendationRoutes(deps));
+  router.use(createEc2SecurityRoutes());
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
   router.use(
