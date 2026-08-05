@@ -9,6 +9,8 @@ export {
   generateExecutionId,
   generateReportId,
   generateTenantId,
+  generateCostAnalysisId,
+  generateCostFindingId,
   generateExternalId,
   deriveIdempotentWorkflowId,
 } from './response';

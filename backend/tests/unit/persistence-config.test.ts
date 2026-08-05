@@ -154,6 +154,7 @@ describe('validateDeployedPersistenceConfig', () => {
         INVITATIONS_TABLE_NAME: 'invitations',
         EXECUTION_PLANS_TABLE_NAME: 'execution-plans',
         AWS_ACCOUNTS_TABLE_NAME: 'aws-accounts',
+        COST_FINDINGS_TABLE_NAME: 'cost-findings',
       },
       () => {
         assert.doesNotThrow(() => validateDeployedPersistenceConfig());

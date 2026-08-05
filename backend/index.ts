@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import {
   AUDIT_EVENTS,
   auditPersistenceFlushMiddleware,
@@ -34,6 +34,9 @@ import { createExecutionRepositories } from './services/execution-repository-fac
 import { ExecutionApiService } from './services/execution-api-service';
 import { createAwsAccountRepository } from './services/aws-account-repository-factory';
 import { AwsAccountApiService } from './services/aws-account-api-service';
+import { createCostFindingRepository } from './services/cost-intelligence-repository-factory';
+import { CostIntelligenceApiService } from './services/cost-intelligence-api-service';
+import { AwsEc2CostDataSource, MockEc2CostDataSource } from './engines/cost-intelligence';
 import {
   PROVIDER_NAMES,
   type ProviderName,
@@ -76,7 +79,7 @@ export function resolveProviderName(): ProviderName {
 /**
  * Bootstrap and configure the SISU'M backend API server.
  *
- * @param options.identitySource — `lambda-adapter` trusts headers from lambda.ts;
+ * @param options.identitySource � `lambda-adapter` trusts headers from lambda.ts;
  *   `direct-http` (default) strips all x-sisum-* identity headers fail-closed.
  */
 export function createApp(options?: CreateAppOptions): express.Application {
@@ -114,6 +117,17 @@ export function createApp(options?: CreateAppOptions): express.Application {
 
   const awsAccountRepository = createAwsAccountRepository();
   const awsAccountApi = new AwsAccountApiService(awsAccountRepository);
+
+  const costFindingRepository = createCostFindingRepository();
+  const costIntelligenceDataSource =
+    activeProvider === PROVIDER_NAMES.AWS
+      ? new AwsEc2CostDataSource()
+      : new MockEc2CostDataSource();
+  const costIntelligenceApi = new CostIntelligenceApiService({
+    costFindingRepository,
+    awsAccountRepository,
+    dataSource: costIntelligenceDataSource,
+  });
 
   const orchestrator = createWorkflowOrchestrator({
     evidenceEngine: createEvidenceEngine(),
@@ -215,6 +229,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
       tenantRepository,
       executionApi,
       awsAccountApi,
+      costIntelligenceApi,
     })
   );
 

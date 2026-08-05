@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Standard audit event names used across the SISU'M backend.
  *
  * Keep event names stable because CloudWatch Logs Insights queries,
@@ -71,6 +71,10 @@ export const AUDIT_EVENTS = {
   ACCOUNT_UPDATED: 'aws_account.updated',
   ACCOUNT_REMOVED: 'aws_account.removed',
   ACCOUNT_ACTION_FAILED: 'aws_account.action_failed',
+  COST_INTELLIGENCE_ANALYSIS_STARTED: 'cost_intelligence.analysis_started',
+  COST_INTELLIGENCE_ANALYSIS_COMPLETED: 'cost_intelligence.analysis_completed',
+  COST_INTELLIGENCE_ANALYSIS_FAILED: 'cost_intelligence.analysis_failed',
+  COST_INTELLIGENCE_FINDING_STATUS_UPDATED: 'cost_intelligence.finding_status_updated',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];

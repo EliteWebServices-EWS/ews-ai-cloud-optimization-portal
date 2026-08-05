@@ -155,3 +155,31 @@ export const RECOMMENDATION_STATUS = {
 
 export type RecommendationStatus =
   (typeof RECOMMENDATION_STATUS)[keyof typeof RECOMMENDATION_STATUS];
+
+/** Sprint 15 — EC2 Cost Intelligence Engine finding classifications. */
+export const COST_FINDING_TYPES = {
+  PREVIOUS_GENERATION_TYPE: 'PREVIOUS_GENERATION_TYPE',
+  STOPPED_INSTANCE_RETAINED: 'STOPPED_INSTANCE_RETAINED',
+  UNTAGGED_COST_OWNERSHIP_GAP: 'UNTAGGED_COST_OWNERSHIP_GAP',
+} as const;
+
+export type CostFindingType = (typeof COST_FINDING_TYPES)[keyof typeof COST_FINDING_TYPES];
+
+export const COST_FINDING_SEVERITY = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+} as const;
+
+export type CostFindingSeverity =
+  (typeof COST_FINDING_SEVERITY)[keyof typeof COST_FINDING_SEVERITY];
+
+export const COST_FINDING_STATUS = {
+  OPEN: 'OPEN',
+  ACKNOWLEDGED: 'ACKNOWLEDGED',
+  RESOLVED: 'RESOLVED',
+  DISMISSED: 'DISMISSED',
+} as const;
+
+export type CostFindingStatus =
+  (typeof COST_FINDING_STATUS)[keyof typeof COST_FINDING_STATUS];

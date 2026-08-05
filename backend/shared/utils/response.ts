@@ -114,6 +114,22 @@ export function generateTenantId(): string {
   return `tenant-${timestamp}-${randomSuffix}`;
 }
 
+/** Generate a unique EC2 cost intelligence analysis run identifier. */
+export function generateCostAnalysisId(): string {
+  const timestamp = Date.now().toString(36);
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+
+  return `costan-${timestamp}-${randomSuffix}`;
+}
+
+/** Generate a unique EC2 cost intelligence finding identifier. */
+export function generateCostFindingId(): string {
+  const timestamp = Date.now().toString(36);
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+
+  return `costfind-${timestamp}-${randomSuffix}`;
+}
+
 /**
  * Generate a cryptographically random AssumeRole external ID.
  *

@@ -10,7 +10,8 @@ export type BusinessResourceType =
   | 'REPORT'
   | 'LEARNING'
   | 'VERIFICATION'
-  | 'EXECUTION';
+  | 'EXECUTION'
+  | 'COST_FINDING';
 
 export type OwnedResourceType = BusinessResourceType;
 
@@ -68,6 +69,24 @@ export function learningSortKey(learningId: string): string {
 
 export function verificationSortKey(verificationId: string): string {
   return resourceSortKey('VERIFICATION', verificationId);
+}
+
+export function costFindingSortKey(findingId: string): string {
+  return resourceSortKey('COST_FINDING', findingId);
+}
+
+/**
+ * Creates the GSI partition key used to list cost findings for a specific
+ * AWS account within a tenant.
+ *
+ * Example:
+ * TENANT#tenant-a#ACCOUNT#111111111111
+ */
+export function accountResourceIndexPartitionKey(
+  tenantId: string,
+  accountId: string,
+): string {
+  return `${tenantPartitionKey(tenantId)}#ACCOUNT#${requireKeyValue(accountId, 'accountId')}`;
 }
 
 /**

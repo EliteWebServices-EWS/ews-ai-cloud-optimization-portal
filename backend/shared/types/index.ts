@@ -684,3 +684,10 @@ export interface EvidencePackage {
   status: EvidenceStatus;
   validation: EvidenceValidationResult;
 }
+
+export type {
+  Ec2CostInstance,
+  Ec2CostCollectionResult,
+  CostFinding,
+  CostIntelligenceReport,
+} from './cost-intelligence.types';

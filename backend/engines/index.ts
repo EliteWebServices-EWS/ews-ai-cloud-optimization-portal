@@ -6,3 +6,4 @@ export { createRecommendationEngine, RecommendationEngine } from './recommendati
 export { createVerificationEngine, VerificationEngine } from './verification';
 export { createLearningStore, MockLearningRepository } from './learning';
 export { createReportingEngine, ReportingEngine } from './reporting';
+export { analyzeEc2Costs } from './cost-intelligence';

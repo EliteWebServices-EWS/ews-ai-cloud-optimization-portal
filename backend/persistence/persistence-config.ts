@@ -11,6 +11,7 @@ const REQUIRED_TABLE_VARS = [
   'INVITATIONS_TABLE_NAME',
   'EXECUTION_PLANS_TABLE_NAME',
   'AWS_ACCOUNTS_TABLE_NAME',
+  'COST_FINDINGS_TABLE_NAME',
 ] as const;
 
 export type PersistenceTableEnvVar = (typeof REQUIRED_TABLE_VARS)[number];
