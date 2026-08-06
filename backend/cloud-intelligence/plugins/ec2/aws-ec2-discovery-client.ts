@@ -5,15 +5,21 @@ import {
   DescribeLaunchTemplatesCommand,
   DescribeNetworkInterfacesCommand,
   DescribePlacementGroupsCommand,
+  DescribeSecurityGroupsCommand,
   DescribeVolumesCommand,
   type EC2Client,
 } from '@aws-sdk/client-ec2';
 
 import type {
   Ec2DiscoveryClientPort,
+  Ec2InstanceSecurityGroupDto,
   Ec2RegionalInventoryDto,
 } from './ec2-discovery-client.port';
 import { sanitizeCloudResourceTags } from '../../sanitize';
+import {
+  normalizeAwsSecurityGroupPermission,
+  type Ec2NormalizedSecurityGroup,
+} from './ec2-discovery-security-group-normalizer';
 
 async function paginate<T>(
   fetchPage: (nextToken?: string) => Promise<{ items: T[]; nextToken?: string }>,
@@ -34,6 +40,63 @@ function mapTags(
   return sanitizeCloudResourceTags(
     tags?.map((t) => ({ key: t.Key, value: t.Value })),
   );
+}
+
+const SECURITY_GROUP_ID_BATCH = 1000;
+
+async function loadSecurityGroupsById(
+  ec2: EC2Client,
+  groupIds: string[],
+): Promise<Map<string, Ec2NormalizedSecurityGroup>> {
+  const map = new Map<string, Ec2NormalizedSecurityGroup>();
+  if (groupIds.length === 0) {
+    return map;
+  }
+  for (let offset = 0; offset < groupIds.length; offset += SECURITY_GROUP_ID_BATCH) {
+    const batch = groupIds.slice(offset, offset + SECURITY_GROUP_ID_BATCH);
+    const groups = await paginate(async (nextToken) => {
+      const response = await ec2.send(
+        new DescribeSecurityGroupsCommand({
+          GroupIds: batch,
+          NextToken: nextToken,
+        }),
+      );
+      return {
+        items: response.SecurityGroups ?? [],
+        nextToken: response.NextToken,
+      };
+    });
+    for (const group of groups) {
+      const groupId = group.GroupId;
+      if (!groupId) {
+        continue;
+      }
+      map.set(groupId, {
+        groupId,
+        groupName: group.GroupName,
+        inboundRules: (group.IpPermissions ?? []).map(normalizeAwsSecurityGroupPermission),
+      });
+    }
+  }
+  return map;
+}
+
+function attachSecurityGroupsToInstance(
+  securityGroupIds: string[],
+  securityGroupNames: string[],
+  groupsById: Map<string, Ec2NormalizedSecurityGroup>,
+): Ec2InstanceSecurityGroupDto[] | undefined {
+  if (securityGroupIds.length === 0) {
+    return undefined;
+  }
+  return securityGroupIds.map((groupId, index) => {
+    const loaded = groupsById.get(groupId);
+    return {
+      groupId,
+      groupName: loaded?.groupName ?? securityGroupNames[index],
+      inboundRules: loaded?.inboundRules ?? [],
+    };
+  });
 }
 
 export function createAwsEc2DiscoveryClient(ec2: EC2Client): Ec2DiscoveryClientPort {
@@ -76,9 +139,30 @@ export function createAwsEc2DiscoveryClient(ec2: EC2Client): Ec2DiscoveryClientP
           launchTime: instance.LaunchTime?.toISOString(),
           imageId: instance.ImageId,
           keyName: instance.KeyName,
+          metadataOptions: instance.MetadataOptions
+            ? {
+                httpTokens: instance.MetadataOptions.HttpTokens,
+                httpEndpoint: instance.MetadataOptions.HttpEndpoint,
+                httpPutResponseHopLimit: instance.MetadataOptions.HttpPutResponseHopLimit,
+                instanceMetadataTags: instance.MetadataOptions.InstanceMetadataTags,
+              }
+            : undefined,
           tags: mapTags(instance.Tags),
         })),
       );
+
+      const uniqueGroupIds = [
+        ...new Set(instances.flatMap((instance) => instance.securityGroupIds)),
+      ];
+      const securityGroupsById = await loadSecurityGroupsById(ec2, uniqueGroupIds);
+      const instancesWithGroups = instances.map((instance) => ({
+        ...instance,
+        securityGroups: attachSecurityGroupsToInstance(
+          instance.securityGroupIds,
+          instance.securityGroupNames,
+          securityGroupsById,
+        ),
+      }));
 
       const images = await paginate(async (nextToken) => {
         const response = await ec2.send(
@@ -130,7 +214,7 @@ export function createAwsEc2DiscoveryClient(ec2: EC2Client): Ec2DiscoveryClientP
       });
 
       return {
-        instances: instances.filter((i) => i.instanceId),
+        instances: instancesWithGroups.filter((i) => i.instanceId),
         images: images.map((image) => ({
           imageId: image.ImageId ?? '',
           name: image.Name,

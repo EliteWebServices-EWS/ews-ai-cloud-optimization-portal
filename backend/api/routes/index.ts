@@ -74,6 +74,7 @@ import type { AwsAccountApiService } from '../../services/aws-account-api-servic
 import type { Ec2DiscoveryApiService } from '../../services/ec2-discovery-api-service';
 import { createAwsAccountRoutes } from './aws-account.routes';
 import { createEc2SecurityRoutes } from './ec2-security.routes';
+import type { Ec2SecurityAnalysisApiService } from '../../services/ec2-security-analysis-api-service';
 import { createEc2Routes } from './ec2.routes';
 import { createEc2CostRoutes } from './ec2-cost.routes';
 import type { Ec2CostAnalysisApiService } from '../../services/ec2-cost-analysis-api-service';
@@ -97,6 +98,7 @@ export interface ApiDependencies {
   awsAccountApi: AwsAccountApiService;
   ec2DiscoveryApi: Ec2DiscoveryApiService;
   ec2CostAnalysisApi: Ec2CostAnalysisApiService;
+  ec2SecurityAnalysisApi: Ec2SecurityAnalysisApiService;
 }
 
 function recordAuditEvent(
@@ -2086,7 +2088,12 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createGovernanceRoutes());
   router.use(createFinancialRoutes(deps));
   router.use(createRecommendationRoutes(deps));
-  router.use(createEc2SecurityRoutes());
+  router.use(
+    createEc2SecurityRoutes({
+      ec2SecurityAnalysisApi: deps.ec2SecurityAnalysisApi,
+      membershipRepository: deps.membershipRepository,
+    }),
+  );
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
   router.use(

@@ -23,7 +23,7 @@ export type Ec2DashboardDataStatus =
   | 'ERROR'
   | 'UNAVAILABLE';
 
-export type Ec2SecuritySectionStatus = 'READY' | 'UNAVAILABLE' | 'NOT_ANALYZED';
+export type Ec2SecuritySectionStatus = 'READY' | 'PARTIAL' | 'UNAVAILABLE' | 'NOT_ANALYZED';
 
 export interface Ec2DashboardCostRecommendationView {
   recommendationId: string;
@@ -64,6 +64,8 @@ export interface Ec2DashboardSecurityView {
   status: Ec2SecuritySectionStatus;
   securityScore?: number;
   governanceScore?: number;
+  complianceScore?: number;
+  riskLevel?: string;
   findings: Ec2SecurityFinding[];
   message?: string;
 }
@@ -149,7 +151,9 @@ export function pricingStatusLabel(status: string): string {
 
 export function mapViewModelToEc2Summary(vm: Ec2DashboardViewModel): Ec2DashboardSummary {
   const securityFindingsCount =
-    vm.security.status === 'READY' ? vm.security.findings.reduce((n, f) => n + f.count, 0) : 0;
+    vm.security.status === 'READY' || vm.security.status === 'PARTIAL'
+      ? vm.security.findings.reduce((n, f) => n + f.count, 0)
+      : 0;
 
   return {
     region: vm.region,
@@ -222,7 +226,7 @@ export function mapViewModelToSecurityFindings(vm: Ec2DashboardViewModel): {
   findings: Ec2SecurityFinding[];
   unavailableMessage?: string;
 } {
-  if (vm.security.status !== 'READY') {
+  if (vm.security.status !== 'READY' && vm.security.status !== 'PARTIAL') {
     return {
       findings: [],
       unavailableMessage:

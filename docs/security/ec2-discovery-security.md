@@ -14,6 +14,9 @@
 - `ec2:DescribeNetworkInterfaces`
 - `ec2:DescribePlacementGroups`
 - `ec2:DescribeLaunchTemplates`
+- `ec2:DescribeSecurityGroups` (batched by instance security group IDs during discovery)
+
+Account **verification** runs a lightweight read-only probe for **each** action above. If any is denied, `permissionReport.allGranted` is false and the account must not be treated as fully verified for EC2 discovery.
 
 ## Data handling
 

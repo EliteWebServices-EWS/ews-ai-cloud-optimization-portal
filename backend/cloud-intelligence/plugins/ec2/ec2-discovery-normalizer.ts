@@ -94,6 +94,8 @@ function normalizeInstance(
       launchTime: instance.launchTime,
       imageId: instance.imageId,
       keyName: instance.keyName,
+      metadataOptions: instance.metadataOptions,
+      securityGroups: instance.securityGroups,
     },
     { name: extractNameTag(instance.tags) },
   );

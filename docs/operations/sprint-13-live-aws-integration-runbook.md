@@ -80,7 +80,7 @@ For **validation**, broad read-only managed policies may be used. For **producti
 
 Minimum APIs exercised by verification:
 
-- `ec2:DescribeInstances`, `ec2:DescribeRegions`
+- `ec2:DescribeInstances`, `ec2:DescribeSecurityGroups`, `ec2:DescribeRegions`
 - `autoscaling:DescribeAutoScalingGroups`
 - `rds:DescribeDBInstances`
 - `s3:ListAllMyBuckets`
