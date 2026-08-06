@@ -65,6 +65,7 @@ jobs:
             tests/unit/persistence-table-pagination.test.ts \
             tests/unit/history-concurrent-append.test.ts \
             tests/unit/migrate-memory-to-dynamodb.test.ts \
+            tests/integration/learning.validation.test.ts \
             tests/integration/performance-and-validation.test.ts
 
       - name: Write validation summary
