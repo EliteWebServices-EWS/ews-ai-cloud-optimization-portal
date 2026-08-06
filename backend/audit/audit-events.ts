@@ -94,6 +94,12 @@ export const AUDIT_EVENTS = {
   EC2_RESOURCE_LISTED: 'ec2.resource_listed',
   EC2_RESOURCE_VIEWED: 'ec2.resource_viewed',
   EC2_DISCOVERY_DENIED: 'ec2.discovery_denied',
+  EC2_COST_ANALYSIS_STARTED: 'ec2.cost_analysis_started',
+  EC2_COST_ANALYSIS_SUCCEEDED: 'ec2.cost_analysis_succeeded',
+  EC2_COST_ANALYSIS_PARTIAL: 'ec2.cost_analysis_partial',
+  EC2_COST_ANALYSIS_FAILED: 'ec2.cost_analysis_failed',
+  EC2_COST_RECOMMENDATIONS_LISTED: 'ec2.cost_recommendations_listed',
+  EC2_COST_RECOMMENDATION_VIEWED: 'ec2.cost_recommendation_viewed',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];

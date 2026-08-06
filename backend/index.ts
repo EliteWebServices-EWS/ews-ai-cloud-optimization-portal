@@ -36,6 +36,8 @@ import { createAwsAccountRepository } from './services/aws-account-repository-fa
 import { AwsAccountApiService } from './services/aws-account-api-service';
 import { createEc2CloudResourceRepositories } from './services/ec2-cloud-resource-repository-factory';
 import { Ec2DiscoveryApiService } from './services/ec2-discovery-api-service';
+import { createEc2CostRepositories } from './services/ec2-cost-repository-factory';
+import { Ec2CostAnalysisApiService } from './services/ec2-cost-analysis-api-service';
 import {
   createCognitoIdentityAlignmentPort,
   InMemoryCognitoIdentityAlignment,
@@ -127,6 +129,14 @@ export function createApp(options?: CreateAppOptions): express.Application {
     awsAccountRepository,
     ec2CloudResourceRepositories.resources,
     ec2CloudResourceRepositories.runs,
+  );
+
+  const ec2CostRepositories = createEc2CostRepositories();
+  const ec2CostAnalysisApi = new Ec2CostAnalysisApiService(
+    awsAccountRepository,
+    ec2CloudResourceRepositories.resources,
+    ec2CostRepositories.recommendations,
+    ec2CostRepositories.runs,
   );
 
   const cognitoAlignment =
@@ -241,6 +251,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
       executionApi,
       awsAccountApi,
       ec2DiscoveryApi,
+      ec2CostAnalysisApi,
     })
   );
 

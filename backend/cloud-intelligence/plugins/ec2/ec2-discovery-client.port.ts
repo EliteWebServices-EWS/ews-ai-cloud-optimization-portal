@@ -37,6 +37,14 @@ export interface Ec2ImageDto {
   tags: Ec2TagDto[];
 }
 
+export interface Ec2VolumeAttachmentDto {
+  instanceId: string;
+  deviceName?: string;
+  state?: string;
+  attachTime?: string;
+  deleteOnTermination?: boolean;
+}
+
 export interface Ec2VolumeDto {
   volumeId: string;
   sizeGiB?: number;
@@ -44,6 +52,7 @@ export interface Ec2VolumeDto {
   state?: string;
   availabilityZone?: string;
   encrypted?: boolean;
+  attachments?: Ec2VolumeAttachmentDto[];
   tags: Ec2TagDto[];
 }
 

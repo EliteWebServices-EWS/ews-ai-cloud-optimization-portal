@@ -850,6 +850,7 @@ Resources:
           EXECUTION_PLANS_TABLE_NAME: !Ref SisumExecutionPlansTable
           AWS_ACCOUNTS_TABLE_NAME: !Ref SisumAwsAccountsTable
           CLOUD_RESOURCES_TABLE_NAME: !Ref SisumCloudResourcesTable
+          EC2_COST_SAMPLE_PRICING_ENABLED: 'false'
 
       Events:
         PublicHealthRoute:

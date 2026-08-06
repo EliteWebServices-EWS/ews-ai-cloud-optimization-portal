@@ -146,6 +146,15 @@ export function createAwsEc2DiscoveryClient(ec2: EC2Client): Ec2DiscoveryClientP
           state: volume.State,
           availabilityZone: volume.AvailabilityZone,
           encrypted: volume.Encrypted,
+          attachments: (volume.Attachments ?? [])
+            .map((attachment) => ({
+              instanceId: attachment.InstanceId ?? '',
+              deviceName: attachment.Device,
+              state: attachment.State,
+              attachTime: attachment.AttachTime?.toISOString(),
+              deleteOnTermination: attachment.DeleteOnTermination,
+            }))
+            .filter((a) => a.instanceId),
           tags: mapTags(volume.Tags),
         })).filter((v) => v.volumeId),
         elasticIps: addresses.map((address) => ({

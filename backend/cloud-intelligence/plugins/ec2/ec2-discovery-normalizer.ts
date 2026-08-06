@@ -121,12 +121,25 @@ function normalizeVolume(
   volume: Ec2VolumeDto,
   region: string,
 ): DiscoveryPluginResult['resources'][number] {
+  const attachments = (volume.attachments ?? []).map((a) => ({
+    instanceId: a.instanceId,
+    deviceName: a.deviceName,
+    state: a.state,
+    attachTime: a.attachTime,
+    deleteOnTermination: a.deleteOnTermination,
+  }));
+  const attachedInstanceIds = attachments
+    .filter((a) => !a.state || a.state.toLowerCase() === 'attached')
+    .map((a) => a.instanceId);
+
   return baseResource(region, 'VOLUME', volume.volumeId, volume.tags, {
     sizeGiB: volume.sizeGiB,
     volumeType: volume.volumeType,
     state: volume.state,
     availabilityZone: volume.availabilityZone,
     encrypted: volume.encrypted,
+    attachments,
+    attachedInstanceIds,
   });
 }
 

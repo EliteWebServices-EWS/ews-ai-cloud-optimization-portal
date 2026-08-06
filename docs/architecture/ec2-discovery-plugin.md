@@ -29,6 +29,15 @@ Sprint 14 Engineer 1 — first **Cloud Intelligence** discovery plugin (`service
 
 Resources are marked `NOT_SEEN` only when a discovery run **successfully completed** the same account + region + resource type scope and the resource ID was absent from that run.
 
+## Volume attachment metadata (Engineer 1 → Engineer 2)
+
+`VOLUME` records persist `metadata.attachments[]` when EC2 discovery maps `DescribeVolumes` attachments:
+
+- `instanceId`, optional `deviceName`, `state`, `attachTime`, `deleteOnTermination`
+- Derived `attachedInstanceIds` lists instance IDs in `attached` state
+
+Legacy inventory without `attachments` requires a **new EC2 discovery run** before STOPPED_WITH_STORAGE cost analysis can link volumes to instances.
+
 ## Limitations
 
 - Synchronous discovery in existing Lambda (no queues).
