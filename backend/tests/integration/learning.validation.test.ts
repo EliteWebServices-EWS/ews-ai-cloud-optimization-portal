@@ -8,21 +8,32 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { docClient } from './harness';
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'sisum-learning-production';
-const TENANT_A = 'validation-tenant-a';
- 
+// Guard: only run against an explicitly configured local/test DynamoDB endpoint.
+// Never fall back to a production table name or run with ambient AWS credentials.
+const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT;
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+const canRun = Boolean(DYNAMODB_ENDPOINT && TABLE_NAME);
+
+const TEST_TENANT_ID = 'integration-learning-validation';
 const ITEM_KEY = {
-  pk: `TENANT#${TENANT_A}`,
-  sk: 'LEARNING#workflow-validation-001',
+  pk: `TENANT#${TEST_TENANT_ID}`,
+  sk: 'LEARNING#conditional-write-validation',
 };
 
-async function cleanupItem() {
-  await docClient.send(
-    new DeleteCommand({
-      TableName: TABLE_NAME,
-      Key: ITEM_KEY,
-    })
-  );
+async function cleanupItem(): Promise<void> {
+  if (!canRun || !TABLE_NAME) {
+    return;
+  }
+  try {
+    await docClient.send(
+      new DeleteCommand({
+        TableName: TABLE_NAME,
+        Key: ITEM_KEY,
+      }),
+    );
+  } catch {
+    // Best-effort cleanup for explicit test table only; do not mask test failures.
+  }
 }
 
 describe('Learning table deep validation', () => {
@@ -30,10 +41,14 @@ describe('Learning table deep validation', () => {
     await cleanupItem();
   });
 
-  it('rejects duplicate creation with attribute_not_exists condition', async () => {
+  it('rejects duplicate creation with attribute_not_exists condition', { skip: !canRun }, async () => {
+    if (!canRun || !TABLE_NAME) {
+      return;
+    }
+
     const initialItem = {
       ...ITEM_KEY,
-      tenantId: TENANT_A,
+      tenantId: TEST_TENANT_ID,
       status: 'ACTIVE',
       version: 1,
       updatedAt: new Date().toISOString(),
@@ -44,7 +59,7 @@ describe('Learning table deep validation', () => {
         TableName: TABLE_NAME,
         Item: initialItem,
         ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
-      })
+      }),
     );
 
     let errorThrown = false;
@@ -54,13 +69,13 @@ describe('Learning table deep validation', () => {
           TableName: TABLE_NAME,
           Item: {
             ...ITEM_KEY,
-            tenantId: TENANT_A,
+            tenantId: TEST_TENANT_ID,
             status: 'UPDATED',
             version: 1,
             updatedAt: new Date().toISOString(),
           },
           ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
-        })
+        }),
       );
     } catch (error: unknown) {
       errorThrown = true;
@@ -70,10 +85,14 @@ describe('Learning table deep validation', () => {
     assert.equal(errorThrown, true, 'Duplicate item creation should fail with conditional write');
   });
 
-  it('detects stale version updates using conditional version control', async () => {
+  it('detects stale version updates using conditional version control', { skip: !canRun }, async () => {
+    if (!canRun || !TABLE_NAME) {
+      return;
+    }
+
     const initialItem = {
       ...ITEM_KEY,
-      tenantId: TENANT_A,
+      tenantId: TEST_TENANT_ID,
       status: 'ACTIVE',
       version: 1,
       updatedAt: new Date().toISOString(),
@@ -83,7 +102,7 @@ describe('Learning table deep validation', () => {
       new PutCommand({
         TableName: TABLE_NAME,
         Item: initialItem,
-      })
+      }),
     );
 
     await docClient.send(
@@ -99,7 +118,7 @@ describe('Learning table deep validation', () => {
           ':updatedAt': new Date().toISOString(),
           ':expectedVersion': 1,
         },
-      })
+      }),
     );
 
     let conflictError = false;
@@ -117,7 +136,7 @@ describe('Learning table deep validation', () => {
             ':updatedAt': new Date().toISOString(),
             ':expectedVersion': 1,
           },
-        })
+        }),
       );
     } catch (error: unknown) {
       conflictError = true;
@@ -127,10 +146,14 @@ describe('Learning table deep validation', () => {
     assert.equal(conflictError, true, 'Stale version update should fail as a conditional conflict');
   });
 
-  it('allows one conditional update and rejects the stale concurrent attempt', async () => {
+  it('allows one conditional update and rejects the stale concurrent attempt', { skip: !canRun }, async () => {
+    if (!canRun || !TABLE_NAME) {
+      return;
+    }
+
     const initialItem = {
       ...ITEM_KEY,
-      tenantId: TENANT_A,
+      tenantId: TEST_TENANT_ID,
       status: 'ACTIVE',
       version: 1,
       updatedAt: new Date().toISOString(),
@@ -140,7 +163,7 @@ describe('Learning table deep validation', () => {
       new PutCommand({
         TableName: TABLE_NAME,
         Item: initialItem,
-      })
+      }),
     );
 
     const firstUpdate = docClient.send(
@@ -156,7 +179,7 @@ describe('Learning table deep validation', () => {
           ':updatedAt': new Date().toISOString(),
           ':expectedVersion': 1,
         },
-      })
+      }),
     );
 
     const secondUpdate = docClient.send(
@@ -172,7 +195,7 @@ describe('Learning table deep validation', () => {
           ':updatedAt': new Date().toISOString(),
           ':expectedVersion': 1,
         },
-      })
+      }),
     );
 
     const results = await Promise.allSettled([firstUpdate, secondUpdate]);
@@ -186,10 +209,18 @@ describe('Learning table deep validation', () => {
       new GetCommand({
         TableName: TABLE_NAME,
         Key: ITEM_KEY,
-      })
+      }),
     );
 
     assert.ok(finalized.Item, 'Updated item must exist');
     assert.equal(finalized.Item?.version, 2);
   });
 });
+
+if (!canRun) {
+  console.log(
+    'Learning table deep validation skipped: set DYNAMODB_ENDPOINT and DYNAMODB_TABLE_NAME ' +
+      '(e.g. DynamoDB Local) to run conditional-write validation. ' +
+      'This suite never defaults to a production table.',
+  );
+}
