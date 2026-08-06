@@ -26,16 +26,30 @@ function runKey(tenantId: string, accountId: string, runId: string): string {
   return `${tenantId}#${accountId}#${runId}`;
 }
 
+export interface MockEc2CostRepositoryOptions {
+  /** Injectable clock for recommendation first/lastDetectedAt in tests. Run records use wall clock. */
+  recommendationNow?: () => Date;
+}
+
 export class MockEc2CostRepository
   implements Ec2CostRecommendationRepository, Ec2CostAnalysisRunRepository
 {
   private readonly recommendations = new Map<string, Ec2CostRecommendationRecord>();
   private readonly runs = new Map<string, Ec2CostAnalysisRunRecord>();
   private readonly openKeysByRun = new Map<string, Set<string>>();
+  private readonly recommendationNow: () => Date;
+
+  constructor(options: MockEc2CostRepositoryOptions = {}) {
+    this.recommendationNow = options.recommendationNow ?? (() => new Date());
+  }
+
+  private recommendationNowIso(): string {
+    return this.recommendationNow().toISOString();
+  }
 
   async upsertRecommendation(input: UpsertEc2CostRecommendationInput): Promise<Ec2CostRecommendationRecord> {
     const existing = this.recommendations.get(input.findingKey);
-    const now = new Date().toISOString();
+    const now = this.recommendationNowIso();
     if (existing) {
       const updated: Ec2CostRecommendationRecord = {
         ...existing,
