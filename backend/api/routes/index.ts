@@ -75,6 +75,8 @@ import type { Ec2DiscoveryApiService } from '../../services/ec2-discovery-api-se
 import { createAwsAccountRoutes } from './aws-account.routes';
 import { createEc2SecurityRoutes } from './ec2-security.routes';
 import { createEc2Routes } from './ec2.routes';
+import { createEc2CostRoutes } from './ec2-cost.routes';
+import type { Ec2CostAnalysisApiService } from '../../services/ec2-cost-analysis-api-service';
 import {
   type TenantOnboardingService,
 } from '../../services/tenant-onboarding.service';
@@ -94,6 +96,7 @@ export interface ApiDependencies {
   executionApi: ExecutionApiService;
   awsAccountApi: AwsAccountApiService;
   ec2DiscoveryApi: Ec2DiscoveryApiService;
+  ec2CostAnalysisApi: Ec2CostAnalysisApiService;
 }
 
 function recordAuditEvent(
@@ -2120,6 +2123,12 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(
     createEc2Routes({
       ec2DiscoveryApi: deps.ec2DiscoveryApi,
+      membershipRepository: deps.membershipRepository,
+    }),
+  );
+  router.use(
+    createEc2CostRoutes({
+      ec2CostAnalysisApi: deps.ec2CostAnalysisApi,
       membershipRepository: deps.membershipRepository,
     }),
   );

@@ -18,6 +18,10 @@
 - `ec2:DescribeRegions`
 - Execution read probes used by verify/discovery: EC2, RDS, S3, Lambda, CloudFront, Auto Scaling (see permission validator)
 
+### EC2 cost analysis (Engineer 2)
+
+- `cloudwatch:GetMetricData` — bounded performance evidence for cost rules (customer role only; resource `*` where required by CloudWatch)
+
 ### Optional discovery reads
 
 - `iam:ListAccountAliases` — alias metadata; AccessDenied → warning only

@@ -23,6 +23,8 @@ import { createExecutionSimulator, createDefaultExecutionAdapterRegistry, create
 import { ExecutionApiService } from '../../../services/execution-api-service';
 import { AwsAccountApiService } from '../../../services/aws-account-api-service';
 import { Ec2DiscoveryApiService } from '../../../services/ec2-discovery-api-service';
+import { Ec2CostAnalysisApiService } from '../../../services/ec2-cost-analysis-api-service';
+import { MockEc2CostRepository } from '../../../repositories/mock/mock-ec2-cost-repository';
 import { MockAwsAccountRepository } from '../../../repositories/mock/mock-aws-account-repository';
 import { MockEc2CloudResourceRepository } from '../../../repositories/mock/mock-ec2-cloud-resource-repository';
 import { createInMemoryExecutionStores } from '../execution/fixtures';
@@ -155,6 +157,13 @@ export function buildTestApp(): TestAppContext {
     ec2ResourceRepo,
     ec2ResourceRepo,
   );
+  const ec2CostRepo = new MockEc2CostRepository();
+  const ec2CostAnalysisApi = new Ec2CostAnalysisApiService(
+    awsAccountRepository,
+    ec2ResourceRepo,
+    ec2CostRepo,
+    ec2CostRepo,
+  );
 
   const cognitoAlignment = new InMemoryCognitoIdentityAlignment();
   const tenantOnboardingService = createTenantOnboardingService({
@@ -194,6 +203,7 @@ export function buildTestApp(): TestAppContext {
       executionApi,
       awsAccountApi,
       ec2DiscoveryApi,
+      ec2CostAnalysisApi,
     }),
   );
 

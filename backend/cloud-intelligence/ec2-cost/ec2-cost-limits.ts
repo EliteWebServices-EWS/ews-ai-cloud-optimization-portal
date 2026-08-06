@@ -1,0 +1,10 @@
+/** Bounded EC2 cost analysis limits (Engineer 2). */
+export const EC2_COST_DEFAULT_OBSERVATION_DAYS = 14;
+export const EC2_COST_MIN_OBSERVATION_DAYS = 1;
+export const EC2_COST_MAX_OBSERVATION_DAYS = 30;
+export const EC2_COST_DEFAULT_PERIOD_SECONDS = 3600;
+export const EC2_COST_MIN_PERIOD_SECONDS = 300;
+export const EC2_COST_MAX_REGIONS_PER_REQUEST = 3;
+export const EC2_COST_MAX_INSTANCES_PER_REQUEST = 100;
+export const EC2_COST_LONG_RUNNING_MIN_AGE_DAYS = 30;
+export const EC2_COST_MONTHLY_HOURS = 730;
