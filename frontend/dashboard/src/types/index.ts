@@ -229,6 +229,72 @@ export interface OverviewMetrics {
   averageConfidence: number;
 }
 
+export interface Ec2RecommendationItem {
+  title: string;
+  category: 'cost' | 'security' | 'governance' | 'performance';
+  priority: 'Low' | 'Medium' | 'High';
+  impact: string;
+  detail: string;
+}
+
+export interface Ec2DashboardSummary {
+  region: string;
+  totalInstances: number;
+  runningInstances: number;
+  stoppedInstances: number;
+  monthlyCost: number;
+  averageCpuUtilization: number;
+  rightsizingOpportunities: number;
+  securityFindings: number;
+  governanceScore: number;
+  recommendations: Ec2RecommendationItem[];
+}
+
+export interface Ec2CostBreakdown {
+  currentMonthlyCost: number;
+  estimatedSavings: number;
+  computeCost: number;
+  storageCost: number;
+  networkCost: number;
+  otherCost: number;
+}
+
+export interface Ec2InstanceMixFamily {
+  family: string;
+  count: number;
+  share: number;
+  monthlyCost: number;
+}
+
+export interface Ec2InstanceMix {
+  total: number;
+  byFamily: Ec2InstanceMixFamily[];
+}
+
+export interface Ec2SecurityFinding {
+  title: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  count: number;
+  remediation: string;
+}
+
+export interface Ec2RightsizingOpportunity {
+  instanceId: string;
+  currentType: string;
+  recommendedType: string;
+  savings: number;
+  utilization: number;
+}
+
+export interface Ec2ExecutiveSummary {
+  title: string;
+  headline: string;
+  savings: number;
+  securityRisk: string;
+  priority: 'Low' | 'Medium' | 'High';
+  confidence: number;
+}
+
 export type DashboardState = 'idle' | 'loading' | 'success' | 'error' | 'empty';
 
 export interface RunWorkflowRequest {
