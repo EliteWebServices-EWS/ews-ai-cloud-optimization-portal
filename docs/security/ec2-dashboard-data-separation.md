@@ -13,4 +13,4 @@
 
 ## Security engine dependency
 
-`GET /api/v1/recommendations/ec2/security` is process-local and not tenant-safe; the live UI shows **Security analysis unavailable** instead of demo findings.
+`GET /api/v1/recommendations/ec2/security` is tenant-scoped and backed by DynamoDB (same `CLOUD_RESOURCES_TABLE_NAME` partition model as EC2 cost). Analysis uses repository inventory — not client-supplied inventory.

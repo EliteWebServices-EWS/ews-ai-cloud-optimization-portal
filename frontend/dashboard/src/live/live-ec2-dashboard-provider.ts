@@ -1,5 +1,6 @@
 import type { Ec2DashboardDataProvider, Ec2DashboardLoadInput } from '../ec2/ec2-dashboard-provider';
 import type { Ec2DashboardViewModel } from '../ec2/ec2-dashboard-view-model';
+import type { Ec2SecurityFinding } from '../types';
 import {
   isRightsizingCategory,
   maskAccountId,
@@ -9,6 +10,8 @@ import {
   Ec2DashboardApiError,
   fetchEc2CostRecommendations,
   fetchEc2ResourceSummary,
+  fetchEc2SecurityFindings,
+  fetchEc2SecuritySummary,
   listTenantAwsAccounts,
 } from './ec2-dashboard-api';
 
@@ -105,9 +108,65 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
       errors.push(mapped.message);
     }
 
+    let securitySummary;
+    let securityFindingsList: Awaited<ReturnType<typeof fetchEc2SecurityFindings>> | undefined;
+    let securityUnavailable = true;
+    try {
+      securitySummary = await fetchEc2SecuritySummary(accessToken, accountId, region);
+      securityFindingsList = await fetchEc2SecurityFindings(accessToken, accountId, region);
+      securityUnavailable = false;
+    } catch (error) {
+      if (error instanceof Ec2DashboardApiError && error.httpStatus === 404) {
+        warnings.push('Security analysis not yet run for this account and region.');
+      } else {
+        const mapped = mapApiError(error);
+        warnings.push(`Security analysis unavailable: ${mapped.message}`);
+      }
+    }
+
     const totalInstances = countInstances(summary);
     const runningInstances = summary.instancesByState.running ?? 0;
     const stoppedInstances = summary.instancesByState.stopped ?? 0;
+    const securityFindings = (securityFindingsList?.items ?? []).map((item) => ({
+      title: item.message,
+      severity:
+        item.severity === 'critical'
+          ? ('Critical' as const)
+          : item.severity === 'high'
+            ? ('High' as const)
+            : item.severity === 'medium'
+              ? ('Medium' as const)
+              : ('Low' as const),
+      count: 1,
+      remediation: item.recommendation,
+    }));
+
+    const securitySection =
+      securityUnavailable || !securitySummary
+        ? {
+            status: 'NOT_ANALYZED' as const,
+            findings: [] as Ec2SecurityFinding[],
+            message:
+              securitySummary === undefined
+                ? 'Security analysis not yet run. Start analysis from the EC2 security API.'
+                : 'Security analysis unavailable.',
+          }
+        : {
+            status:
+              securitySummary.scoreAvailability === 'partial'
+                ? ('PARTIAL' as const)
+                : ('READY' as const),
+            securityScore: securitySummary.securityScore ?? undefined,
+            governanceScore: securitySummary.governanceScore ?? undefined,
+            complianceScore: securitySummary.complianceScore ?? undefined,
+            riskLevel: securitySummary.riskLevel,
+            findings: securityFindings,
+            message:
+              securitySummary.scoreAvailability === 'partial'
+                ? securitySummary.warnings?.[0]
+                : undefined,
+          };
+
     const rightsizing = (costList?.items ?? [])
       .filter((item) => isRightsizingCategory(item.category))
       .map((item) => ({
@@ -190,12 +249,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
         pricingLabel: pricingStatusLabel('UNAVAILABLE'),
         recommendations: costRecommendations,
       },
-      security: {
-        status: 'UNAVAILABLE',
-        findings: [],
-        message:
-          'Security analysis unavailable — tenant-scoped EC2 security recommendations require Engineer 3 persistence hardening.',
-      },
+      security: securitySection,
       optimization: {
         totalOpportunities: costRecommendations.length,
         idleCandidates: costRecommendations.filter((r) => r.category.includes('IDLE')).length,
@@ -214,7 +268,10 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
             ? 'This account has no EC2 instances. Other EC2 resource types may still appear in inventory.'
             : 'Review cost recommendations and refresh discovery to keep inventory current.',
         savings: validatedMonthlySavings,
-        securityRisk: 'Security analysis unavailable',
+        securityRisk:
+          securitySection.status === 'READY' || securitySection.status === 'PARTIAL'
+            ? `${securitySection.riskLevel ?? 'unknown'} risk · ${securitySummary?.openFindingCount ?? securityFindings.length} open findings`
+            : 'Security analysis not yet run',
         priority: costRecommendations.some((r) => r.severity === 'HIGH') ? 'High' : 'Medium',
         confidence: 0,
       },

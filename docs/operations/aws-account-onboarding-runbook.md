@@ -3,9 +3,18 @@
 ## Discovery check
 
 1. Register account (`POST /api/v1/aws-accounts`).
-2. Configure customer role trust + read policy (see least-privilege doc).
+2. Configure customer role trust + read policy (see least-privilege doc). Grant **all eight** mandatory EC2 discovery actions on the customer integration role (exact actions in `docs/security/ec2-discovery-security.md`).
 3. `POST /api/v1/aws-accounts/:accountId/discovery` as Tenant Owner/Admin/Security Admin.
 4. Confirm `discovery.accountId` matches registration and `metadata.discovery` persisted.
+
+## Updating customer EC2 read permissions
+
+When adding or changing EC2 discovery reads on an existing integration role:
+
+1. Update the customer integration role with the **exact** required actions (no `ec2:*` or `ec2:Describe*` wildcards).
+2. Re-run AWS account **verification** and confirm `permissionReport.allGranted` is true.
+3. Re-run **EC2 discovery** per region.
+4. Run **EC2 security analysis** and validate findings and dashboard scores.
 
 ## Troubleshooting AccessDenied
 

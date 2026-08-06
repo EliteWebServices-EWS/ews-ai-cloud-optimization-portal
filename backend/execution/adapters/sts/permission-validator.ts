@@ -1,6 +1,15 @@
 import { DescribeAutoScalingGroupsCommand } from '@aws-sdk/client-auto-scaling';
 import { ListDistributionsCommand } from '@aws-sdk/client-cloudfront';
-import { DescribeInstancesCommand } from '@aws-sdk/client-ec2';
+import {
+  DescribeAddressesCommand,
+  DescribeImagesCommand,
+  DescribeInstancesCommand,
+  DescribeLaunchTemplatesCommand,
+  DescribeNetworkInterfacesCommand,
+  DescribePlacementGroupsCommand,
+  DescribeSecurityGroupsCommand,
+  DescribeVolumesCommand,
+} from '@aws-sdk/client-ec2';
 import { ListFunctionsCommand } from '@aws-sdk/client-lambda';
 import { DescribeDBInstancesCommand } from '@aws-sdk/client-rds';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
@@ -28,6 +37,27 @@ interface RequiredPermissionCheck {
   run: (clients: AwsExecutionClients) => Promise<unknown>;
 }
 
+export type { RequiredPermissionCheck };
+
+/** Exact IAM actions required for Sprint 14 EC2 regional inventory (matches aws-ec2-discovery-client). */
+export const MANDATORY_EC2_DISCOVERY_IAM_ACTIONS = [
+  'ec2:DescribeInstances',
+  'ec2:DescribeImages',
+  'ec2:DescribeVolumes',
+  'ec2:DescribeAddresses',
+  'ec2:DescribeNetworkInterfaces',
+  'ec2:DescribePlacementGroups',
+  'ec2:DescribeLaunchTemplates',
+  'ec2:DescribeSecurityGroups',
+] as const;
+
+function requireEc2(clients: AwsExecutionClients) {
+  if (!clients.ec2) {
+    throw new Error('EC2 client not configured');
+  }
+  return clients.ec2;
+}
+
 /**
  * One lightweight, read-only call per AWS service — the minimum permission
  * a customer's cross-account role must grant for SISU'M to operate against
@@ -35,14 +65,52 @@ interface RequiredPermissionCheck {
  * clear per-service pass/fail report instead of a single opaque failure
  * during the first real execution.
  */
-const REQUIRED_PERMISSION_CHECKS: RequiredPermissionCheck[] = [
+export const REQUIRED_PERMISSION_CHECKS: RequiredPermissionCheck[] = [
   {
     service: 'ec2',
     action: 'ec2:DescribeInstances',
-    run: (clients) => {
-      if (!clients.ec2) throw new Error('EC2 client not configured');
-      return clients.ec2.send(new DescribeInstancesCommand({}));
-    },
+    run: (clients) => requireEc2(clients).send(new DescribeInstancesCommand({ MaxResults: 5 })),
+  },
+  {
+    service: 'ec2',
+    action: 'ec2:DescribeImages',
+    run: (clients) =>
+      requireEc2(clients).send(
+        new DescribeImagesCommand({ Owners: ['self'], MaxResults: 5 }),
+      ),
+  },
+  {
+    service: 'ec2',
+    action: 'ec2:DescribeVolumes',
+    run: (clients) => requireEc2(clients).send(new DescribeVolumesCommand({ MaxResults: 5 })),
+  },
+  {
+    service: 'ec2',
+    action: 'ec2:DescribeAddresses',
+    run: (clients) => requireEc2(clients).send(new DescribeAddressesCommand({})),
+  },
+  {
+    service: 'ec2',
+    action: 'ec2:DescribeNetworkInterfaces',
+    run: (clients) =>
+      requireEc2(clients).send(new DescribeNetworkInterfacesCommand({ MaxResults: 5 })),
+  },
+  {
+    service: 'ec2',
+    action: 'ec2:DescribePlacementGroups',
+    run: (clients) => requireEc2(clients).send(new DescribePlacementGroupsCommand({})),
+  },
+  {
+    service: 'ec2',
+    action: 'ec2:DescribeLaunchTemplates',
+    run: (clients) =>
+      requireEc2(clients).send(new DescribeLaunchTemplatesCommand({ MaxResults: 5 })),
+  },
+  {
+    service: 'ec2',
+    action: 'ec2:DescribeSecurityGroups',
+    run: (clients) =>
+      requireEc2(clients).send(new DescribeSecurityGroupsCommand({ MaxResults: 5 })),
   },
   {
     service: 'autoscaling',

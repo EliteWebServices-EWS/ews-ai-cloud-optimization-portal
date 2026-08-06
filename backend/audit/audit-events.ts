@@ -100,6 +100,12 @@ export const AUDIT_EVENTS = {
   EC2_COST_ANALYSIS_FAILED: 'ec2.cost_analysis_failed',
   EC2_COST_RECOMMENDATIONS_LISTED: 'ec2.cost_recommendations_listed',
   EC2_COST_RECOMMENDATION_VIEWED: 'ec2.cost_recommendation_viewed',
+  EC2_SECURITY_ANALYSIS_STARTED: 'ec2.security_analysis_started',
+  EC2_SECURITY_ANALYSIS_SUCCEEDED: 'ec2.security_analysis_succeeded',
+  EC2_SECURITY_ANALYSIS_PARTIAL: 'ec2.security_analysis_partial',
+  EC2_SECURITY_ANALYSIS_FAILED: 'ec2.security_analysis_failed',
+  EC2_SECURITY_FINDINGS_LISTED: 'ec2.security_findings_listed',
+  EC2_SECURITY_SUMMARY_VIEWED: 'ec2.security_summary_viewed',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];

@@ -5,6 +5,26 @@ export interface Ec2TagDto {
   value: string;
 }
 
+export interface Ec2InstanceMetadataOptionsDto {
+  httpTokens?: string;
+  httpEndpoint?: string;
+  httpPutResponseHopLimit?: number;
+  instanceMetadataTags?: string;
+}
+
+export interface Ec2InstanceSecurityGroupDto {
+  groupId: string;
+  groupName?: string;
+  inboundRules: Array<{
+    protocol?: string;
+    fromPort?: number;
+    toPort?: number;
+    ipv4Ranges?: string[];
+    ipv6Ranges?: string[];
+    prefixListIds?: string[];
+  }>;
+}
+
 export interface Ec2InstanceDto {
   instanceId: string;
   instanceType?: string;
@@ -25,6 +45,8 @@ export interface Ec2InstanceDto {
   launchTime?: string;
   imageId?: string;
   keyName?: string;
+  metadataOptions?: Ec2InstanceMetadataOptionsDto;
+  securityGroups?: Ec2InstanceSecurityGroupDto[];
   tags: Ec2TagDto[];
 }
 

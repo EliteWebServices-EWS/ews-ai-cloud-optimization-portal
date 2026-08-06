@@ -151,3 +151,70 @@ export async function fetchEc2CostRecommendations(
   );
   return parseEnvelope<Ec2CostListApi>(response);
 }
+
+export interface Ec2SecurityFindingApi {
+  findingId: string;
+  resourceId: string;
+  category: string;
+  severity: string;
+  status: string;
+  message: string;
+  recommendation: string;
+  check: string;
+}
+
+export interface Ec2SecuritySummaryApi {
+  scope: 'account' | 'region';
+  region?: string;
+  regionsIncluded: string[];
+  scoreAvailability: 'complete' | 'partial' | 'unavailable';
+  securityScore: number | null;
+  governanceScore: number | null;
+  complianceScore: number | null;
+  riskLevel: string;
+  instancesAnalyzed: number;
+  openFindingCount: number;
+  findingsBySeverity: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  analyzedAt: string | null;
+  warnings?: string[];
+}
+
+export async function fetchEc2SecuritySummary(
+  accessToken: string,
+  accountId: string,
+  region?: string,
+): Promise<Ec2SecuritySummaryApi> {
+  const params = new URLSearchParams({ accountId });
+  if (region?.trim()) {
+    params.set('region', region.trim());
+  }
+  const response = await authorizedFetch(
+    accessToken,
+    `/security/ec2/summary?${params.toString()}`,
+  );
+  return parseEnvelope<Ec2SecuritySummaryApi>(response);
+}
+
+export async function fetchEc2SecurityFindings(
+  accessToken: string,
+  accountId: string,
+  region: string,
+  limit = 50,
+): Promise<{ items: Ec2SecurityFindingApi[] }> {
+  const params = new URLSearchParams({
+    accountId,
+    region,
+    status: 'OPEN',
+    limit: String(limit),
+  });
+  const response = await authorizedFetch(
+    accessToken,
+    `/recommendations/ec2/security?${params.toString()}`,
+  );
+  return parseEnvelope<{ items: Ec2SecurityFindingApi[] }>(response);
+}

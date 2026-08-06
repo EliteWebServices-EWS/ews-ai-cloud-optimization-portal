@@ -109,7 +109,7 @@ describe('LiveEc2DashboardDataProvider', () => {
     expect(JSON.stringify(vm)).not.toContain('DEMO DATA');
   });
 
-  it('marks security as unavailable (no demo findings)', async () => {
+  it('marks security as not analyzed when summary API returns 404', async () => {
     vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
       totalResources: 0,
       instancesByState: {},
@@ -130,8 +130,82 @@ describe('LiveEc2DashboardDataProvider', () => {
       accessToken: 'token',
       accountId: '999988887777',
     });
-    expect(vm.security.status).toBe('UNAVAILABLE');
+    expect(vm.security.status).toBe('NOT_ANALYZED');
     expect(vm.security.findings).toHaveLength(0);
+  });
+
+  it('renders account-wide aggregated open finding counts from live security summary', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 2,
+      instancesByState: { running: 2 },
+      instancesByRegion: { 'us-east-1': 2 },
+      instancesByInstanceType: { 't3.micro': 2 },
+      resourcesByType: { INSTANCE: 2 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [],
+      savingsSummary: { validatedMonthlySavings: 0, sampleEstimateMonthlySavings: 0, currency: 'USD' },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockResolvedValue({
+      scope: 'account',
+      regionsIncluded: ['eu-west-1', 'us-east-1'],
+      scoreAvailability: 'complete',
+      securityScore: 75,
+      governanceScore: 80,
+      complianceScore: 77,
+      riskLevel: 'medium',
+      instancesAnalyzed: 4,
+      openFindingCount: 5,
+      findingsBySeverity: { critical: 1, high: 2, medium: 1, low: 1 },
+      analyzedAt: '2026-02-01T00:00:00.000Z',
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecurityFindings').mockResolvedValue({ items: [] });
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+    expect(vm.security.status).toBe('READY');
+    expect(vm.executive.securityRisk).toContain('5 open findings');
+    expect(vm.accountIdSuffix).toMatch(/••••/);
+    expect(vm.accountIdSuffix).not.toContain('111122223333');
+  });
+
+  it('renders PARTIAL security when scoreAvailability is partial', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [],
+      savingsSummary: { validatedMonthlySavings: 0, sampleEstimateMonthlySavings: 0, currency: 'USD' },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockResolvedValue({
+      scope: 'region',
+      region: 'us-east-1',
+      regionsIncluded: ['us-east-1'],
+      scoreAvailability: 'partial',
+      securityScore: 70,
+      governanceScore: 70,
+      complianceScore: 70,
+      riskLevel: 'medium',
+      instancesAnalyzed: 1,
+      openFindingCount: 0,
+      findingsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+      analyzedAt: '2026-02-01T00:00:00.000Z',
+      warnings: ['partial region coverage'],
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecurityFindings').mockResolvedValue({ items: [] });
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+    });
+    expect(vm.security.status).toBe('PARTIAL');
   });
 });
 

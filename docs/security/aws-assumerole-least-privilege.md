@@ -16,7 +16,22 @@
 
 - `sts:GetCallerIdentity`
 - `ec2:DescribeRegions`
-- Execution read probes used by verify/discovery: EC2, RDS, S3, Lambda, CloudFront, Auto Scaling (see permission validator)
+- Execution read probes used by verify/discovery: all eight mandatory EC2 discovery actions listed below, plus RDS, S3, Lambda, CloudFront, Auto Scaling (see `REQUIRED_PERMISSION_CHECKS` in the permission validator)
+
+### EC2 inventory discovery (customer role only)
+
+Read-only actions used by the EC2 discovery adapter (grant on the customer integration role, not the platform Lambda):
+
+- `ec2:DescribeInstances`
+- `ec2:DescribeImages`
+- `ec2:DescribeVolumes`
+- `ec2:DescribeAddresses`
+- `ec2:DescribeNetworkInterfaces`
+- `ec2:DescribePlacementGroups`
+- `ec2:DescribeLaunchTemplates`
+- `ec2:DescribeSecurityGroups`
+
+Verification probes **each** action below individually during account verify; grant the full list so regional inventory and security analysis evidence succeed.
 
 ### EC2 cost analysis (Engineer 2)
 
