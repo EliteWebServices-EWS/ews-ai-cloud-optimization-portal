@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SISU'M EC2 Demo Dashboard | EWS Cloud Optimization</title>
+  <link rel="icon" href="/assets/logo/ews-logo-primary.png">
+  <link rel="stylesheet" href="./src/styles/brand-colors.css">
+  <link rel="stylesheet" href="./src/styles/dashboard.css">
+</head>
+<body>
+  <header class="dashboard-header">
+    <a href="/index.html" class="brand-link">
+      <img src="/assets/logo/ews-logo-primary.png" alt="EWS" width="36" height="36">
+      <div>
+        <strong>SISU'M</strong>
+        <span>EC2 Demonstration Dashboard</span>
+      </div>
+    </a>
+    <nav class="dashboard-nav">
+      <a href="/dashboard/demo.html" aria-current="page">EC2 Demo</a>
+      <a href="/dashboard/index.html">Sign in for live data</a>
+    </nav>
+  </header>
+
+  <main class="dashboard-layout">
+    <div id="ec2-dashboard-chrome"></div>
+    <div id="ec2-status-banner" class="ec2-status-banner" hidden></div>
+
+    <div class="hero-actions ec2-demo-actions">
+      <button id="ec2-export-json-btn" type="button" class="btn-secondary">Download SAMPLE REPORT (JSON)</button>
+    </div>
+
+    <div class="dashboard-grid">
+      <div id="ec2-summary-panel" class="panel-slot"></div>
+      <div id="ec2-executive-panel" class="panel-slot"></div>
+      <div id="ec2-cost-panel" class="panel-slot"></div>
+      <div id="ec2-mix-panel" class="panel-slot"></div>
+      <div id="ec2-security-panel" class="panel-slot"></div>
+      <div id="ec2-rightsizing-panel" class="panel-slot panel-wide"></div>
+    </div>
+
+    <p class="dashboard-footer">Demonstration data only · No AWS account connected · No authentication required</p>
+  </main>
+
+  <script type="module" src="./src/demo-main.ts"></script>
+</body>
+</html>

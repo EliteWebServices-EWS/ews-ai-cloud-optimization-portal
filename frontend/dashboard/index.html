@@ -32,12 +32,12 @@
       </div>
     </a>
     <nav class="dashboard-nav">
+      <a href="/dashboard/demo.html">EC2 Demo</a>
       <a href="/dashboard/index.html" aria-current="page">Decision Dashboard</a>
       <a href="/dashboard/reports.html">Reports</a>
     </nav>
     <div class="dashboard-session">
   <span id="authenticated-user" class="authenticated-user"></span>
-  <span class="demo-badge">Demo Mode · Mock Provider</span>
   <button id="logout-btn" type="button" class="btn-secondary">
     Sign Out
   </button>
@@ -45,6 +45,32 @@
   </header>
 
   <main class="dashboard-layout">
+    <section class="ec2-live-section" aria-labelledby="ec2-live-heading">
+      <h2 id="ec2-live-heading" class="sr-only">Live EC2 Decision Dashboard</h2>
+      <div class="ec2-live-controls">
+        <label for="ec2-account-select">AWS account</label>
+        <select id="ec2-account-select" aria-label="AWS account"></select>
+        <label for="ec2-region-select">Region</label>
+        <select id="ec2-region-select" aria-label="Region">
+          <option value="us-east-1" selected>us-east-1</option>
+          <option value="us-west-2">us-west-2</option>
+          <option value="eu-west-1">eu-west-1</option>
+        </select>
+        <button id="ec2-retry-btn" type="button" class="btn-secondary">Retry EC2 load</button>
+        <button id="ec2-export-json-btn" type="button" class="btn-secondary">Export EC2 JSON report</button>
+      </div>
+      <div id="ec2-dashboard-chrome"></div>
+      <div id="ec2-status-banner" class="ec2-status-banner" hidden></div>
+      <div class="dashboard-grid ec2-grid">
+        <div id="ec2-summary-panel" class="panel-slot"></div>
+        <div id="ec2-executive-panel" class="panel-slot"></div>
+        <div id="ec2-cost-panel" class="panel-slot"></div>
+        <div id="ec2-mix-panel" class="panel-slot"></div>
+        <div id="ec2-security-panel" class="panel-slot"></div>
+        <div id="ec2-rightsizing-panel" class="panel-slot panel-wide"></div>
+      </div>
+    </section>
+
     <section class="dashboard-hero">
       <div>
         <h1>Decision Dashboard</h1>

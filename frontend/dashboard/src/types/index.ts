@@ -248,6 +248,11 @@ export interface Ec2DashboardSummary {
   securityFindings: number;
   governanceScore: number;
   recommendations: Ec2RecommendationItem[];
+  /** When set, overrides formatted monthly cost display. */
+  monthlyCostLabel?: string;
+  monthlyCostUnavailable?: boolean;
+  averageCpuLabel?: string;
+  governanceLabel?: string;
 }
 
 export interface Ec2CostBreakdown {
@@ -257,6 +262,9 @@ export interface Ec2CostBreakdown {
   storageCost: number;
   networkCost: number;
   otherCost: number;
+  savingsLabel?: string;
+  /** When false, only headline costs are shown (live partial pricing). */
+  showBreakdownDetails?: boolean;
 }
 
 export interface Ec2InstanceMixFamily {

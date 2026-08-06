@@ -10,10 +10,25 @@ export function renderEc2CostBreakdownCard(
   breakdown: Ec2CostBreakdown
 ): void {
   const total = breakdown.currentMonthlyCost;
-  const computeShare = (breakdown.computeCost / total) * 100;
-  const storageShare = (breakdown.storageCost / total) * 100;
-  const networkShare = (breakdown.networkCost / total) * 100;
-  const otherShare = (breakdown.otherCost / total) * 100;
+  const showDetails = breakdown.showBreakdownDetails !== false && total > 0;
+  const computeShare = showDetails ? (breakdown.computeCost / total) * 100 : 0;
+  const storageShare = showDetails ? (breakdown.storageCost / total) * 100 : 0;
+  const networkShare = showDetails ? (breakdown.networkCost / total) * 100 : 0;
+  const otherShare = showDetails ? (breakdown.otherCost / total) * 100 : 0;
+
+  const breakdownHtml = showDetails
+    ? `
+      <ul class="breakdown-list">
+        <li><span>Compute</span><strong>${escapeHtml(formatCurrency(breakdown.computeCost))}</strong><em>${computeShare.toFixed(0)}%</em></li>
+        <li><span>Storage</span><strong>${escapeHtml(formatCurrency(breakdown.storageCost))}</strong><em>${storageShare.toFixed(0)}%</em></li>
+        <li><span>Network</span><strong>${escapeHtml(formatCurrency(breakdown.networkCost))}</strong><em>${networkShare.toFixed(0)}%</em></li>
+        <li><span>Other</span><strong>${escapeHtml(formatCurrency(breakdown.otherCost))}</strong><em>${otherShare.toFixed(0)}%</em></li>
+      </ul>`
+    : '<p class="empty-note">No live monthly cost breakdown available for this account.</p>';
+
+  const savingsNote = breakdown.savingsLabel
+    ? `<p class="metric-note">${escapeHtml(breakdown.savingsLabel)}</p>`
+    : '';
 
   container.innerHTML = `
     <section class="dashboard-card" aria-labelledby="ec2-cost-heading">
@@ -28,13 +43,8 @@ export function renderEc2CostBreakdownCard(
           <div class="metric-value">${escapeHtml(formatCurrency(breakdown.estimatedSavings))}</div>
         </article>
       </div>
-
-      <ul class="breakdown-list">
-        <li><span>Compute</span><strong>${escapeHtml(formatCurrency(breakdown.computeCost))}</strong><em>${computeShare.toFixed(0)}%</em></li>
-        <li><span>Storage</span><strong>${escapeHtml(formatCurrency(breakdown.storageCost))}</strong><em>${storageShare.toFixed(0)}%</em></li>
-        <li><span>Network</span><strong>${escapeHtml(formatCurrency(breakdown.networkCost))}</strong><em>${networkShare.toFixed(0)}%</em></li>
-        <li><span>Other</span><strong>${escapeHtml(formatCurrency(breakdown.otherCost))}</strong><em>${otherShare.toFixed(0)}%</em></li>
-      </ul>
+      ${savingsNote}
+      ${breakdownHtml}
     </section>
   `;
 }
