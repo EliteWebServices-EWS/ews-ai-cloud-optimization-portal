@@ -9,6 +9,9 @@ export function renderEc2ExecutiveSummaryCard(
   container: HTMLElement,
   summary: Ec2ExecutiveSummary
 ): void {
+  const confidenceDisplay =
+    summary.confidence > 0 ? `${summary.confidence}%` : 'Not analyzed';
+
   container.innerHTML = `
     <section class="dashboard-card" aria-labelledby="ec2-executive-heading">
       <h3 id="ec2-executive-heading" class="card-title">Executive Summary</h3>
@@ -18,7 +21,7 @@ export function renderEc2ExecutiveSummaryCard(
       <dl class="report-summary-grid">
         <div><dt>Projected Savings</dt><dd>${escapeHtml(formatCurrency(summary.savings))}</dd></div>
         <div><dt>Security Risk</dt><dd>${escapeHtml(summary.securityRisk)}</dd></div>
-        <div><dt>Confidence</dt><dd>${summary.confidence}%</dd></div>
+        <div><dt>Confidence</dt><dd>${confidenceDisplay}</dd></div>
       </dl>
     </section>
   `;

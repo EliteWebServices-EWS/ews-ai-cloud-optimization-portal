@@ -24,8 +24,23 @@ export function renderEc2SummaryCard(
         .join('')
     : '<li class="empty-note">No active EC2 recommendations.</li>';
 
+  const monthlyCostDisplay = summary.monthlyCostUnavailable
+    ? escapeHtml(summary.monthlyCostLabel ?? 'Unavailable')
+    : escapeHtml(formatCurrency(summary.monthlyCost));
+
+  const avgCpuDisplay = summary.averageCpuLabel
+    ? escapeHtml(summary.averageCpuLabel)
+    : Number.isFinite(summary.averageCpuUtilization)
+      ? `${summary.averageCpuUtilization.toFixed(1)}%`
+      : 'Not analyzed';
+
+  const governanceDisplay = summary.governanceLabel
+    ? escapeHtml(summary.governanceLabel)
+    : Number.isFinite(summary.governanceScore)
+      ? `${summary.governanceScore}/100`
+      : 'Unavailable';
+
   container.innerHTML = `
-    <section class="dashboard-card ec2-summary-card" aria-labelledby="ec2-summary-heading">
       <h3 id="ec2-summary-heading" class="card-title">EC2 Summary</h3>
       <div class="ec2-summary-grid">
         <div>
@@ -47,11 +62,11 @@ export function renderEc2SummaryCard(
       </div>
 
       <dl class="detail-list compact">
-        <div><dt>Monthly Cost</dt><dd>${escapeHtml(formatCurrency(summary.monthlyCost))}</dd></div>
-        <div><dt>Avg CPU</dt><dd>${summary.averageCpuUtilization.toFixed(1)}%</dd></div>
+        <div><dt>Monthly Cost</dt><dd>${monthlyCostDisplay}${summary.monthlyCostLabel && !summary.monthlyCostUnavailable ? `<small>${escapeHtml(summary.monthlyCostLabel)}</small>` : ''}</dd></div>
+        <div><dt>Avg CPU</dt><dd>${avgCpuDisplay}</dd></div>
         <div><dt>Rightsizing</dt><dd>${summary.rightsizingOpportunities} opportunities</dd></div>
         <div><dt>Security</dt><dd>${summary.securityFindings} findings</dd></div>
-        <div><dt>Governance</dt><dd>${summary.governanceScore}/100</dd></div>
+        <div><dt>Governance</dt><dd>${governanceDisplay}</dd></div>
       </dl>
 
       <div class="recommendation-list compact">

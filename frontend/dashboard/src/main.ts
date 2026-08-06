@@ -1,11 +1,14 @@
 /**
- * SISU'M Decision Dashboard entry point.
+ * SISU'M Decision Dashboard entry point — authenticated live EC2 + workflow analysis.
  */
 
 import { DecisionDashboard } from './pages/DecisionDashboard';
-import { requireAuthentication } from './auth/guard';
+import { Ec2DashboardController } from './pages/Ec2DashboardController';
+import { requireAuthentication, getOrRefreshAccessToken } from './auth/guard';
 import { attachLogoutButton } from './auth/logout';
 import { getUserEmail, getUserGroups } from './auth/session';
+import { LiveEc2DashboardDataProvider } from './live/live-ec2-dashboard-provider';
+import { listTenantAwsAccounts } from './live/ec2-dashboard-api';
 import './styles/brand-colors.css';
 import './styles/dashboard.css';
 
@@ -30,9 +33,7 @@ function displayAuthenticatedUser(): void {
   const roles = getUserGroups();
 
   userElement.textContent =
-    roles.length > 0
-      ? `${email} · ${roles.join(', ')}`
-      : email;
+    roles.length > 0 ? `${email} · ${roles.join(', ')}` : email;
 }
 
 async function initializeDashboard(): Promise<void> {
@@ -44,31 +45,100 @@ async function initializeDashboard(): Promise<void> {
   displayAuthenticatedUser();
   attachLogoutButton();
 
-  const dashboard = new DecisionDashboard({
-    stateMessage: getRequiredElement('state-message'),
-    overview: getRequiredElement('overview-panel'),
-    progress: getRequiredElement('progress-panel'),
-    candidate: getRequiredElement('candidate-panel'),
-    evidence: getRequiredElement('evidence-panel'),
-    governance: getRequiredElement('governance-panel'),
-    financial: getRequiredElement('financial-panel'),
-    confidence: getRequiredElement('confidence-panel'),
-    recommendation: getRequiredElement('recommendation-panel'),
-    verification: getRequiredElement('verification-panel'),
-    analyzeButton:
-      getRequiredElement<HTMLButtonElement>('analyze-btn'),
-    candidateSelect:
-      getRequiredElement<HTMLSelectElement>('candidate-select'),
+  let selectedAccountId: string | undefined;
+  const accountSelect = document.getElementById('ec2-account-select') as HTMLSelectElement | null;
+  const regionSelect = document.getElementById('ec2-region-select') as HTMLSelectElement | null;
+  const retryButton = document.getElementById('ec2-retry-btn') as HTMLButtonElement | null;
+  const exportButton = document.getElementById('ec2-export-json-btn') as HTMLButtonElement | null;
+
+  const liveProvider = new LiveEc2DashboardDataProvider();
+  const ec2Controller = new Ec2DashboardController({
+    provider: liveProvider,
+    panels: {
+      chrome: getRequiredElement('ec2-dashboard-chrome'),
+      statusBanner: getRequiredElement('ec2-status-banner'),
+      summary: getRequiredElement('ec2-summary-panel'),
+      cost: getRequiredElement('ec2-cost-panel'),
+      instanceMix: getRequiredElement('ec2-mix-panel'),
+      security: getRequiredElement('ec2-security-panel'),
+      rightsizing: getRequiredElement('ec2-rightsizing-panel'),
+      executive: getRequiredElement('ec2-executive-panel'),
+    },
+    getAccessToken: () => getOrRefreshAccessToken(),
+    getAccountId: () => selectedAccountId ?? accountSelect?.value ?? undefined,
+    getRegion: () => regionSelect?.value ?? 'us-east-1',
   });
+
+  retryButton?.addEventListener('click', () => {
+    void ec2Controller.retry();
+  });
+
+  exportButton?.addEventListener('click', () => {
+    const json = ec2Controller.exportJsonReport();
+    if (!json) {
+      return;
+    }
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'ec2-decision-report.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  });
+
+  if (accountSelect) {
+    try {
+      const token = await getOrRefreshAccessToken();
+      if (token) {
+        const accounts = await listTenantAwsAccounts(token);
+        accountSelect.innerHTML = '';
+        for (const account of accounts.accounts) {
+          const option = document.createElement('option');
+          option.value = account.accountId;
+          option.textContent = account.displayName
+            ? `${account.displayName} (••••${account.accountId.slice(-4)})`
+            : `Account ••••${account.accountId.slice(-4)}`;
+          accountSelect.appendChild(option);
+        }
+        selectedAccountId = accounts.accounts[0]?.accountId;
+      }
+    } catch {
+      accountSelect.innerHTML = '<option value="">Connect an AWS account</option>';
+    }
+    accountSelect.addEventListener('change', () => {
+      selectedAccountId = accountSelect.value || undefined;
+      void ec2Controller.load();
+    });
+  }
+
+  regionSelect?.addEventListener('change', () => {
+    void ec2Controller.load();
+  });
+
+  const dashboard = new DecisionDashboard(
+    {
+      stateMessage: getRequiredElement('state-message'),
+      overview: getRequiredElement('overview-panel'),
+      progress: getRequiredElement('progress-panel'),
+      candidate: getRequiredElement('candidate-panel'),
+      evidence: getRequiredElement('evidence-panel'),
+      governance: getRequiredElement('governance-panel'),
+      financial: getRequiredElement('financial-panel'),
+      confidence: getRequiredElement('confidence-panel'),
+      recommendation: getRequiredElement('recommendation-panel'),
+      verification: getRequiredElement('verification-panel'),
+      analyzeButton: getRequiredElement<HTMLButtonElement>('analyze-btn'),
+      candidateSelect: getRequiredElement<HTMLSelectElement>('candidate-select'),
+    },
+    ec2Controller,
+  );
 
   await dashboard.initialize();
 }
 
 void initializeDashboard().catch((error: unknown) => {
-  if (
-    error instanceof Error &&
-    error.message === 'Redirecting to sign-in.'
-  ) {
+  if (error instanceof Error && error.message === 'Redirecting to sign-in.') {
     return;
   }
 

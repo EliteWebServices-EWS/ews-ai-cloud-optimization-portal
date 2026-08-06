@@ -24,6 +24,7 @@ export default defineConfig({
           __dirname,
           'dashboard/auth/callback.html'
         ),
+        demo: path.resolve(__dirname, 'dashboard/demo.html'),
       },
     },
   },

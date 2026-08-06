@@ -1,3 +1,5 @@
+@import './brand-colors.css';
+
 html.auth-checking body {
   visibility: hidden;
 }
@@ -5,8 +7,6 @@ html.auth-checking body {
 html.authenticated body {
   visibility: visible;
 }
-
-@import './brand-colors.css';
 
 *,
 *::before,
@@ -628,4 +628,48 @@ code {
   .dashboard-nav {
     display: none;
   }
+}
+
+.ec2-source-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.ec2-source-badge.demo-badge {
+  background: #3b2f00;
+  color: #fcd34d;
+  border: 1px solid #ca8a04;
+}
+
+.ec2-source-badge.live-badge {
+  background: #052e16;
+  color: #86efac;
+  border: 1px solid #16a34a;
+}
+
+.ec2-demo-notice,
+.ec2-status-banner {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ec2-live-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.ec2-live-section {
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
