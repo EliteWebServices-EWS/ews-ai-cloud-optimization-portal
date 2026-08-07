@@ -43,6 +43,39 @@ Parameters:
     Default: sisum-audit-production
     Description: DynamoDB audit table name for throttling alarms.
 
+  Ec2JobQueueName:
+    Type: String
+    Default: sisum-ec2-intelligence-production
+    Description: Name of the primary SQS queue used for asynchronous EC2 jobs.
+
+  Ec2JobDeadLetterQueueName:
+    Type: String
+    Default: sisum-ec2-intelligence-dlq-production
+    Description: Name of the SQS dead-letter queue used for failed EC2 jobs.
+
+  Ec2JobProducerFunctionName:
+    Type: String
+    Default: sisum-backend-production
+    Description: Lambda function that writes EC2 job.queued audit events.
+
+  Ec2JobWorkerFunctionName:
+    Type: String
+    Default: sisum-ec2-job-worker-production
+    Description: Lambda function that consumes asynchronous EC2 jobs.
+
+  Ec2JobQueueAgeThresholdSeconds:
+    Type: Number
+    Default: 900
+    MinValue: 60
+    Description: Maximum permitted age of the oldest queued EC2 job.
+
+  Ec2JobRetryRateThresholdPercent:
+    Type: Number
+    Default: 25
+    MinValue: 1
+    MaxValue: 100
+    Description: Retry percentage that triggers an EC2 job reliability alarm.
+
   NotificationEmail:
     Type: String
     Default: ""
@@ -419,6 +452,236 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  Ec2JobQueuedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobProducerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_queued" }'
+      MetricTransformations:
+        - MetricName: JobQueued
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobStartedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_started" }'
+      MetricTransformations:
+        - MetricName: JobStarted
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobRetryMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_retry" }'
+      MetricTransformations:
+        - MetricName: JobRetried
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobPartialMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_partial" }'
+      MetricTransformations:
+        - MetricName: JobPartial
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_failed" }'
+      MetricTransformations:
+        - MetricName: JobFailed
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobCompletedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_completed" }'
+      MetricTransformations:
+        - MetricName: JobCompleted
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobDlqMovedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_dlq_moved" }'
+      MetricTransformations:
+        - MetricName: JobDlqMoved
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobRedriveCompletedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.job_redrive_completed" }'
+      MetricTransformations:
+        - MetricName: JobRedriveCompleted
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobTimeoutMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2JobWorkerFunctionName}"
+      FilterPattern: '"Task timed out"'
+      MetricTransformations:
+        - MetricName: JobTimeouts
+          MetricNamespace: SISUM/EC2Jobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2JobDlqMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-job-dlq-messages
+      AlarmDescription: EC2 job dead-letter queue contains one or more messages.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !Ref Ec2JobDeadLetterQueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref MonitoringAlarmTopic]
+      OKActions: [!Ref MonitoringAlarmTopic]
+
+  Ec2JobQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-job-queue-age
+      AlarmDescription: The oldest EC2 job has exceeded the allowed queue age.
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !Ref Ec2JobQueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: !Ref Ec2JobQueueAgeThresholdSeconds
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref MonitoringAlarmTopic]
+      OKActions: [!Ref MonitoringAlarmTopic]
+
+  Ec2JobWorkerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-job-worker-errors
+      AlarmDescription: EC2 job worker reported one or more Lambda errors.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Ec2JobWorkerFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref MonitoringAlarmTopic]
+      OKActions: [!Ref MonitoringAlarmTopic]
+
+  Ec2JobWorkerThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-job-worker-throttles
+      AlarmDescription: EC2 job worker was throttled one or more times.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Ec2JobWorkerFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref MonitoringAlarmTopic]
+      OKActions: [!Ref MonitoringAlarmTopic]
+
+  Ec2JobTimeoutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-job-worker-timeouts
+      AlarmDescription: EC2 job worker timed out while processing a job.
+      Namespace: SISUM/EC2Jobs
+      MetricName: JobTimeouts
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref MonitoringAlarmTopic]
+      OKActions: [!Ref MonitoringAlarmTopic]
+
+  Ec2JobRetryRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-job-retry-rate
+      AlarmDescription: EC2 job retries exceeded the permitted percentage of started jobs.
+      Metrics:
+        - Id: retries
+          MetricStat:
+            Metric:
+              Namespace: SISUM/EC2Jobs
+              MetricName: JobRetried
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: started
+          MetricStat:
+            Metric:
+              Namespace: SISUM/EC2Jobs
+              MetricName: JobStarted
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: retryRate
+          Expression: "IF(started > 0, 100 * retries / started, 0)"
+          Label: Retry rate
+          ReturnData: true
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref Ec2JobRetryRateThresholdPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref MonitoringAlarmTopic]
+      OKActions: [!Ref MonitoringAlarmTopic]
+
   ProductionMonitoringDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
@@ -770,6 +1033,100 @@ Resources:
           ]
         }
 
+  Ec2JobMonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub SISUM-${Environment}-EC2-Jobs
+      DashboardBody: !Sub |
+        {
+          "start": "-PT24H",
+          "periodOverride": "inherit",
+          "widgets": [
+            {
+              "type": "text", "x": 0, "y": 0, "width": 24, "height": 2,
+              "properties": { "markdown": "# EC2 asynchronous job operations\\n**Queue:** ${Ec2JobQueueName}  \\n**DLQ:** ${Ec2JobDeadLetterQueueName}  \\n**Worker:** ${Ec2JobWorkerFunctionName}" }
+            },
+            {
+              "type": "metric", "x": 0, "y": 2, "width": 12, "height": 6,
+              "properties": {
+                "title": "Queue Depth and Oldest Message Age", "region": "${AWS::Region}", "view": "timeSeries", "period": 60,
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${Ec2JobQueueName}", { "stat": "Maximum", "label": "Queue Depth" } ],
+                  [ ".", "ApproximateAgeOfOldestMessage", ".", ".", { "stat": "Maximum", "label": "Oldest Message Age (seconds)", "yAxis": "right" } ],
+                  [ ".", "ApproximateNumberOfMessagesVisible", "QueueName", "${Ec2JobDeadLetterQueueName}", { "stat": "Maximum", "label": "DLQ Depth" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 2, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda Errors, Duration, and Throttles", "region": "${AWS::Region}", "view": "timeSeries", "period": 300,
+                "metrics": [
+                  [ "AWS/Lambda", "Errors", "FunctionName", "${Ec2JobWorkerFunctionName}", { "stat": "Sum", "label": "Errors" } ],
+                  [ ".", "Duration", ".", ".", { "stat": "Average", "label": "Average Duration (ms)", "yAxis": "right" } ],
+                  [ ".", "Throttles", ".", ".", { "stat": "Sum", "label": "Throttles" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 8, "width": 12, "height": 6,
+              "properties": {
+                "title": "Concurrent Executions", "region": "${AWS::Region}", "view": "timeSeries", "period": 60,
+                "metrics": [
+                  [ "AWS/Lambda", "ConcurrentExecutions", "FunctionName", "${Ec2JobWorkerFunctionName}", { "stat": "Maximum", "label": "Worker Concurrency" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 8, "width": 12, "height": 6,
+              "properties": {
+                "title": "Job Lifecycle Events", "region": "${AWS::Region}", "view": "timeSeries", "period": 300, "stat": "Sum",
+                "metrics": [
+                  [ "SISUM/EC2Jobs", "JobQueued", { "label": "Queued" } ],
+                  [ ".", "JobStarted", { "label": "Started" } ],
+                  [ ".", "JobCompleted", { "label": "Completed" } ],
+                  [ ".", "JobPartial", { "label": "Partial Success" } ],
+                  [ ".", "JobFailed", { "label": "Failed" } ],
+                  [ ".", "JobRetried", { "label": "Retried" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 14, "width": 12, "height": 6,
+              "properties": {
+                "title": "Job Success Rate", "region": "${AWS::Region}", "view": "singleValue", "period": 300,
+                "metrics": [
+                  [ "SISUM/EC2Jobs", "JobCompleted", { "id": "completed", "visible": false, "stat": "Sum" } ],
+                  [ ".", "JobPartial", { "id": "partial", "visible": false, "stat": "Sum" } ],
+                  [ ".", "JobFailed", { "id": "failed", "visible": false, "stat": "Sum" } ],
+                  [ { "expression": "IF(completed + partial + failed > 0, 100 * (completed + partial) / (completed + partial + failed), 100)", "label": "Success Rate (%)", "id": "successRate" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 14, "width": 12, "height": 6,
+              "properties": {
+                "title": "Retry Rate", "region": "${AWS::Region}", "view": "singleValue", "period": 300,
+                "metrics": [
+                  [ "SISUM/EC2Jobs", "JobRetried", { "id": "retries", "visible": false, "stat": "Sum" } ],
+                  [ ".", "JobStarted", { "id": "started", "visible": false, "stat": "Sum" } ],
+                  [ { "expression": "IF(started > 0, 100 * retries / started, 0)", "label": "Retry Rate (%)", "id": "retryRate" } ]
+                ]
+              }
+            },
+            {
+              "type": "alarm", "x": 0, "y": 20, "width": 24, "height": 6,
+              "properties": {
+                "title": "EC2 Job Alarm Status",
+                "alarms": [
+                  "${Ec2JobDlqMessagesAlarm.Arn}", "${Ec2JobQueueAgeAlarm.Arn}", "${Ec2JobWorkerErrorsAlarm.Arn}",
+                  "${Ec2JobRetryRateAlarm.Arn}", "${Ec2JobWorkerThrottlesAlarm.Arn}", "${Ec2JobTimeoutAlarm.Arn}"
+                ]
+              }
+            }
+          ]
+        }
+
 Outputs:
   DashboardName:
     Description: CloudWatch production operations dashboard name.
@@ -796,3 +1153,15 @@ Outputs:
   CloudFront5xxAlarmName:
     Description: CloudFront 5xx error-rate alarm name.
     Value: !Ref CloudFront5xxErrorRateAlarm
+
+  Ec2JobDashboardName:
+    Description: CloudWatch dashboard for asynchronous EC2 job operations.
+    Value: !Ref Ec2JobMonitoringDashboard
+
+  Ec2JobDlqMessagesAlarmName:
+    Description: EC2 job dead-letter queue message alarm name.
+    Value: !Ref Ec2JobDlqMessagesAlarm
+
+  Ec2JobRetryRateAlarmName:
+    Description: EC2 job retry rate alarm name.
+    Value: !Ref Ec2JobRetryRateAlarm

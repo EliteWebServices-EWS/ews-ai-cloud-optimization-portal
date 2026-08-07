@@ -6,6 +6,7 @@ import {
   getCorrelationId,
   getRequestId,
   scheduleAuditPersistence,
+  writeEc2JobAuditEvent,
   writeAuditEvent,
 } from '../../audit';
 import { TENANT_ROLES, requireTenantRole } from '../../auth';
@@ -151,6 +152,17 @@ export function createEc2AsyncJobRoutes(deps: Ec2AsyncJobRouteDeps): Router {
               path: req.path,
               statusCode: 202,
               resource: { type: 'ec2_async_job', id: result.job.jobId, accountId: result.job.accountId },
+            }),
+          );
+          scheduleAuditPersistence(
+            req,
+            writeEc2JobAuditEvent('queued', {
+              jobId: result.job.jobId,
+              requestId,
+              correlationId,
+              actor,
+              tenantId,
+              accountId: result.job.accountId,
             }),
           );
         }

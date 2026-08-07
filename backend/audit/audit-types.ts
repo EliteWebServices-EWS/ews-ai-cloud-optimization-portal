@@ -13,6 +13,7 @@ export type AuditSource =
   | 'workflow'
   | 'reporting'
   | 'execution'
+  | 'job'
   | 'audit'
   | 'tenant-admin';
 
@@ -61,6 +62,10 @@ export interface AuditEvent {
   workflowId?: string;
   reportId?: string;
   executionId?: string;
+  /** Correlates asynchronous EC2 job lifecycle events across queue deliveries. */
+  jobId?: string;
+  /** SQS receive attempt, when the event originated from a queue consumer. */
+  attempt?: number;
 
   resource?: AuditResource;
 
@@ -81,6 +86,7 @@ export interface WriteAuditEventInput {
   tenantId?: string;
   /** Owning tenant of the requested resource (audit-only; never returned to clients). */
   resourceTenantId?: string;
+  source?: AuditSource;
 
   action?: string;
   method?: string;
@@ -91,6 +97,8 @@ export interface WriteAuditEventInput {
   workflowId?: string;
   reportId?: string;
   executionId?: string;
+  jobId?: string;
+  attempt?: number;
 
   resource?: AuditResource;
 

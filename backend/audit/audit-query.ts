@@ -41,6 +41,8 @@ export interface AuditRecord {
   workflowId?: string;
   reportId?: string;
   executionId?: string;
+  jobId?: string;
+  attempt?: number;
   action?: string;
   method?: string;
   path?: string;
@@ -172,6 +174,10 @@ export function inferAuditSource(
     return 'execution';
   }
 
+  if (eventName.startsWith('ec2.job_')) {
+    return 'job';
+  }
+
   if (eventName.startsWith('rollback.')) {
     return 'execution';
   }
@@ -206,6 +212,8 @@ export function toAuditRecord(
     workflowId: event.workflowId,
     reportId: event.reportId,
     executionId: event.executionId,
+    jobId: event.jobId,
+    attempt: event.attempt,
     action: event.action,
     method: event.method,
     path: event.path,
@@ -248,6 +256,8 @@ export function toDynamoDbItem(
     workflowId: record.workflowId,
     reportId: record.reportId,
     executionId: record.executionId,
+    jobId: record.jobId,
+    attempt: record.attempt,
     action: record.action,
     method: record.method,
     path: record.path,
@@ -299,6 +309,14 @@ export function fromDynamoDbItem(
     executionId:
       typeof item.executionId === 'string'
         ? item.executionId
+        : undefined,
+    jobId:
+      typeof item.jobId === 'string'
+        ? item.jobId
+        : undefined,
+    attempt:
+      typeof item.attempt === 'number'
+        ? item.attempt
         : undefined,
     action:
       typeof item.action === 'string'

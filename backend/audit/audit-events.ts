@@ -112,6 +112,14 @@ export const AUDIT_EVENTS = {
   EC2_ASYNC_JOB_LISTED: 'ec2.async_job_listed',
   EC2_ASYNC_JOB_VIEWED: 'ec2.async_job_viewed',
   EC2_ASYNC_JOB_EVENTS_VIEWED: 'ec2.async_job_events_viewed',
+  EC2_JOB_QUEUED: 'ec2.job_queued',
+  EC2_JOB_STARTED: 'ec2.job_started',
+  EC2_JOB_RETRY: 'ec2.job_retry',
+  EC2_JOB_PARTIAL: 'ec2.job_partial',
+  EC2_JOB_FAILED: 'ec2.job_failed',
+  EC2_JOB_COMPLETED: 'ec2.job_completed',
+  EC2_JOB_DLQ_MOVED: 'ec2.job_dlq_moved',
+  EC2_JOB_REDRIVE_COMPLETED: 'ec2.job_redrive_completed',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];
