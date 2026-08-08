@@ -25,6 +25,10 @@ import { AwsAccountApiService } from '../../../services/aws-account-api-service'
 import { Ec2DiscoveryApiService } from '../../../services/ec2-discovery-api-service';
 import { Ec2CostAnalysisApiService } from '../../../services/ec2-cost-analysis-api-service';
 import { Ec2SecurityAnalysisApiService } from '../../../services/ec2-security-analysis-api-service';
+import { Ec2AsyncJobProducerService } from '../../../services/ec2-async-job-producer-service';
+import { Ec2AsyncJobApiService } from '../../../services/ec2-async-job-api-service';
+import { MockEc2AsyncJobRepository } from '../../../repositories/mock/mock-ec2-async-job-repository';
+import { MockEc2IntelligenceQueueSender } from '../../../async-jobs/ec2-intelligence-queue-sender';
 import { MockEc2CostRepository } from '../../../repositories/mock/mock-ec2-cost-repository';
 import { MockEc2SecurityRepository } from '../../../repositories/mock/mock-ec2-security-repository';
 import { MockAwsAccountRepository } from '../../../repositories/mock/mock-aws-account-repository';
@@ -175,6 +179,15 @@ export function buildTestApp(): TestAppContext {
     ec2SecurityRepo,
   );
 
+  const ec2AsyncJobRepository = new MockEc2AsyncJobRepository();
+  const ec2AsyncJobQueue = new MockEc2IntelligenceQueueSender();
+  const ec2AsyncJobProducer = new Ec2AsyncJobProducerService(
+    awsAccountRepository,
+    ec2AsyncJobRepository,
+    ec2AsyncJobQueue,
+  );
+  const ec2AsyncJobApi = new Ec2AsyncJobApiService(ec2AsyncJobRepository);
+
   const cognitoAlignment = new InMemoryCognitoIdentityAlignment();
   const tenantOnboardingService = createTenantOnboardingService({
     tenantRepository,
@@ -215,6 +228,8 @@ export function buildTestApp(): TestAppContext {
       ec2DiscoveryApi,
       ec2CostAnalysisApi,
       ec2SecurityAnalysisApi,
+      ec2AsyncJobProducer,
+      ec2AsyncJobApi,
     }),
   );
 

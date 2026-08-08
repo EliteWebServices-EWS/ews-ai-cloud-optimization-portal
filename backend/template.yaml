@@ -713,6 +713,80 @@ Resources:
         - Key: Purpose
           Value: CloudResourceInventoryPersistence
 
+  SisumAsyncJobsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-async-jobs-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Ec2AsyncJobPersistence
+
+  SisumEc2IntelligenceDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sisum-ec2-intelligence-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Ec2IntelligenceDlq
+
+  SisumEc2IntelligenceQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sisum-ec2-intelligence-${Environment}"
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 900
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SisumEc2IntelligenceDlq.Arn
+        maxReceiveCount: 5
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Ec2IntelligenceWorkQueue
+
   SisumBusinessPersistencePolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -753,6 +827,23 @@ Resources:
               - !GetAtt SisumAwsAccountsTable.Arn
               - !Sub "${SisumAwsAccountsTable.Arn}/index/*"
               - !GetAtt SisumCloudResourcesTable.Arn
+              - !GetAtt SisumAsyncJobsTable.Arn
+              - !Sub "${SisumAsyncJobsTable.Arn}/index/*"
+
+  SisumEc2IntelligenceQueueSendPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "sisum-ec2-intelligence-queue-send-${Environment}"
+      Roles:
+        - SisumLambdaExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Ec2IntelligenceQueueSendOnly
+            Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt SisumEc2IntelligenceQueue.Arn
 
   SisumStsAssumeRolePolicy:
     Type: AWS::IAM::Policy
@@ -850,6 +941,8 @@ Resources:
           EXECUTION_PLANS_TABLE_NAME: !Ref SisumExecutionPlansTable
           AWS_ACCOUNTS_TABLE_NAME: !Ref SisumAwsAccountsTable
           CLOUD_RESOURCES_TABLE_NAME: !Ref SisumCloudResourcesTable
+          ASYNC_JOBS_TABLE_NAME: !Ref SisumAsyncJobsTable
+          EC2_INTELLIGENCE_QUEUE_URL: !Ref SisumEc2IntelligenceQueue
           EC2_COST_SAMPLE_PRICING_ENABLED: 'false'
 
       Events:
@@ -1014,3 +1107,21 @@ Outputs:
     Value: !GetAtt SisumAwsAccountsTable.Arn
     Export:
       Name: !Sub "${AWS::StackName}-AwsAccountsTableArn"
+
+  AsyncJobsTableName:
+    Description: DynamoDB table for EC2 async intelligence jobs.
+    Value: !Ref SisumAsyncJobsTable
+    Export:
+      Name: !Sub "${AWS::StackName}-AsyncJobsTableName"
+
+  Ec2IntelligenceQueueUrl:
+    Description: SQS queue URL for EC2 intelligence worker handoff.
+    Value: !Ref SisumEc2IntelligenceQueue
+    Export:
+      Name: !Sub "${AWS::StackName}-Ec2IntelligenceQueueUrl"
+
+  Ec2IntelligenceDlqUrl:
+    Description: DLQ URL for EC2 intelligence queue.
+    Value: !Ref SisumEc2IntelligenceDlq
+    Export:
+      Name: !Sub "${AWS::StackName}-Ec2IntelligenceDlqUrl"

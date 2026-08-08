@@ -40,6 +40,10 @@ import { createEc2CostRepositories } from './services/ec2-cost-repository-factor
 import { Ec2CostAnalysisApiService } from './services/ec2-cost-analysis-api-service';
 import { createEc2SecurityRepositories } from './services/ec2-security-repository-factory';
 import { Ec2SecurityAnalysisApiService } from './services/ec2-security-analysis-api-service';
+import { createEc2AsyncJobRepository } from './services/ec2-async-job-repository-factory';
+import { Ec2AsyncJobProducerService } from './services/ec2-async-job-producer-service';
+import { Ec2AsyncJobApiService } from './services/ec2-async-job-api-service';
+import { createEc2IntelligenceQueueSenderFromEnv } from './async-jobs/sqs-ec2-intelligence-queue-sender';
 import {
   createCognitoIdentityAlignmentPort,
   InMemoryCognitoIdentityAlignment,
@@ -149,6 +153,15 @@ export function createApp(options?: CreateAppOptions): express.Application {
     ec2SecurityRepositories.summaries,
     ec2SecurityRepositories.runs,
   );
+
+  const ec2AsyncJobRepository = createEc2AsyncJobRepository();
+  const ec2IntelligenceQueue = createEc2IntelligenceQueueSenderFromEnv();
+  const ec2AsyncJobProducer = new Ec2AsyncJobProducerService(
+    awsAccountRepository,
+    ec2AsyncJobRepository,
+    ec2IntelligenceQueue,
+  );
+  const ec2AsyncJobApi = new Ec2AsyncJobApiService(ec2AsyncJobRepository);
 
   const cognitoAlignment =
     process.env.NODE_ENV === 'test'
@@ -264,6 +277,8 @@ export function createApp(options?: CreateAppOptions): express.Application {
       ec2DiscoveryApi,
       ec2CostAnalysisApi,
       ec2SecurityAnalysisApi,
+      ec2AsyncJobProducer,
+      ec2AsyncJobApi,
     })
   );
 
