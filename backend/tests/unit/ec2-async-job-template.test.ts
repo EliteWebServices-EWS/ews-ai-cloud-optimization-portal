@@ -28,7 +28,7 @@ describe('EC2 async intelligence SAM template', () => {
   it('scopes producer IAM to sqs:SendMessage on the queue ARN only', () => {
     const policySection = template.slice(
       template.indexOf('SisumEc2IntelligenceQueueSendPolicy'),
-      template.indexOf('SisumStsAssumeRolePolicy'),
+      template.indexOf('SisumEc2IntelligenceQueueConsumePolicy'),
     );
     assert.match(policySection, /sqs:SendMessage/);
     assert.match(policySection, /Resource: !GetAtt SisumEc2IntelligenceQueue\.Arn/);

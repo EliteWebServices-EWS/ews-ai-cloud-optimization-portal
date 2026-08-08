@@ -67,6 +67,9 @@ export interface CreateEc2CostAnalysisRunInput {
   periodSeconds: number;
   requestedAt: string;
   startedAt: string;
+  executionOwnerId?: string;
+  leaseExpiresAt?: string;
+  attemptCount?: number;
 }
 
 export interface CompleteEc2CostAnalysisRunInput {
@@ -85,10 +88,25 @@ export interface CompleteEc2CostAnalysisRunInput {
   regionsSucceeded: string[];
   regionsFailed: string[];
   warnings: string[];
+  failureRetryable?: boolean;
+}
+
+export interface ClaimEc2CostAnalysisRunExecutionInput {
+  runId: string;
+  tenantId: string;
+  accountId: string;
+  regions: string[];
+  observationDays: number;
+  periodSeconds: number;
+  requestedAt: string;
+  startedAt: string;
+  nowMs: number;
+  executionOwnerIdForAttempt: (attemptCount: number) => string;
 }
 
 export interface Ec2CostAnalysisRunRepository {
   createRun(input: CreateEc2CostAnalysisRunInput): Promise<Ec2CostAnalysisRunRecord>;
+  claimExecution(input: ClaimEc2CostAnalysisRunExecutionInput): Promise<Ec2CostAnalysisRunRecord>;
   completeRun(input: CompleteEc2CostAnalysisRunInput): Promise<Ec2CostAnalysisRunRecord>;
   getRun(tenantId: string, accountId: string, runId: string): Promise<Ec2CostAnalysisRunRecord | null>;
 }

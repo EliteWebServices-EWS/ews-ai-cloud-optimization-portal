@@ -14,6 +14,7 @@ import {
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
 import type {
+  ClaimEc2SecurityAnalysisRunExecutionInput,
   CompleteEc2SecurityAnalysisRunInput,
   CreateEc2SecurityAnalysisRunInput,
   Ec2SecurityAnalysisRunRepository,
@@ -22,6 +23,10 @@ import type {
   Ec2SecuritySummaryRepository,
   UpsertEc2SecurityFindingInput,
 } from '../contracts/ec2-security-repository';
+import {
+  applyMockStageRunExecutionReclaim,
+  planStageRunExecutionClaim,
+} from '../ec2-stage-run-execution-claim';
 import type {
   Ec2SecurityAnalysisRunRecord,
   Ec2SecurityFindingRecord,
@@ -266,9 +271,41 @@ export class MockEc2SecurityRepository
       version: 1,
       createdAt: now,
       updatedAt: now,
+      executionOwnerId: input.executionOwnerId,
+      leaseExpiresAt: input.leaseExpiresAt,
+      attemptCount: input.attemptCount ?? 1,
     };
     this.runs.set(runKey(input.tenantId, input.accountId, input.runId), record);
     return record;
+  }
+
+  async claimExecution(
+    input: ClaimEc2SecurityAnalysisRunExecutionInput,
+  ): Promise<Ec2SecurityAnalysisRunRecord> {
+    const existing = await this.getRun(input.tenantId, input.accountId, input.runId);
+    const plan = planStageRunExecutionClaim(
+      existing,
+      input.nowMs,
+      input.executionOwnerIdForAttempt,
+    );
+    if (plan.kind === 'create') {
+      return this.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        regions: input.regions,
+        startedAt: input.startedAt,
+        executionOwnerId: plan.executionOwnerId,
+        leaseExpiresAt: plan.leaseExpiresAt,
+        attemptCount: plan.attemptCount,
+      });
+    }
+    if (!existing) {
+      throw new RepositoryNotFoundError('EC2 security analysis run not found.');
+    }
+    const updated = applyMockStageRunExecutionReclaim(existing, plan);
+    this.runs.set(runKey(input.tenantId, input.accountId, input.runId), updated);
+    return updated;
   }
 
   async completeRun(
@@ -293,6 +330,8 @@ export class MockEc2SecurityRepository
       findingsResolved: input.findingsResolved,
       version: existing.version + 1,
       updatedAt: input.completedAt,
+      failureRetryable:
+        input.status === 'FAILED' ? input.failureRetryable ?? true : undefined,
     };
     this.runs.set(key, updated);
     return updated;

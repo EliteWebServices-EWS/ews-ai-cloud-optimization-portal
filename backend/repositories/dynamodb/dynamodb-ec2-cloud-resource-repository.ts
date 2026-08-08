@@ -24,6 +24,7 @@ import {
 } from '../ec2-cloud-resource-pagination';
 
 import type {
+  ClaimEc2DiscoveryRunExecutionInput,
   CompleteEc2DiscoveryRunInput,
   CreateEc2DiscoveryRunInput,
   Ec2CloudResourceRepository,
@@ -39,6 +40,7 @@ import { CLOUD_INTELLIGENCE_SERVICE_EC2 } from '../models/cloud-resource-persist
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
 import { BaseDynamoDbRepository } from './base-dynamodb-repository';
+import { planStageRunExecutionClaim } from '../ec2-stage-run-execution-claim';
 
 interface CloudResourceItem extends DiscoveredCloudResourceRecord {
   pk: string;
@@ -296,6 +298,9 @@ export class DynamoDbEc2CloudResourceRepository
       pk,
       sk,
       entityType: 'EC2_DISCOVERY_RUN',
+      executionOwnerId: input.executionOwnerId,
+      leaseExpiresAt: input.leaseExpiresAt,
+      attemptCount: input.attemptCount ?? 1,
     };
     await this.client.send(
       new PutCommand({
@@ -307,6 +312,64 @@ export class DynamoDbEc2CloudResourceRepository
     return stripRunKeys(item);
   }
 
+  async claimExecution(input: ClaimEc2DiscoveryRunExecutionInput): Promise<Ec2DiscoveryRunRecord> {
+    const existing = await this.getRun(input.tenantId, input.accountId, input.runId);
+    const plan = planStageRunExecutionClaim(
+      existing,
+      input.nowMs,
+      input.executionOwnerIdForAttempt,
+    );
+    if (plan.kind === 'create') {
+      return this.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        requestedRegions: input.requestedRegions,
+        startedAt: input.startedAt,
+        executionOwnerId: plan.executionOwnerId,
+        leaseExpiresAt: plan.leaseExpiresAt,
+        attemptCount: plan.attemptCount,
+      });
+    }
+    const pk = cloudResourceAccountPartitionKey(input.tenantId, input.accountId);
+    const sk = ec2DiscoveryRunSortKey(input.runId);
+    const now = new Date().toISOString();
+    try {
+      await this.client.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { pk, sk },
+          UpdateExpression:
+            'SET #status = :running, executionOwnerId = :owner, leaseExpiresAt = :lease, attemptCount = :attempt, #updatedAt = :updatedAt, #version = #version + :one REMOVE completedAt, failureRetryable',
+          ConditionExpression: '#version = :expected',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+            '#updatedAt': 'updatedAt',
+            '#version': 'version',
+          },
+          ExpressionAttributeValues: {
+            ':running': 'RUNNING',
+            ':owner': plan.executionOwnerId,
+            ':lease': plan.leaseExpiresAt,
+            ':attempt': plan.attemptCount,
+            ':updatedAt': now,
+            ':one': 1,
+            ':expected': plan.expectedVersion,
+          },
+        }),
+      );
+    } catch (error) {
+      if (isConditionalCheckFailure(error)) {
+        throw new RepositoryConflictError('EC2 discovery run version conflict.');
+      }
+      throw error;
+    }
+    const refreshed = await this.client.send(
+      new GetCommand({ TableName: this.tableName, Key: { pk, sk } }),
+    );
+    return stripRunKeys(refreshed.Item as DiscoveryRunItem);
+  }
+
   async completeRun(input: CompleteEc2DiscoveryRunInput): Promise<Ec2DiscoveryRunRecord> {
     const pk = cloudResourceAccountPartitionKey(input.tenantId, input.accountId);
     const sk = ec2DiscoveryRunSortKey(input.runId);
@@ -316,7 +379,7 @@ export class DynamoDbEc2CloudResourceRepository
           TableName: this.tableName,
           Key: { pk, sk },
           UpdateExpression:
-            'SET #status = :status, completedAt = :completedAt, resourceCounts = :counts, regionsSucceeded = :rs, regionsFailed = :rf, warnings = :warnings, #updatedAt = :updatedAt, #version = #version + :one',
+            'SET #status = :status, completedAt = :completedAt, resourceCounts = :counts, regionsSucceeded = :rs, regionsFailed = :rf, warnings = :warnings, #updatedAt = :updatedAt, #version = #version + :one, failureRetryable = :failureRetryable REMOVE executionOwnerId, leaseExpiresAt',
           ConditionExpression: '#version = :expected',
           ExpressionAttributeNames: {
             '#status': 'status',
@@ -333,6 +396,8 @@ export class DynamoDbEc2CloudResourceRepository
             ':updatedAt': new Date().toISOString(),
             ':one': 1,
             ':expected': input.expectedVersion,
+            ':failureRetryable':
+              input.status === 'FAILED' ? (input.failureRetryable ?? true) : false,
           },
         }),
       );

@@ -4,6 +4,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
 
@@ -21,6 +22,7 @@ import {
   RepositoryNotFoundError,
 } from '../../database';
 import type {
+  ClaimEc2SecurityAnalysisRunExecutionInput,
   CompleteEc2SecurityAnalysisRunInput,
   CreateEc2SecurityAnalysisRunInput,
   Ec2SecurityAnalysisRunRepository,
@@ -37,6 +39,7 @@ import type {
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
 import { BaseDynamoDbRepository } from './base-dynamodb-repository';
+import { planStageRunExecutionClaim } from '../ec2-stage-run-execution-claim';
 import {
   decodeEc2SecurityFindingNextToken,
   encodeEc2SecurityFindingNextToken,
@@ -416,6 +419,9 @@ export class DynamoDbEc2SecurityRepository
       pk,
       sk,
       entityType: 'EC2_SECURITY_ANALYSIS_RUN',
+      executionOwnerId: input.executionOwnerId,
+      leaseExpiresAt: input.leaseExpiresAt,
+      attemptCount: input.attemptCount ?? 1,
     };
     await this.client.send(
       new PutCommand({
@@ -425,6 +431,66 @@ export class DynamoDbEc2SecurityRepository
       }),
     );
     return stripRun(record);
+  }
+
+  async claimExecution(
+    input: ClaimEc2SecurityAnalysisRunExecutionInput,
+  ): Promise<Ec2SecurityAnalysisRunRecord> {
+    const existing = await this.getRun(input.tenantId, input.accountId, input.runId);
+    const plan = planStageRunExecutionClaim(
+      existing,
+      input.nowMs,
+      input.executionOwnerIdForAttempt,
+    );
+    if (plan.kind === 'create') {
+      return this.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        regions: input.regions,
+        startedAt: input.startedAt,
+        executionOwnerId: plan.executionOwnerId,
+        leaseExpiresAt: plan.leaseExpiresAt,
+        attemptCount: plan.attemptCount,
+      });
+    }
+    const pk = cloudResourceAccountPartitionKey(input.tenantId, input.accountId);
+    const sk = ec2SecurityAnalysisRunSortKey(input.runId);
+    const now = new Date().toISOString();
+    try {
+      await this.client.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { pk, sk },
+          UpdateExpression:
+            'SET #status = :running, executionOwnerId = :owner, leaseExpiresAt = :lease, attemptCount = :attempt, #updatedAt = :updatedAt, #version = #version + :one REMOVE completedAt, failureRetryable',
+          ConditionExpression: '#version = :expected',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+            '#updatedAt': 'updatedAt',
+            '#version': 'version',
+          },
+          ExpressionAttributeValues: {
+            ':running': 'RUNNING',
+            ':owner': plan.executionOwnerId,
+            ':lease': plan.leaseExpiresAt,
+            ':attempt': plan.attemptCount,
+            ':updatedAt': now,
+            ':one': 1,
+            ':expected': plan.expectedVersion,
+          },
+        }),
+      );
+    } catch (error) {
+      if (isConditionalCheckFailure(error)) {
+        throw new RepositoryConflictError('EC2 security analysis run version conflict.');
+      }
+      throw error;
+    }
+    const refreshed = await this.client.send(
+      new GetCommand({ TableName: this.tableName, Key: { pk, sk } }),
+    );
+    return stripRun(refreshed.Item as SecurityRunItem);
   }
 
   async completeRun(
@@ -453,6 +519,10 @@ export class DynamoDbEc2SecurityRepository
       findingsResolved: input.findingsResolved,
       version: prior.version + 1,
       updatedAt: input.completedAt,
+      failureRetryable:
+        input.status === 'FAILED' ? (input.failureRetryable ?? true) : undefined,
+      executionOwnerId: undefined,
+      leaseExpiresAt: undefined,
     };
     try {
       await this.client.send(

@@ -166,7 +166,7 @@ describe('runtime Lambda EC2 intelligence queue IAM (unchanged)', () => {
 
   const producerPolicySection = template.slice(
     template.indexOf('SisumEc2IntelligenceQueueSendPolicy'),
-    template.indexOf('SisumStsAssumeRolePolicy'),
+    template.indexOf('SisumEc2IntelligenceQueueConsumePolicy'),
   );
 
   it('grants API Lambda only sqs:SendMessage on the work queue ARN', () => {

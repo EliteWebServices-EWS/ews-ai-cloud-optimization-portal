@@ -170,6 +170,7 @@ Resources:
       PolicyName: !Sub "sisum-audit-dynamodb-${Environment}"
       Roles:
         - SisumLambdaExecutionRole
+        - !Ref SisumEc2AnalysisConsumerExecutionRole
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -774,7 +775,7 @@ Resources:
     Properties:
       QueueName: !Sub "sisum-ec2-intelligence-${Environment}"
       MessageRetentionPeriod: 345600
-      VisibilityTimeout: 900
+      VisibilityTimeout: 1800
       SqsManagedSseEnabled: true
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt SisumEc2IntelligenceDlq.Arn
@@ -793,6 +794,7 @@ Resources:
       PolicyName: !Sub "sisum-business-persistence-${Environment}"
       Roles:
         - SisumLambdaExecutionRole
+        - !Ref SisumEc2AnalysisConsumerExecutionRole
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -845,12 +847,45 @@ Resources:
               - sqs:SendMessage
             Resource: !GetAtt SisumEc2IntelligenceQueue.Arn
 
+  SisumEc2AnalysisConsumerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SisumEc2AnalysisConsumerExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  SisumEc2IntelligenceQueueConsumePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "sisum-ec2-intelligence-queue-consume-${Environment}"
+      Roles:
+        - !Ref SisumEc2AnalysisConsumerExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Ec2IntelligenceQueueConsumeOnly
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+              - sqs:ChangeMessageVisibility
+            Resource: !GetAtt SisumEc2IntelligenceQueue.Arn
+
   SisumStsAssumeRolePolicy:
     Type: AWS::IAM::Policy
     Properties:
       PolicyName: !Sub "sisum-sts-assume-role-${Environment}"
       Roles:
         - SisumLambdaExecutionRole
+        - !Ref SisumEc2AnalysisConsumerExecutionRole
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -990,6 +1025,59 @@ Resources:
             Method: ANY
             Auth:
               Authorizer: SisumJwtAuthorizer
+
+  SisumEc2AnalysisConsumerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/sisum-ec2-analysis-consumer-${Environment}"
+      RetentionInDays: 14
+
+  SisumEc2AnalysisConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "sisum-ec2-analysis-consumer-${Environment}"
+      Description: SISU'M EC2 intelligence async job SQS consumer
+      CodeUri: .
+      Handler: dist/lambda-ec2-analysis-consumer.handler
+      Timeout: 300
+      MemorySize: 1024
+      Role: !GetAtt SisumEc2AnalysisConsumerExecutionRole.Arn
+      Environment:
+        Variables:
+          NODE_ENV: !Ref Environment
+          ENVIRONMENT: !Ref Environment
+          PROVIDER_MODE: !Ref ProviderMode
+          LOG_LEVEL: !Ref LogLevel
+          NODE_OPTIONS: "--enable-source-maps"
+          AUDIT_TABLE_NAME: !Ref SisumAuditTable
+          AUDIT_RETENTION_DAYS: !Ref AuditRetentionDays
+          AUDIT_PERSISTENCE_ENABLED: !Ref AuditPersistenceEnabled
+          PERSISTENCE_ENABLED: !Ref PersistenceEnabled
+          DEFAULT_TENANT_ID: !Ref DefaultTenantId
+          TENANT_ENFORCEMENT_MODE: !Ref TenantEnforcementMode
+          TENANT_FALLBACK_ENABLED: !Ref TenantFallbackEnabled
+          WORKFLOWS_TABLE_NAME: !Ref SisumWorkflowsTable
+          REPORTS_TABLE_NAME: !Ref SisumReportsTable
+          LEARNING_TABLE_NAME: !Ref SisumLearningTable
+          VERIFICATIONS_TABLE_NAME: !Ref SisumVerificationsTable
+          OWNERSHIP_TABLE_NAME: !Ref SisumOwnershipTable
+          MEMBERSHIPS_TABLE_NAME: !Ref SisumMembershipsTable
+          INVITATIONS_TABLE_NAME: !Ref SisumInvitationsTable
+          TENANTS_TABLE_NAME: !Ref SisumTenantsTable
+          EXECUTION_PLANS_TABLE_NAME: !Ref SisumExecutionPlansTable
+          AWS_ACCOUNTS_TABLE_NAME: !Ref SisumAwsAccountsTable
+          CLOUD_RESOURCES_TABLE_NAME: !Ref SisumCloudResourcesTable
+          ASYNC_JOBS_TABLE_NAME: !Ref SisumAsyncJobsTable
+          EC2_INTELLIGENCE_QUEUE_URL: !Ref SisumEc2IntelligenceQueue
+          EC2_COST_SAMPLE_PRICING_ENABLED: 'false'
+      Events:
+        Ec2IntelligenceQueueEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SisumEc2IntelligenceQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
 
 Outputs:
   ApiUrl:

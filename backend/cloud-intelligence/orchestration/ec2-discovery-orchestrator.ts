@@ -12,6 +12,8 @@ export interface RunEc2DiscoveryInput {
   regions: string[];
   runId: string;
   startedAt: string;
+  /** When set, reuse a run already claimed by the async worker. */
+  resumeRunExpectedVersion?: number;
 }
 
 export interface RunEc2DiscoveryResult {
@@ -32,13 +34,26 @@ export class Ec2DiscoveryOrchestrator {
 
   async runDiscovery(input: RunEc2DiscoveryInput): Promise<RunEc2DiscoveryResult> {
     const plugin = this.pluginRegistry.get(EC2_DISCOVERY_DEFAULT_SERVICE);
-    const run = await this.runs.createRun({
-      runId: input.runId,
-      tenantId: input.tenantId,
-      accountId: input.accountId,
-      requestedRegions: input.regions,
-      startedAt: input.startedAt,
-    });
+    let run: Awaited<ReturnType<Ec2DiscoveryRunRepository['createRun']>>;
+    if (input.resumeRunExpectedVersion != null) {
+      const existing = await this.runs.getRun(input.tenantId, input.accountId, input.runId);
+      if (
+        !existing ||
+        existing.status !== 'RUNNING' ||
+        existing.version !== input.resumeRunExpectedVersion
+      ) {
+        throw new Error('EC2_DISCOVERY_RUN_EXECUTION_MISMATCH');
+      }
+      run = existing;
+    } else {
+      run = await this.runs.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        requestedRegions: input.regions,
+        startedAt: input.startedAt,
+      });
+    }
 
     const discoveredAt = input.startedAt;
     const pluginResult = await plugin.discover(

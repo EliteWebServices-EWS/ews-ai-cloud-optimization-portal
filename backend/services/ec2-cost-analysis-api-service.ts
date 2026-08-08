@@ -46,6 +46,9 @@ export interface StartEc2CostAnalysisInput {
   accountId: string;
   regions?: string[];
   observationDays?: number;
+  /** When set (async worker), reuses a stable run id for idempotent stage recovery. */
+  runId?: string;
+  resumeRunExpectedVersion?: number;
 }
 
 function dedupeRegions(regions: string[]): string[] {
@@ -150,7 +153,7 @@ export class Ec2CostAnalysisApiService {
       });
 
     const orchestrator = this.buildOrchestrator();
-    const runId = `ec2cost-${randomUUID()}`;
+    const runId = input.runId ?? `ec2cost-${randomUUID()}`;
     const now = new Date().toISOString();
 
     try {
@@ -163,6 +166,7 @@ export class Ec2CostAnalysisApiService {
         requestedAt: now,
         startedAt: now,
         metricsClientFactory,
+        resumeRunExpectedVersion: input.resumeRunExpectedVersion,
       });
       return {
         runId: result.runId,

@@ -125,6 +125,10 @@ export interface Ec2CostAnalysisRunRecord {
   version: number;
   createdAt: string;
   updatedAt: string;
+  executionOwnerId?: string;
+  leaseExpiresAt?: string;
+  attemptCount?: number;
+  failureRetryable?: boolean;
 }
 
 export interface Ec2CostRuleInput {

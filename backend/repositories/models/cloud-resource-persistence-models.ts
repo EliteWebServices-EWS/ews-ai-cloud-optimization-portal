@@ -68,6 +68,10 @@ export interface Ec2DiscoveryRunRecord {
   version: number;
   createdAt: string;
   updatedAt: string;
+  executionOwnerId?: string;
+  leaseExpiresAt?: string;
+  attemptCount?: number;
+  failureRetryable?: boolean;
 }
 
 export function validateEc2ResourceType(value: string): Ec2ResourceType {
