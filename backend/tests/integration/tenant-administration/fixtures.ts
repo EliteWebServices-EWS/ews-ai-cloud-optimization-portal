@@ -22,7 +22,13 @@ import {
 import { createExecutionSimulator, createDefaultExecutionAdapterRegistry, createExecutionOrchestrator } from '../../../execution';
 import { ExecutionApiService } from '../../../services/execution-api-service';
 import { AwsAccountApiService } from '../../../services/aws-account-api-service';
+<<<<<<< HEAD
 import { MockAwsAccountRepository } from '../../../repositories/mock/mock-aws-account-repository';
+=======
+import { Ec2DiscoveryApiService } from '../../../services/ec2-discovery-api-service';
+import { MockAwsAccountRepository } from '../../../repositories/mock/mock-aws-account-repository';
+import { MockEc2CloudResourceRepository } from '../../../repositories/mock/mock-ec2-cloud-resource-repository';
+>>>>>>> origin/main
 import { createInMemoryExecutionStores } from '../execution/fixtures';
 import { createWorkflowOrchestrator } from '../../../orchestrator';
 import { createPluginRegistry } from '../../../plugins';
@@ -34,6 +40,13 @@ import {
   InMemoryMembershipRepository,
 } from '../../../membership';
 import { MockTenantRepository } from '../../../repositories/mock/mock-tenant-repository';
+import {
+  InMemoryCognitoIdentityAlignment,
+} from '../../../cognito/cognito-identity-alignment';
+import {
+  createTenantOnboardingService,
+  type TenantOnboardingService,
+} from '../../../services/tenant-onboarding.service';
 import {
   createCorsMiddleware,
   createJsonBodyParser,
@@ -72,6 +85,8 @@ export interface TestAppContext {
   tenantRepository: MockTenantRepository;
   membershipRepository: InMemoryMembershipRepository;
   invitationRepository: InMemoryInvitationRepository;
+  cognitoAlignment: InMemoryCognitoIdentityAlignment;
+  tenantOnboardingService: TenantOnboardingService;
 }
 
 export function identityHeaders(identity: IdentityFixture): Record<string, string> {
@@ -136,7 +151,24 @@ export function buildTestApp(): TestAppContext {
     orchestrator: executionOrchestrator,
   });
 
+<<<<<<< HEAD
   const awsAccountApi = new AwsAccountApiService(new MockAwsAccountRepository());
+=======
+  const awsAccountRepository = new MockAwsAccountRepository();
+  const awsAccountApi = new AwsAccountApiService(awsAccountRepository);
+  const ec2ResourceRepo = new MockEc2CloudResourceRepository();
+  const ec2DiscoveryApi = new Ec2DiscoveryApiService(
+    awsAccountRepository,
+    ec2ResourceRepo,
+    ec2ResourceRepo,
+  );
+
+  const cognitoAlignment = new InMemoryCognitoIdentityAlignment();
+  const tenantOnboardingService = createTenantOnboardingService({
+    tenantRepository,
+    cognitoAlignment,
+  });
+>>>>>>> origin/main
 
   const app = express();
   app.use(createSecurityHeadersMiddleware());
@@ -166,8 +198,13 @@ export function buildTestApp(): TestAppContext {
       membershipService,
       membershipRepository,
       tenantRepository,
+      tenantOnboardingService,
       executionApi,
       awsAccountApi,
+<<<<<<< HEAD
+=======
+      ec2DiscoveryApi,
+>>>>>>> origin/main
     }),
   );
 
@@ -176,6 +213,8 @@ export function buildTestApp(): TestAppContext {
     tenantRepository,
     membershipRepository,
     invitationRepository,
+    cognitoAlignment,
+    tenantOnboardingService,
   };
 }
 

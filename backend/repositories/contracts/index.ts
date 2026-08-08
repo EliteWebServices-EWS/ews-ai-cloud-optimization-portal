@@ -1,4 +1,4 @@
-﻿export * from './repository-types';
+export * from './repository-types';
 export * from './workflow-repository';
 export * from './report-repository';
 export * from './learning-repository';
@@ -12,3 +12,5 @@ export * from './execution-history-repository';
 export * from './execution-run-repository';
 export * from './aws-account-repository';
 export * from './cost-finding-repository';
+export * from './ec2-cloud-resource-repository';
+

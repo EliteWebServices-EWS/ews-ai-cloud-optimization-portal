@@ -132,7 +132,7 @@ function main(): void {
     'MFA assurance requires TokenGeneration_HostedAuth and COGNITO_REQUIRED_MFA=true (fail-closed).',
   );
   pass(
-    'Application privileged routes require boolean mfa_session_verified on access tokens (via API Gateway JWT claims).',
+    'Application privileged routes require mfa_session_verified true or "true" on access tokens (via API Gateway JWT claims).',
   );
   console.log('Live user-pool inspection was not executed in this offline-safe mode.');
 }

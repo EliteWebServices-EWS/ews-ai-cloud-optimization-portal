@@ -34,9 +34,19 @@ import { createExecutionRepositories } from './services/execution-repository-fac
 import { ExecutionApiService } from './services/execution-api-service';
 import { createAwsAccountRepository } from './services/aws-account-repository-factory';
 import { AwsAccountApiService } from './services/aws-account-api-service';
+<<<<<<< HEAD
 import { createCostFindingRepository } from './services/cost-intelligence-repository-factory';
 import { CostIntelligenceApiService } from './services/cost-intelligence-api-service';
 import { AwsEc2CostDataSource, MockEc2CostDataSource } from './engines/cost-intelligence';
+=======
+import { createEc2CloudResourceRepositories } from './services/ec2-cloud-resource-repository-factory';
+import { Ec2DiscoveryApiService } from './services/ec2-discovery-api-service';
+import {
+  createCognitoIdentityAlignmentPort,
+  InMemoryCognitoIdentityAlignment,
+} from './cognito/cognito-identity-alignment';
+import { createTenantOnboardingService } from './services/tenant-onboarding.service';
+>>>>>>> origin/main
 import {
   PROVIDER_NAMES,
   type ProviderName,
@@ -118,6 +128,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
   const awsAccountRepository = createAwsAccountRepository();
   const awsAccountApi = new AwsAccountApiService(awsAccountRepository);
 
+<<<<<<< HEAD
   const costFindingRepository = createCostFindingRepository();
   const costIntelligenceDataSource =
     activeProvider === PROVIDER_NAMES.AWS
@@ -127,6 +138,23 @@ export function createApp(options?: CreateAppOptions): express.Application {
     costFindingRepository,
     awsAccountRepository,
     dataSource: costIntelligenceDataSource,
+=======
+  const ec2CloudResourceRepositories = createEc2CloudResourceRepositories();
+  const ec2DiscoveryApi = new Ec2DiscoveryApiService(
+    awsAccountRepository,
+    ec2CloudResourceRepositories.resources,
+    ec2CloudResourceRepositories.runs,
+  );
+
+  const cognitoAlignment =
+    process.env.NODE_ENV === 'test'
+      ? new InMemoryCognitoIdentityAlignment()
+      : createCognitoIdentityAlignmentPort();
+
+  const tenantOnboardingService = createTenantOnboardingService({
+    tenantRepository,
+    cognitoAlignment,
+>>>>>>> origin/main
   });
 
   const orchestrator = createWorkflowOrchestrator({
@@ -227,9 +255,14 @@ export function createApp(options?: CreateAppOptions): express.Application {
       membershipService,
       membershipRepository,
       tenantRepository,
+      tenantOnboardingService,
       executionApi,
       awsAccountApi,
+<<<<<<< HEAD
       costIntelligenceApi,
+=======
+      ec2DiscoveryApi,
+>>>>>>> origin/main
     })
   );
 

@@ -29,7 +29,11 @@
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-invitations-*",
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-execution-plans-*",
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-aws-accounts-*",
+<<<<<<< HEAD
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-cost-findings-*"
+=======
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-cloud-resources-*"
+>>>>>>> origin/main
       ]
     }
   ]

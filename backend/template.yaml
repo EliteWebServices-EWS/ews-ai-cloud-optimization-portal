@@ -684,6 +684,35 @@ Resources:
         - Key: Purpose
           Value: AwsAccountRegistrationPersistence
 
+  SisumCloudResourcesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "sisum-cloud-resources-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: CloudResourceInventoryPersistence
+
   SisumBusinessPersistencePolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -723,6 +752,37 @@ Resources:
               - !Sub "${SisumExecutionPlansTable.Arn}/index/*"
               - !GetAtt SisumAwsAccountsTable.Arn
               - !Sub "${SisumAwsAccountsTable.Arn}/index/*"
+              - !GetAtt SisumCloudResourcesTable.Arn
+
+  SisumStsAssumeRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "sisum-sts-assume-role-${Environment}"
+      Roles:
+        - SisumLambdaExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeCustomerCrossAccountRoles
+            Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Resource: "*"
+
+  SisumCognitoIdentityAlignmentPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "sisum-cognito-identity-alignment-${Environment}"
+      Roles:
+        - SisumLambdaExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssignTenantIdOnOwnerProfile
+            Effect: Allow
+            Action:
+              - cognito-idp:AdminUpdateUserAttributes
+            Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
 
   SisumHttpApi:
     Type: AWS::Serverless::HttpApi
@@ -789,6 +849,7 @@ Resources:
           TENANTS_TABLE_NAME: !Ref SisumTenantsTable
           EXECUTION_PLANS_TABLE_NAME: !Ref SisumExecutionPlansTable
           AWS_ACCOUNTS_TABLE_NAME: !Ref SisumAwsAccountsTable
+          CLOUD_RESOURCES_TABLE_NAME: !Ref SisumCloudResourcesTable
 
       Events:
         PublicHealthRoute:

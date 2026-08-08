@@ -47,6 +47,7 @@ import {
 } from '../../database';
 import type { TenantRepository } from '../../repositories/contracts';
 import type { TenantRecord, TenantStatus } from '../../repositories/models';
+import type { TenantOnboardingService } from '../../services/tenant-onboarding.service';
 import {
   InvalidTenantTransitionError,
 } from '../../services/tenant-lifecycle';
@@ -60,7 +61,6 @@ import {
   AppError,
   buildErrorResponse,
   buildSuccessResponse,
-  generateTenantId,
   isAppError,
 } from '../../shared/utils';
 import {
@@ -243,9 +243,11 @@ async function transitionTenant(
   }
 }
 
-export function createTenantAdminRoutes(
-  tenantRepository: TenantRepository
-): Router {
+export function createTenantAdminRoutes(deps: {
+  tenantRepository: TenantRepository;
+  tenantOnboardingService: TenantOnboardingService;
+}): Router {
+  const { tenantRepository, tenantOnboardingService } = deps;
   const router = Router();
 
   router.post(
@@ -254,26 +256,194 @@ export function createTenantAdminRoutes(
     requirePrivilegedMfa(PRIVILEGED_OPERATIONS.TENANT_CREATE),
     async (req: Request, res: Response) => {
       const requestId = getRequestId(req);
+      const context = getRequestSecurityContext(req);
+      const actor = getAuditActor(req);
+
+      const startedEvent = writeAuditEvent({
+        eventName: AUDIT_EVENTS.TENANT_ONBOARDING_STARTED,
+        outcome: 'started',
+        requestId: context.requestId,
+        correlationId: context.correlationId,
+        actor,
+        tenantId: context.tenantId,
+        action: 'tenant.onboarding',
+        method: req.method,
+        path: req.path,
+        statusCode: 201,
+      });
+      scheduleAuditPersistence(req, startedEvent);
 
       try {
         const input = validateCreateTenantBody(req.body);
-        const tenant = await tenantRepository.create({
-          ...input,
-          tenantId: generateTenantId(),
-          status: 'PROVISIONING',
-        });
+
+        scheduleAuditPersistence(
+          req,
+          writeAuditEvent({
+            eventName: AUDIT_EVENTS.TENANT_IDENTITY_ASSIGNMENT_STARTED,
+            outcome: 'started',
+            requestId: context.requestId,
+            correlationId: context.correlationId,
+            actor,
+            tenantId: context.tenantId,
+            action: 'tenant.identity_assignment',
+            method: req.method,
+            path: req.path,
+            statusCode: 201,
+            reason: `Assigning Cognito custom:tenantId for owner ${input.ownerUserId}.`,
+          }),
+        );
+
+        const result = await tenantOnboardingService.onboardNewTenant(input);
+
+        scheduleAuditPersistence(
+          req,
+          writeAuditEvent({
+            eventName: AUDIT_EVENTS.TENANT_IDENTITY_ASSIGNMENT_SUCCEEDED,
+            outcome: 'success',
+            requestId: context.requestId,
+            correlationId: context.correlationId,
+            actor,
+            tenantId: result.tenant.tenantId,
+            action: 'tenant.identity_assignment',
+            method: req.method,
+            path: req.path,
+            statusCode: 201,
+            resource: { type: 'tenant', id: result.tenant.tenantId },
+            reason: 'PROVISIONING to ACTIVE after Cognito alignment.',
+          }),
+        );
 
         recordTenantAuditEvent(req, {
           eventName: AUDIT_EVENTS.TENANT_CREATED,
-          tenantId: tenant.tenantId,
+          tenantId: result.tenant.tenantId,
           action: 'tenant.create',
         });
 
-        res.status(201).json(buildSuccessResponse(tenant, requestId));
+        recordTenantAuditEvent(req, {
+          eventName: AUDIT_EVENTS.TENANT_ONBOARDING_COMPLETED,
+          tenantId: result.tenant.tenantId,
+          action: 'tenant.onboarding',
+          reason:
+            'Owner must sign out and sign in again to receive tenant_id on access token.',
+        });
+
+        res.status(201).json(
+          buildSuccessResponse(
+            {
+              tenant: result.tenant,
+              reauthenticationRequired: result.reauthenticationRequired,
+            },
+            requestId,
+          ),
+        );
       } catch (error) {
+        if (isAppError(error) && error.code.startsWith('COGNITO_')) {
+          scheduleAuditPersistence(
+            req,
+            writeAuditEvent({
+              eventName: AUDIT_EVENTS.TENANT_IDENTITY_ASSIGNMENT_FAILED,
+              outcome: 'failure',
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              actor,
+              tenantId: context.tenantId,
+              action: 'tenant.identity_assignment',
+              method: req.method,
+              path: req.path,
+              statusCode: error.statusCode,
+              errorCode: error.code,
+              reason: error.message,
+            }),
+          );
+        }
+
         handleTenantAdminRouteError(res, error, requestId);
       }
-    }
+    },
+  );
+
+  router.post(
+    '/admin/tenants/:tenantId/complete-onboarding',
+    requireAnyRole(...ADMIN_ROLES),
+    requirePrivilegedMfa(PRIVILEGED_OPERATIONS.TENANT_ONBOARDING_COMPLETE),
+    async (req: Request, res: Response) => {
+      const requestId = getRequestId(req);
+      const context = getRequestSecurityContext(req);
+      const actor = getAuditActor(req);
+      const tenantId = req.params.tenantId;
+
+      scheduleAuditPersistence(
+        req,
+        writeAuditEvent({
+          eventName: AUDIT_EVENTS.TENANT_ONBOARDING_RETRY_STARTED,
+          outcome: 'started',
+          requestId: context.requestId,
+          correlationId: context.correlationId,
+          actor,
+          tenantId,
+          action: 'tenant.onboarding_retry',
+          method: req.method,
+          path: req.path,
+          statusCode: 200,
+        }),
+      );
+
+      try {
+        const result = await tenantOnboardingService.completeOnboarding(tenantId);
+
+        scheduleAuditPersistence(
+          req,
+          writeAuditEvent({
+            eventName: AUDIT_EVENTS.TENANT_ONBOARDING_RETRY_COMPLETED,
+            outcome: 'success',
+            requestId: context.requestId,
+            correlationId: context.correlationId,
+            actor,
+            tenantId: result.tenant.tenantId,
+            action: 'tenant.onboarding_retry',
+            method: req.method,
+            path: req.path,
+            statusCode: 200,
+            resource: { type: 'tenant', id: result.tenant.tenantId },
+            reason: result.reauthenticationRequired
+              ? 'Cognito alignment completed; owner must reauthenticate.'
+              : 'Tenant already ACTIVE; idempotent success.',
+          }),
+        );
+
+        res.json(
+          buildSuccessResponse(
+            {
+              tenant: result.tenant,
+              reauthenticationRequired: result.reauthenticationRequired,
+            },
+            requestId,
+          ),
+        );
+      } catch (error) {
+        if (isAppError(error) && error.code.startsWith('COGNITO_')) {
+          scheduleAuditPersistence(
+            req,
+            writeAuditEvent({
+              eventName: AUDIT_EVENTS.TENANT_IDENTITY_ASSIGNMENT_FAILED,
+              outcome: 'failure',
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              actor,
+              tenantId,
+              action: 'tenant.identity_assignment',
+              method: req.method,
+              path: req.path,
+              statusCode: error.statusCode,
+              errorCode: error.code,
+              reason: error.message,
+            }),
+          );
+        }
+
+        handleTenantAdminRouteError(res, error, requestId);
+      }
+    },
   );
 
   router.get(

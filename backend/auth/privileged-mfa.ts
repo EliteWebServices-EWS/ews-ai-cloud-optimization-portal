@@ -20,11 +20,19 @@ import type { RequestSecurityContext } from './request-security-context';
 export const SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM = 'mfa_session_verified';
 
 /**
- * Approved token contract: only JSON boolean true satisfies session MFA evidence.
- * Rejects strings, numbers, and all other types (including string "true").
+ * Strict normalization for trusted JWT authorizer boolean claims.
+ * Only boolean true and exact lowercase string "true" are accepted.
+ */
+export function normalizeTrustedBooleanClaim(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
+/**
+ * Approved token contract for mfa_session_verified on access tokens.
+ * Rejects "TRUE", "false", 1, and other truthy values.
  */
 export function isAcceptedSessionMfaVerifiedClaim(value: unknown): boolean {
-  return value === true;
+  return normalizeTrustedBooleanClaim(value);
 }
 
 /** MFA assurance states (documentation + policy helpers). */
@@ -39,6 +47,7 @@ export type MfaAssuranceState =
 
 export const PRIVILEGED_OPERATIONS = {
   TENANT_CREATE: 'tenant.create',
+  TENANT_ONBOARDING_COMPLETE: 'tenant.onboarding_complete',
   TENANT_DELETE: 'tenant.delete',
   TENANT_SUSPEND: 'tenant.suspend',
   TENANT_REACTIVATE: 'tenant.reactivate',
@@ -50,6 +59,7 @@ export const PRIVILEGED_OPERATIONS = {
   EXECUTION_ROLLBACK: 'execution.rollback',
   AWS_ACCOUNT_REGISTER: 'aws_account.register',
   AWS_ACCOUNT_REMOVE: 'aws_account.remove',
+  TENANT_OWNER_BOOTSTRAP: 'tenant.owner_bootstrap',
 } as const;
 
 export type PrivilegedOperation =
@@ -57,6 +67,7 @@ export type PrivilegedOperation =
 
 const OPERATIONS_REQUIRING_MFA: ReadonlySet<PrivilegedOperation> = new Set([
   PRIVILEGED_OPERATIONS.TENANT_CREATE,
+  PRIVILEGED_OPERATIONS.TENANT_ONBOARDING_COMPLETE,
   PRIVILEGED_OPERATIONS.TENANT_DELETE,
   PRIVILEGED_OPERATIONS.TENANT_SUSPEND,
   PRIVILEGED_OPERATIONS.TENANT_PRIVILEGED_ROLE_CHANGE,
@@ -66,6 +77,7 @@ const OPERATIONS_REQUIRING_MFA: ReadonlySet<PrivilegedOperation> = new Set([
   PRIVILEGED_OPERATIONS.EXECUTION_ROLLBACK,
   PRIVILEGED_OPERATIONS.AWS_ACCOUNT_REGISTER,
   PRIVILEGED_OPERATIONS.AWS_ACCOUNT_REMOVE,
+  PRIVILEGED_OPERATIONS.TENANT_OWNER_BOOTSTRAP,
 ]);
 
 const PRIVILEGED_TENANT_ROLES: ReadonlySet<TenantRole> = new Set([

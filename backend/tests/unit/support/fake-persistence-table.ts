@@ -87,7 +87,10 @@ export class FakeDocumentClient {
     if (command instanceof QueryCommand) {
       const values = command.input.ExpressionAttributeValues ?? {};
       const pk = values[':pk'] as string;
-      const skPrefix = (values[':skPrefix'] as string | undefined) ?? '';
+      const skPrefix =
+        (values[':skPrefix'] as string | undefined) ??
+        (values[':memberPrefix'] as string | undefined) ??
+        '';
 
       const matching = Array.from(this.store.values())
         .filter(

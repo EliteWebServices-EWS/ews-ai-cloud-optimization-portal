@@ -114,6 +114,7 @@ export function generateTenantId(): string {
   return `tenant-${timestamp}-${randomSuffix}`;
 }
 
+<<<<<<< HEAD
 /** Generate a unique EC2 cost intelligence analysis run identifier. */
 export function generateCostAnalysisId(): string {
   const timestamp = Date.now().toString(36);
@@ -130,6 +131,8 @@ export function generateCostFindingId(): string {
   return `costfind-${timestamp}-${randomSuffix}`;
 }
 
+=======
+>>>>>>> origin/main
 /**
  * Generate a cryptographically random AssumeRole external ID.
  *

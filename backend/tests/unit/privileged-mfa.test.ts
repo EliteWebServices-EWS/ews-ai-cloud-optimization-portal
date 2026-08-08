@@ -6,6 +6,7 @@ import {
   evaluatePrivilegedMfa,
   hasTrustedSessionMfaEvidence,
   isAcceptedSessionMfaVerifiedClaim,
+  normalizeTrustedBooleanClaim,
   PRIVILEGED_OPERATIONS,
 } from '../../auth/privileged-mfa';
 import { getAuthenticatedIdentity } from '../../auth/identity';
@@ -42,12 +43,26 @@ function jwtEvent(
 }
 
 describe('mfa_session_verified JWT claim contract', () => {
-  it('accepts boolean true only', () => {
+  it('accepts boolean true', () => {
     assert.equal(isAcceptedSessionMfaVerifiedClaim(true), true);
+    assert.equal(normalizeTrustedBooleanClaim(true), true);
   });
 
-  it('rejects string "true"', () => {
-    assert.equal(isAcceptedSessionMfaVerifiedClaim('true'), false);
+  it('accepts exact lowercase string "true"', () => {
+    assert.equal(isAcceptedSessionMfaVerifiedClaim('true'), true);
+    assert.equal(normalizeTrustedBooleanClaim('true'), true);
+  });
+
+  it('rejects string "TRUE"', () => {
+    assert.equal(isAcceptedSessionMfaVerifiedClaim('TRUE'), false);
+  });
+
+  it('rejects string "True"', () => {
+    assert.equal(isAcceptedSessionMfaVerifiedClaim('True'), false);
+  });
+
+  it('rejects string "false"', () => {
+    assert.equal(isAcceptedSessionMfaVerifiedClaim('false'), false);
   });
 
   it('rejects number 1', () => {
@@ -94,14 +109,40 @@ describe('Lambda adapter — mfa_session_verified producer', () => {
     assert.equal(event.headers['x-sisum-mfa-session-verified'], 'true');
   });
 
-  it('rejects string "true" JWT claim', () => {
+  it('sets internal header when API Gateway JWT claim is string "true"', () => {
     const event = jwtEvent({
       ...baseClaims,
       mfa_session_verified: 'true',
     });
 
     attachValidatedIdentityHeaders(event);
-    assert.equal(event.headers['x-sisum-mfa-session-verified'], undefined);
+    assert.equal(event.headers['x-sisum-mfa-session-verified'], 'true');
+  });
+
+  it('HTTP API v2 authorizer path: requestContext.authorizer.jwt.claims string "true"', () => {
+    const event = {
+      headers: {},
+      requestContext: {
+        authorizer: {
+          jwt: {
+            claims: {
+              sub: 'prod-user-sub',
+              'cognito:groups': '["admin"]',
+              token_use: 'access',
+              tenant_id: 'sisum-default',
+              mfa_session_verified: 'true',
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof attachValidatedIdentityHeaders>[0];
+
+    attachValidatedIdentityHeaders(event);
+
+    const req = mockRequest(event.headers as Record<string, string>);
+    const identity = getAuthenticatedIdentity(req);
+    assert.equal(identity.sessionMfaVerified, true);
+    assert.equal(hasTrustedSessionMfaEvidence(identity), true);
   });
 
   it('rejects boolean false JWT claim even with spoofed header', () => {

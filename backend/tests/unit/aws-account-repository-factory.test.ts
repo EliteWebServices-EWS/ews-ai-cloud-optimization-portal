@@ -23,14 +23,13 @@ function setFullProductionTables(): void {
   process.env.INVITATIONS_TABLE_NAME = 'inv';
   process.env.EXECUTION_PLANS_TABLE_NAME = 'exec';
   process.env.AWS_ACCOUNTS_TABLE_NAME = 'aws-accounts';
-  process.env.COST_FINDINGS_TABLE_NAME = 'cost-findings';
+  process.env.CLOUD_RESOURCES_TABLE_NAME = 'cloud-resources';
 }
 
 test('uses mock repository locally when persistence is disabled', () => {
   process.env.ENVIRONMENT = 'development';
   process.env.PERSISTENCE_ENABLED = 'false';
   delete process.env.AWS_ACCOUNTS_TABLE_NAME;
-  delete process.env.COST_FINDINGS_TABLE_NAME;
 
   const repository = createAwsAccountRepository();
   assert.ok(repository instanceof MockAwsAccountRepository);
@@ -50,7 +49,6 @@ test('fails closed in deployed environments without AWS accounts table', () => {
   process.env.PERSISTENCE_ENABLED = 'true';
   setFullProductionTables();
   delete process.env.AWS_ACCOUNTS_TABLE_NAME;
-  delete process.env.COST_FINDINGS_TABLE_NAME;
 
   assert.throws(
     () => createAwsAccountRepository(),

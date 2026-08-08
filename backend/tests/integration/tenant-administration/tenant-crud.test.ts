@@ -28,11 +28,16 @@ function createTenantBody(slug: string, ownerUserId: string) {
 }
 
 describe('Tenant administration CRUD integration', () => {
-  it('Platform Admin with sessionMfaVerified creates a tenant in PROVISIONING', async () => {
-    const { app } = buildTestApp();
+  it('Platform Admin with sessionMfaVerified creates an ACTIVE tenant after Cognito alignment', async () => {
+    const ctx = buildTestApp();
 
-    const response = await httpRequest<{ data: { status: string; tenantId: string; version: number } }>(
-      app,
+    const response = await httpRequest<{
+      data: {
+        tenant: { status: string; tenantId: string; version: number };
+        reauthenticationRequired: boolean;
+      };
+    }>(
+      ctx.app,
       'POST',
       '/api/v1/admin/tenants',
       {
@@ -47,9 +52,13 @@ describe('Tenant administration CRUD integration', () => {
     );
 
     assert.equal(response.status, 201);
-    assert.equal(response.body.data.status, 'PROVISIONING');
-    assert.ok(response.body.data.tenantId);
-    assert.equal(response.body.data.version, 1);
+    assert.equal(response.body.data.tenant.status, 'ACTIVE');
+    assert.ok(response.body.data.tenant.tenantId);
+    assert.equal(response.body.data.reauthenticationRequired, true);
+    assert.equal(
+      ctx.cognitoAlignment.assignments.get(USER_TENANT_A_OWNER),
+      response.body.data.tenant.tenantId,
+    );
     assertNoSecretsInPayload(response.rawBody);
   });
 

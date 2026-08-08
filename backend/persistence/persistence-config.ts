@@ -12,6 +12,7 @@ const REQUIRED_TABLE_VARS = [
   'EXECUTION_PLANS_TABLE_NAME',
   'AWS_ACCOUNTS_TABLE_NAME',
   'COST_FINDINGS_TABLE_NAME',
+  'CLOUD_RESOURCES_TABLE_NAME',
 ] as const;
 
 export type PersistenceTableEnvVar = (typeof REQUIRED_TABLE_VARS)[number];
@@ -91,3 +92,4 @@ export function shouldUseDurablePersistence(
 
   return listMissingPersistenceTables().length === 0;
 }
+

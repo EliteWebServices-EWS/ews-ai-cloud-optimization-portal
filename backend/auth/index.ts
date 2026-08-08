@@ -83,6 +83,7 @@ export {
   MFA_ASSURANCE_STATE,
   SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM,
   isAcceptedSessionMfaVerifiedClaim,
+  normalizeTrustedBooleanClaim,
   evaluatePrivilegedMfa,
   hasTrustedSessionMfaEvidence,
   hasTrustedMfaEvidence,

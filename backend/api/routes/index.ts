@@ -65,14 +65,25 @@ import {
   validateWorkflowRunBody,
 } from '../../security';
 import { createMembershipRoutes } from './membership-routes';
+import { createTenantBootstrapRoutes } from './tenant-bootstrap.routes';
 import type { MembershipService } from '../../membership';
 import type { MembershipRepository } from '../../repositories/contracts';
 import type { ExecutionApiService } from '../../services/execution-api-service';
 import { createExecutionRoutes } from './execution.routes';
 import type { AwsAccountApiService } from '../../services/aws-account-api-service';
+<<<<<<< HEAD
 import { createAwsAccountRoutes } from './aws-account.routes';
 import type { CostIntelligenceApiService } from '../../services/cost-intelligence-api-service';
 import { createCostIntelligenceRoutes } from './cost-intelligence.routes';
+=======
+import type { Ec2DiscoveryApiService } from '../../services/ec2-discovery-api-service';
+import { createAwsAccountRoutes } from './aws-account.routes';
+import { createEc2SecurityRoutes } from './ec2-security.routes';
+import { createEc2Routes } from './ec2.routes';
+import {
+  type TenantOnboardingService,
+} from '../../services/tenant-onboarding.service';
+>>>>>>> origin/main
 
 export interface ApiDependencies {
   orchestrator: WorkflowOrchestrator;
@@ -85,9 +96,14 @@ export interface ApiDependencies {
   membershipService: MembershipService;
   membershipRepository: MembershipRepository;
   tenantRepository: TenantRepository;
+  tenantOnboardingService: TenantOnboardingService;
   executionApi: ExecutionApiService;
   awsAccountApi: AwsAccountApiService;
+<<<<<<< HEAD
   costIntelligenceApi: CostIntelligenceApiService;
+=======
+  ec2DiscoveryApi: Ec2DiscoveryApiService;
+>>>>>>> origin/main
 }
 
 function recordAuditEvent(
@@ -2077,14 +2093,26 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(createGovernanceRoutes());
   router.use(createFinancialRoutes(deps));
   router.use(createRecommendationRoutes(deps));
+  router.use(createEc2SecurityRoutes());
   router.use(createVerificationRoutes(deps));
   router.use(createReportRoutes(deps));
-  router.use(createTenantAdminRoutes(deps.tenantRepository));
+  router.use(
+    createTenantAdminRoutes({
+      tenantRepository: deps.tenantRepository,
+      tenantOnboardingService: deps.tenantOnboardingService,
+    }),
+  );
   router.use(createAdminAuditRoutes());
   router.use(
     createMembershipRoutes({
       membershipService: deps.membershipService,
       membershipRepository: deps.membershipRepository,
+    }),
+  );
+  router.use(
+    createTenantBootstrapRoutes({
+      membershipService: deps.membershipService,
+      tenantRepository: deps.tenantRepository,
     }),
   );
   router.use(
@@ -2100,8 +2128,14 @@ export function createApiRoutes(deps: ApiDependencies): Router {
     }),
   );
   router.use(
+<<<<<<< HEAD
     createCostIntelligenceRoutes({
       costIntelligenceApi: deps.costIntelligenceApi,
+=======
+    createEc2Routes({
+      ec2DiscoveryApi: deps.ec2DiscoveryApi,
+      membershipRepository: deps.membershipRepository,
+>>>>>>> origin/main
     }),
   );
 

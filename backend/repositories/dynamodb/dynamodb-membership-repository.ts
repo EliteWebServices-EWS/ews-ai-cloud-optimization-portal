@@ -3,6 +3,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  TransactWriteCommand,
   UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
@@ -11,18 +12,21 @@ import {
   RepositoryAlreadyExistsError,
   RepositoryConflictError,
   RepositoryNotFoundError,
+  TenantOwnerBootstrapConflictError,
   decodeNextToken,
   encodeNextToken,
   isConditionalCheckFailure,
   memberIdIndexPartitionKey,
   membershipSortKey,
   MEMBER_ID_INDEX_SORT_KEY,
+  TENANT_OWNER_BOOTSTRAP_SORT_KEY,
   tenantPartitionKey,
   userMembershipIndexPartitionKey,
   userMembershipIndexSortKey,
 } from '../../database';
 
 import type {
+  BootstrapFirstOwnerInput,
   CreateMembershipInput,
   MembershipRepository,
   PageRequest,
@@ -45,6 +49,16 @@ interface MembershipItem extends MembershipRecord {
   gsi1sk: string;
   gsi2pk: string;
   gsi2sk: typeof MEMBER_ID_INDEX_SORT_KEY;
+}
+
+interface TenantOwnerBootstrapItem {
+  pk: string;
+  sk: typeof TENANT_OWNER_BOOTSTRAP_SORT_KEY;
+  entityType: 'TENANT_OWNER_BOOTSTRAP';
+  tenantId: string;
+  bootstrappedByUserId: string;
+  memberId: string;
+  bootstrappedAt: string;
 }
 
 function toMembershipRecord(item: MembershipItem): MembershipRecord {
@@ -111,6 +125,109 @@ export class DynamoDbMembershipRepository
         throw new RepositoryAlreadyExistsError(
           `Membership for user ${record.userId} in tenant ${record.tenantId} already exists.`,
         );
+      }
+
+      throw error;
+    }
+
+    return record;
+  }
+
+  public async tenantHasAnyMembershipRecords(
+    tenantId: string,
+  ): Promise<boolean> {
+    const result = await this.client.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression:
+          '#pk = :pk AND begins_with(#sk, :memberPrefix)',
+        ExpressionAttributeNames: {
+          '#pk': 'pk',
+          '#sk': 'sk',
+        },
+        ExpressionAttributeValues: {
+          ':pk': tenantPartitionKey(tenantId),
+          ':memberPrefix': 'MEMBER#',
+        },
+        Limit: 1,
+        ConsistentRead: true,
+      }),
+    );
+
+    return (result.Items?.length ?? 0) > 0;
+  }
+
+  public async bootstrapFirstOwner(
+    input: BootstrapFirstOwnerInput,
+  ): Promise<MembershipRecord> {
+    if (await this.tenantHasAnyMembershipRecords(input.tenantId)) {
+      throw new TenantOwnerBootstrapConflictError();
+    }
+
+    const now = new Date().toISOString();
+
+    const record: MembershipRecord = {
+      tenantId: input.tenantId,
+      memberId: input.memberId,
+      userId: input.userId,
+      role: 'tenant_owner',
+      status: 'ACTIVE',
+      joinedAt: now,
+      statusChangedAt: now,
+      statusChangedBy: input.userId,
+      invitedBy: input.userId,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const membershipItem: MembershipItem = {
+      pk: tenantPartitionKey(record.tenantId),
+      sk: membershipSortKey(record.userId),
+      entityType: 'MEMBERSHIP',
+      gsi1pk: userMembershipIndexPartitionKey(record.userId),
+      gsi1sk: userMembershipIndexSortKey(record.tenantId, record.userId),
+      gsi2pk: memberIdIndexPartitionKey(record.memberId),
+      gsi2sk: MEMBER_ID_INDEX_SORT_KEY,
+      ...record,
+    };
+
+    const bootstrapMarker: TenantOwnerBootstrapItem = {
+      pk: tenantPartitionKey(input.tenantId),
+      sk: TENANT_OWNER_BOOTSTRAP_SORT_KEY,
+      entityType: 'TENANT_OWNER_BOOTSTRAP',
+      tenantId: input.tenantId,
+      bootstrappedByUserId: input.userId,
+      memberId: input.memberId,
+      bootstrappedAt: now,
+    };
+
+    try {
+      await this.client.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: bootstrapMarker,
+                ConditionExpression:
+                  'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+              },
+            },
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: membershipItem,
+                ConditionExpression:
+                  'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+              },
+            },
+          ],
+        }),
+      );
+    } catch (error) {
+      if (isConditionalCheckFailure(error)) {
+        throw new TenantOwnerBootstrapConflictError();
       }
 
       throw error;
