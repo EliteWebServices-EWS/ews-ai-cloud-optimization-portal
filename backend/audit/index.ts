@@ -10,6 +10,12 @@ export {
 } from './audit-logger';
 
 export {
+  writeEc2JobAuditEvent,
+  type Ec2JobAuditContext,
+  type Ec2JobAuditEvent,
+} from './ec2-job-audit';
+
+export {
   getAuditActor,
   getCorrelationId,
   getRequestId,
