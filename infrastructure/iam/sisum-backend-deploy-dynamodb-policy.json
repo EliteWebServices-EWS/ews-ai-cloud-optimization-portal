@@ -29,7 +29,8 @@
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-invitations-*",
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-execution-plans-*",
         "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-aws-accounts-*",
-        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-cloud-resources-*"
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-cloud-resources-*",
+        "arn:aws:dynamodb:us-east-1:739275446782:table/sisum-async-jobs-*"
       ]
     }
   ]

@@ -106,6 +106,12 @@ export const AUDIT_EVENTS = {
   EC2_SECURITY_ANALYSIS_FAILED: 'ec2.security_analysis_failed',
   EC2_SECURITY_FINDINGS_LISTED: 'ec2.security_findings_listed',
   EC2_SECURITY_SUMMARY_VIEWED: 'ec2.security_summary_viewed',
+  EC2_ASYNC_JOB_CREATED: 'ec2.async_job_created',
+  EC2_ASYNC_JOB_ENQUEUED: 'ec2.async_job_enqueued',
+  EC2_ASYNC_JOB_ENQUEUE_FAILED: 'ec2.async_job_enqueue_failed',
+  EC2_ASYNC_JOB_LISTED: 'ec2.async_job_listed',
+  EC2_ASYNC_JOB_VIEWED: 'ec2.async_job_viewed',
+  EC2_ASYNC_JOB_EVENTS_VIEWED: 'ec2.async_job_events_viewed',
 } as const;
 export type AuditEventName =
   (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];

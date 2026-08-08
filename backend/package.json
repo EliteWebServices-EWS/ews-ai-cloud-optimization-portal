@@ -23,6 +23,7 @@
     "test:sts-assumerole": "npm run test:exec -- tests/unit/sts-retry.test.ts tests/unit/sts-credential-provider.test.ts tests/unit/aws-service-client-factory.test.ts tests/unit/permission-validator.test.ts",
     "test:ec2-security": "npm run test:exec -- tests/unit/ec2-security-analyzer.test.ts tests/unit/ec2-security-inventory-mapper.test.ts tests/unit/ec2-discovery-security-groups.test.ts tests/unit/ec2-security-evidence.test.ts tests/unit/ec2-security-prefix-list-evidence.test.ts tests/unit/ec2-security-summary-aggregate.test.ts tests/unit/ec2-security-pagination.test.ts tests/unit/ec2-security-lifecycle.test.ts tests/integration/ec2-security-api-http.test.ts tests/integration/ec2-security-api-http-matrix.test.ts tests/integration/ec2-security-analysis-audit.test.ts",
     "test:ec2-cost-intelligence": "npm run test:exec -- tests/unit/ec2-cost-*.test.ts tests/integration/ec2-cost-api-http*.test.ts",
+    "test:ec2-async-jobs": "npm run test:exec -- tests/unit/ec2-async-job-repository.test.ts tests/unit/ec2-async-job-template.test.ts tests/integration/ec2-async-job-api-http.test.ts",
     "test:learning-validation": "npm run test:exec -- tests/integration/learning.validation.test.ts tests/unit/learning.validation.safety.test.ts",
     "validate:tenant-admin": "npm run test:sprint12",
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"
@@ -40,6 +41,7 @@
     "@aws-sdk/client-organizations": "^3.0.0",
     "@aws-sdk/client-rds": "^3.0.0",
     "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/client-sqs": "^3.0.0",
     "@aws-sdk/client-sts": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.1092.0",
     "@codegenie/serverless-express": "^5.0.0",

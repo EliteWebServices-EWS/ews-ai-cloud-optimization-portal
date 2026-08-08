@@ -30,6 +30,14 @@ export class RepositoryConflictError extends Error {
   }
 }
 
+/** Raised when the same idempotency key is reused with a different logical request. */
+export class RepositoryIdempotencyConflictError extends Error {
+  constructor(message = 'Idempotency-Key was reused with a different request.') {
+    super(message);
+    this.name = 'RepositoryIdempotencyConflictError';
+  }
+}
+
 /**
  * Raised when a resource ownership record already belongs to another tenant.
  * Callers must map this to a safe miss (404) without exposing the owner tenant.

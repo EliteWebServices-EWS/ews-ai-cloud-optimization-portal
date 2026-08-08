@@ -2,9 +2,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 
 Description: >
   Supplemental IAM permissions for SisumBackendDeployRole so GitHub Actions
-  can deploy SISU'M audit and tenant registry DynamoDB resources through
-  CloudFormation. Apply with an administrator role before re-running the
-  backend deployment.
+  can deploy SISU'M audit, tenant registry DynamoDB, and EC2 intelligence
+  SQS resources through CloudFormation. Apply with an administrator role
+  before re-running the backend deployment.
 
 Parameters:
   BackendDeployRoleName:
@@ -54,6 +54,21 @@ Resources:
               - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-execution-plans-*
               - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-aws-accounts-*
               - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-cloud-resources-*
+              - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sisum-async-jobs-*
+
+          - Sid: ManageSisumEc2IntelligenceQueues
+            Effect: Allow
+            Action:
+              - sqs:CreateQueue
+              - sqs:DeleteQueue
+              - sqs:GetQueueAttributes
+              - sqs:SetQueueAttributes
+              - sqs:GetQueueUrl
+              - sqs:TagQueue
+              - sqs:UntagQueue
+              - sqs:ListQueueTags
+            Resource:
+              - !Sub arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:sisum-ec2-intelligence-*
 
           - Sid: ManageAuditLambdaExecutionPolicy
             Effect: Allow

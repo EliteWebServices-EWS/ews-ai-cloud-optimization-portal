@@ -11,5 +11,7 @@ export {
   generateTenantId,
   generateExternalId,
   deriveIdempotentWorkflowId,
+  deriveIdempotentAsyncJobId,
+  generateAsyncJobId,
 } from './response';
 export { isNonEmptyArray, requireNonEmptyString, requireObject } from './validation';

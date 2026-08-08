@@ -78,6 +78,9 @@ import type { Ec2SecurityAnalysisApiService } from '../../services/ec2-security-
 import { createEc2Routes } from './ec2.routes';
 import { createEc2CostRoutes } from './ec2-cost.routes';
 import type { Ec2CostAnalysisApiService } from '../../services/ec2-cost-analysis-api-service';
+import { createEc2AsyncJobRoutes } from './ec2-async-job.routes';
+import type { Ec2AsyncJobProducerService } from '../../services/ec2-async-job-producer-service';
+import type { Ec2AsyncJobApiService } from '../../services/ec2-async-job-api-service';
 import {
   type TenantOnboardingService,
 } from '../../services/tenant-onboarding.service';
@@ -99,6 +102,8 @@ export interface ApiDependencies {
   ec2DiscoveryApi: Ec2DiscoveryApiService;
   ec2CostAnalysisApi: Ec2CostAnalysisApiService;
   ec2SecurityAnalysisApi: Ec2SecurityAnalysisApiService;
+  ec2AsyncJobProducer: Ec2AsyncJobProducerService;
+  ec2AsyncJobApi: Ec2AsyncJobApiService;
 }
 
 function recordAuditEvent(
@@ -2136,6 +2141,13 @@ export function createApiRoutes(deps: ApiDependencies): Router {
   router.use(
     createEc2CostRoutes({
       ec2CostAnalysisApi: deps.ec2CostAnalysisApi,
+      membershipRepository: deps.membershipRepository,
+    }),
+  );
+  router.use(
+    createEc2AsyncJobRoutes({
+      ec2AsyncJobProducer: deps.ec2AsyncJobProducer,
+      ec2AsyncJobApi: deps.ec2AsyncJobApi,
       membershipRepository: deps.membershipRepository,
     }),
   );

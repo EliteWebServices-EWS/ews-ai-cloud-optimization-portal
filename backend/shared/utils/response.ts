@@ -98,6 +98,25 @@ export function deriveIdempotentWorkflowId(
   return `wf-idem-${digest}`;
 }
 
+/** Deterministic async job id for a tenant + client idempotency key. */
+export function deriveIdempotentAsyncJobId(
+  tenantId: string,
+  idempotencyKey: string,
+): string {
+  const digest = createHash('sha256')
+    .update(`async-job:${tenantId}:${idempotencyKey}`)
+    .digest('hex')
+    .slice(0, 32);
+
+  return `job-idem-${digest}`;
+}
+
+export function generateAsyncJobId(): string {
+  const timestamp = Date.now().toString(36);
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+  return `job-${timestamp}-${randomSuffix}`;
+}
+
 /** Generate a unique optimization report identifier. */
 export function generateReportId(): string {
   const timestamp = Date.now().toString(36);
