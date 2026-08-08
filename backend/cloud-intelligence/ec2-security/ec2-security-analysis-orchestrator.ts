@@ -46,6 +46,12 @@ export interface RunEc2SecurityAnalysisInput {
 
   policy?: Ec2GovernancePolicy;
 
+  /** When set (async worker), reuses a stable run id for idempotent stage recovery. */
+
+  runId?: string;
+
+  resumeRunExpectedVersion?: number;
+
   /** When false, OPEN findings outside the analyzed result set are not resolved. */
 
   resolveAbsentOpenFindings?: boolean;
@@ -130,11 +136,23 @@ export class Ec2SecurityAnalysisOrchestrator {
 
   async runAnalysis(input: RunEc2SecurityAnalysisInput): Promise<RunEc2SecurityAnalysisResult> {
 
-    const runId = randomUUID();
+    const runId = input.runId ?? randomUUID();
 
     const startedAt = new Date().toISOString();
 
-    const run = await this.runs.createRun({
+    let run: Ec2SecurityAnalysisRunRecord;
+    if (input.resumeRunExpectedVersion != null) {
+      const existing = await this.runs.getRun(input.tenantId, input.accountId, runId);
+      if (
+        !existing ||
+        existing.status !== 'RUNNING' ||
+        existing.version !== input.resumeRunExpectedVersion
+      ) {
+        throw new Error('EC2_SECURITY_RUN_EXECUTION_MISMATCH');
+      }
+      run = existing;
+    } else {
+      run = await this.runs.createRun({
 
       runId,
 
@@ -147,6 +165,7 @@ export class Ec2SecurityAnalysisOrchestrator {
       startedAt,
 
     });
+    }
 
 
 

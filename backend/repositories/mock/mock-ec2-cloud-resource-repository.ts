@@ -4,6 +4,7 @@ import {
   encodeEc2ResourceListNextToken,
 } from '../ec2-cloud-resource-pagination';
 import type {
+  ClaimEc2DiscoveryRunExecutionInput,
   CompleteEc2DiscoveryRunInput,
   CreateEc2DiscoveryRunInput,
   Ec2CloudResourceRepository,
@@ -23,6 +24,10 @@ import {
 } from '../models/cloud-resource-persistence-models';
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
+import {
+  applyMockStageRunExecutionReclaim,
+  planStageRunExecutionClaim,
+} from '../ec2-stage-run-execution-claim';
 
 function resourceKey(input: {
   tenantId: string;
@@ -215,9 +220,39 @@ export class MockEc2CloudResourceRepository
       version: 1,
       createdAt: now,
       updatedAt: now,
+      executionOwnerId: input.executionOwnerId,
+      leaseExpiresAt: input.leaseExpiresAt,
+      attemptCount: input.attemptCount ?? 1,
     };
     this.runs.set(runKey(input.tenantId, input.accountId, input.runId), record);
     return record;
+  }
+
+  async claimExecution(input: ClaimEc2DiscoveryRunExecutionInput): Promise<Ec2DiscoveryRunRecord> {
+    const existing = await this.getRun(input.tenantId, input.accountId, input.runId);
+    const plan = planStageRunExecutionClaim(
+      existing,
+      input.nowMs,
+      input.executionOwnerIdForAttempt,
+    );
+    if (plan.kind === 'create') {
+      return this.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        requestedRegions: input.requestedRegions,
+        startedAt: input.startedAt,
+        executionOwnerId: plan.executionOwnerId,
+        leaseExpiresAt: plan.leaseExpiresAt,
+        attemptCount: plan.attemptCount,
+      });
+    }
+    if (!existing) {
+      throw new RepositoryNotFoundError('EC2 discovery run not found.');
+    }
+    const updated = applyMockStageRunExecutionReclaim(existing, plan);
+    this.runs.set(runKey(input.tenantId, input.accountId, input.runId), updated);
+    return updated;
   }
 
   async completeRun(input: CompleteEc2DiscoveryRunInput): Promise<Ec2DiscoveryRunRecord> {
@@ -239,6 +274,8 @@ export class MockEc2CloudResourceRepository
       warnings: input.warnings,
       version: existing.version + 1,
       updatedAt: new Date().toISOString(),
+      failureRetryable:
+        input.status === 'FAILED' ? input.failureRetryable ?? true : undefined,
     };
     this.runs.set(key, updated);
     return updated;

@@ -24,6 +24,7 @@ import {
 } from '../ec2-cost-recommendation-pagination';
 
 import type {
+  ClaimEc2CostAnalysisRunExecutionInput,
   CompleteEc2CostAnalysisRunInput,
   CreateEc2CostAnalysisRunInput,
   Ec2CostAnalysisRunRepository,
@@ -39,6 +40,7 @@ import { mergeRecommendationLifecycleOnUpsert } from '../../cloud-intelligence/e
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
 import { BaseDynamoDbRepository } from './base-dynamodb-repository';
+import { planStageRunExecutionClaim } from '../ec2-stage-run-execution-claim';
 
 interface CostRunItem extends Ec2CostAnalysisRunRecord {
   pk: string;
@@ -357,6 +359,9 @@ export class DynamoDbEc2CostRepository
       pk,
       sk,
       entityType: 'EC2_COST_ANALYSIS_RUN',
+      executionOwnerId: input.executionOwnerId,
+      leaseExpiresAt: input.leaseExpiresAt,
+      attemptCount: input.attemptCount ?? 1,
     };
     await this.client.send(
       new PutCommand({
@@ -368,6 +373,69 @@ export class DynamoDbEc2CostRepository
     return stripRunKeys(item);
   }
 
+  async claimExecution(
+    input: ClaimEc2CostAnalysisRunExecutionInput,
+  ): Promise<Ec2CostAnalysisRunRecord> {
+    const existing = await this.getRun(input.tenantId, input.accountId, input.runId);
+    const plan = planStageRunExecutionClaim(
+      existing,
+      input.nowMs,
+      input.executionOwnerIdForAttempt,
+    );
+    if (plan.kind === 'create') {
+      return this.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        regions: input.regions,
+        observationDays: input.observationDays,
+        periodSeconds: input.periodSeconds,
+        requestedAt: input.requestedAt,
+        startedAt: input.startedAt,
+        executionOwnerId: plan.executionOwnerId,
+        leaseExpiresAt: plan.leaseExpiresAt,
+        attemptCount: plan.attemptCount,
+      });
+    }
+    const pk = cloudResourceAccountPartitionKey(input.tenantId, input.accountId);
+    const sk = ec2CostAnalysisRunSortKey(input.runId);
+    const now = new Date().toISOString();
+    try {
+      await this.client.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { pk, sk },
+          UpdateExpression:
+            'SET #status = :running, executionOwnerId = :owner, leaseExpiresAt = :lease, attemptCount = :attempt, #updatedAt = :updatedAt, #version = #version + :one REMOVE completedAt, failureRetryable',
+          ConditionExpression: '#version = :expected',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+            '#updatedAt': 'updatedAt',
+            '#version': 'version',
+          },
+          ExpressionAttributeValues: {
+            ':running': 'RUNNING',
+            ':owner': plan.executionOwnerId,
+            ':lease': plan.leaseExpiresAt,
+            ':attempt': plan.attemptCount,
+            ':updatedAt': now,
+            ':one': 1,
+            ':expected': plan.expectedVersion,
+          },
+        }),
+      );
+    } catch (error) {
+      if (isConditionalCheckFailure(error)) {
+        throw new RepositoryConflictError('EC2 cost analysis run version conflict.');
+      }
+      throw error;
+    }
+    const refreshed = await this.client.send(
+      new GetCommand({ TableName: this.tableName, Key: { pk, sk } }),
+    );
+    return stripRunKeys(refreshed.Item as CostRunItem);
+  }
+
   async completeRun(input: CompleteEc2CostAnalysisRunInput): Promise<Ec2CostAnalysisRunRecord> {
     const pk = cloudResourceAccountPartitionKey(input.tenantId, input.accountId);
     const sk = ec2CostAnalysisRunSortKey(input.runId);
@@ -377,7 +445,7 @@ export class DynamoDbEc2CostRepository
           TableName: this.tableName,
           Key: { pk, sk },
           UpdateExpression:
-            'SET #status = :status, completedAt = :completedAt, instancesFound = :ifound, instancesEvaluated = :ieval, recommendationsCreated = :rc, recommendationsUpdated = :ru, recommendationsResolved = :rr, insufficientDataCount = :idc, regionsSucceeded = :rs, regionsFailed = :rf, warnings = :warnings, #updatedAt = :updatedAt, #version = #version + :one',
+            'SET #status = :status, completedAt = :completedAt, instancesFound = :ifound, instancesEvaluated = :ieval, recommendationsCreated = :rc, recommendationsUpdated = :ru, recommendationsResolved = :rr, insufficientDataCount = :idc, regionsSucceeded = :rs, regionsFailed = :rf, warnings = :warnings, #updatedAt = :updatedAt, #version = #version + :one, failureRetryable = :failureRetryable REMOVE executionOwnerId, leaseExpiresAt',
           ConditionExpression: '#version = :expected',
           ExpressionAttributeNames: {
             '#status': 'status',
@@ -399,6 +467,8 @@ export class DynamoDbEc2CostRepository
             ':updatedAt': new Date().toISOString(),
             ':one': 1,
             ':expected': input.expectedVersion,
+            ':failureRetryable':
+              input.status === 'FAILED' ? (input.failureRetryable ?? true) : false,
           },
         }),
       );

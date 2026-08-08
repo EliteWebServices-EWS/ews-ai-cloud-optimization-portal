@@ -24,6 +24,7 @@
     "test:ec2-security": "npm run test:exec -- tests/unit/ec2-security-analyzer.test.ts tests/unit/ec2-security-inventory-mapper.test.ts tests/unit/ec2-discovery-security-groups.test.ts tests/unit/ec2-security-evidence.test.ts tests/unit/ec2-security-prefix-list-evidence.test.ts tests/unit/ec2-security-summary-aggregate.test.ts tests/unit/ec2-security-pagination.test.ts tests/unit/ec2-security-lifecycle.test.ts tests/integration/ec2-security-api-http.test.ts tests/integration/ec2-security-api-http-matrix.test.ts tests/integration/ec2-security-analysis-audit.test.ts",
     "test:ec2-cost-intelligence": "npm run test:exec -- tests/unit/ec2-cost-*.test.ts tests/integration/ec2-cost-api-http*.test.ts",
     "test:ec2-async-jobs": "npm run test:exec -- tests/unit/ec2-async-job-repository.test.ts tests/unit/ec2-async-job-template.test.ts tests/integration/ec2-async-job-api-http.test.ts",
+    "test:ec2-analysis-consumer": "npm run test:exec -- tests/unit/ec2-intelligence-queue-message-parser.test.ts tests/unit/ec2-async-job-consumer-service.test.ts tests/unit/ec2-analysis-consumer-handler.test.ts tests/unit/ec2-stage-run-stale-worker-fencing.test.ts",
     "test:learning-validation": "npm run test:exec -- tests/integration/learning.validation.test.ts tests/unit/learning.validation.safety.test.ts",
     "validate:tenant-admin": "npm run test:sprint12",
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"

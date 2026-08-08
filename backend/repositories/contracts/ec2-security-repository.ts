@@ -83,6 +83,9 @@ export interface CreateEc2SecurityAnalysisRunInput {
   accountId: string;
   regions: string[];
   startedAt: string;
+  executionOwnerId?: string;
+  leaseExpiresAt?: string;
+  attemptCount?: number;
 }
 
 export interface CompleteEc2SecurityAnalysisRunInput {
@@ -97,10 +100,22 @@ export interface CompleteEc2SecurityAnalysisRunInput {
   findingsCreated: number;
   findingsUpdated: number;
   findingsResolved: number;
+  failureRetryable?: boolean;
+}
+
+export interface ClaimEc2SecurityAnalysisRunExecutionInput {
+  runId: string;
+  tenantId: string;
+  accountId: string;
+  regions: string[];
+  startedAt: string;
+  nowMs: number;
+  executionOwnerIdForAttempt: (attemptCount: number) => string;
 }
 
 export interface Ec2SecurityAnalysisRunRepository {
   createRun(input: CreateEc2SecurityAnalysisRunInput): Promise<Ec2SecurityAnalysisRunRecord>;
+  claimExecution(input: ClaimEc2SecurityAnalysisRunExecutionInput): Promise<Ec2SecurityAnalysisRunRecord>;
   completeRun(input: CompleteEc2SecurityAnalysisRunInput): Promise<Ec2SecurityAnalysisRunRecord>;
   getRun(tenantId: string, accountId: string, runId: string): Promise<Ec2SecurityAnalysisRunRecord | null>;
 }

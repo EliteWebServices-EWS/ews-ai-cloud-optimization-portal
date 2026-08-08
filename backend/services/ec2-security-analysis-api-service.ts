@@ -42,6 +42,9 @@ export interface StartEc2SecurityAnalysisInput {
   accountId: string;
   regions?: string[];
   policy?: Ec2GovernancePolicy;
+  /** When set (async worker), reuses a stable run id for idempotent stage recovery. */
+  runId?: string;
+  resumeRunExpectedVersion?: number;
 }
 
 export class Ec2SecurityAnalysisApiService {
@@ -97,6 +100,8 @@ export class Ec2SecurityAnalysisApiService {
       accountId,
       regions,
       policy: input.policy,
+      runId: input.runId,
+      resumeRunExpectedVersion: input.resumeRunExpectedVersion,
     });
     return {
       runId: result.run.runId,

@@ -20,6 +20,7 @@ import {
 } from './ec2-cost-resolution-policy';
 import type { Ec2PerformanceMetricsClientFactory } from './ec2-performance-metrics-client.port';
 import type { Ec2PerformanceEvidence } from './ec2-cost-models';
+import type { Ec2CostAnalysisRunRecord } from './ec2-cost-models';
 
 export interface Ec2CostAnalysisOrchestratorInput {
   tenantId: string;
@@ -30,6 +31,7 @@ export interface Ec2CostAnalysisOrchestratorInput {
   requestedAt: string;
   startedAt: string;
   metricsClientFactory?: Ec2PerformanceMetricsClientFactory;
+  resumeRunExpectedVersion?: number;
 }
 
 export interface Ec2CostAnalysisOrchestratorResult {
@@ -79,16 +81,29 @@ export class Ec2CostAnalysisOrchestrator {
     const regionsFailed: string[] = [];
     const seenFindingKeys = new Set<string>();
 
-    const runRecord = await this.runs.createRun({
-      runId: input.runId,
-      tenantId: input.tenantId,
-      accountId: input.accountId,
-      regions: input.regions,
-      observationDays: input.observationDays,
-      periodSeconds: EC2_COST_DEFAULT_PERIOD_SECONDS,
-      requestedAt: input.requestedAt,
-      startedAt: input.startedAt,
-    });
+    let runRecord: Ec2CostAnalysisRunRecord;
+    if (input.resumeRunExpectedVersion != null) {
+      const existing = await this.runs.getRun(input.tenantId, input.accountId, input.runId);
+      if (
+        !existing ||
+        existing.status !== 'RUNNING' ||
+        existing.version !== input.resumeRunExpectedVersion
+      ) {
+        throw new Error('EC2_COST_RUN_EXECUTION_MISMATCH');
+      }
+      runRecord = existing;
+    } else {
+      runRecord = await this.runs.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        regions: input.regions,
+        observationDays: input.observationDays,
+        periodSeconds: EC2_COST_DEFAULT_PERIOD_SECONDS,
+        requestedAt: input.requestedAt,
+        startedAt: input.startedAt,
+      });
+    }
 
     const instancesByRegion = new Map<string, DiscoveredCloudResourceRecord[]>();
     const volumesByRegion = new Map<string, DiscoveredCloudResourceRecord[]>();
@@ -143,6 +158,7 @@ export class Ec2CostAnalysisOrchestrator {
         warnings: [
           `More than ${EC2_COST_MAX_INSTANCES_PER_REQUEST} instances were found; narrow regions or reduce inventory scope.`,
         ],
+        failureRetryable: false,
       });
       throw new Error('EC2_COST_INSTANCE_LIMIT_EXCEEDED');
     }

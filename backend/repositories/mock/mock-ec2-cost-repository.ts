@@ -5,6 +5,7 @@ import { buildEc2CostFindingKey } from '../../database/cloud-resources/ec2-cost-
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
 import type {
+  ClaimEc2CostAnalysisRunExecutionInput,
   CompleteEc2CostAnalysisRunInput,
   CreateEc2CostAnalysisRunInput,
   Ec2CostAnalysisRunRepository,
@@ -21,6 +22,10 @@ import {
   decodeEc2CostRecommendationNextToken,
   encodeEc2CostRecommendationNextToken,
 } from '../ec2-cost-recommendation-pagination';
+import {
+  applyMockStageRunExecutionReclaim,
+  planStageRunExecutionClaim,
+} from '../ec2-stage-run-execution-claim';
 
 function runKey(tenantId: string, accountId: string, runId: string): string {
   return `${tenantId}#${accountId}#${runId}`;
@@ -223,10 +228,43 @@ export class MockEc2CostRepository
       version: 1,
       createdAt: now,
       updatedAt: now,
+      executionOwnerId: input.executionOwnerId,
+      leaseExpiresAt: input.leaseExpiresAt,
+      attemptCount: input.attemptCount ?? 1,
     };
     this.runs.set(runKey(input.tenantId, input.accountId, input.runId), record);
     this.openKeysByRun.set(runKey(input.tenantId, input.accountId, input.runId), new Set());
     return record;
+  }
+
+  async claimExecution(input: ClaimEc2CostAnalysisRunExecutionInput): Promise<Ec2CostAnalysisRunRecord> {
+    const existing = await this.getRun(input.tenantId, input.accountId, input.runId);
+    const plan = planStageRunExecutionClaim(
+      existing,
+      input.nowMs,
+      input.executionOwnerIdForAttempt,
+    );
+    if (plan.kind === 'create') {
+      return this.createRun({
+        runId: input.runId,
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        regions: input.regions,
+        observationDays: input.observationDays,
+        periodSeconds: input.periodSeconds,
+        requestedAt: input.requestedAt,
+        startedAt: input.startedAt,
+        executionOwnerId: plan.executionOwnerId,
+        leaseExpiresAt: plan.leaseExpiresAt,
+        attemptCount: plan.attemptCount,
+      });
+    }
+    if (!existing) {
+      throw new RepositoryNotFoundError('EC2 cost analysis run not found.');
+    }
+    const updated = applyMockStageRunExecutionReclaim(existing, plan);
+    this.runs.set(runKey(input.tenantId, input.accountId, input.runId), updated);
+    return updated;
   }
 
   async completeRun(input: CompleteEc2CostAnalysisRunInput): Promise<Ec2CostAnalysisRunRecord> {
@@ -253,6 +291,8 @@ export class MockEc2CostRepository
       warnings: input.warnings,
       version: existing.version + 1,
       updatedAt: input.completedAt,
+      failureRetryable:
+        input.status === 'FAILED' ? input.failureRetryable ?? true : undefined,
     };
     this.runs.set(key, updated);
     return updated;

@@ -71,6 +71,9 @@ export interface CreateEc2DiscoveryRunInput {
   accountId: string;
   requestedRegions: string[];
   startedAt: string;
+  executionOwnerId?: string;
+  leaseExpiresAt?: string;
+  attemptCount?: number;
 }
 
 export interface CompleteEc2DiscoveryRunInput {
@@ -84,10 +87,22 @@ export interface CompleteEc2DiscoveryRunInput {
   regionsSucceeded: string[];
   regionsFailed: string[];
   warnings: string[];
+  failureRetryable?: boolean;
+}
+
+export interface ClaimEc2DiscoveryRunExecutionInput {
+  runId: string;
+  tenantId: string;
+  accountId: string;
+  requestedRegions: string[];
+  startedAt: string;
+  nowMs: number;
+  executionOwnerIdForAttempt: (attemptCount: number) => string;
 }
 
 export interface Ec2DiscoveryRunRepository {
   createRun(input: CreateEc2DiscoveryRunInput): Promise<Ec2DiscoveryRunRecord>;
+  claimExecution(input: ClaimEc2DiscoveryRunExecutionInput): Promise<Ec2DiscoveryRunRecord>;
   completeRun(input: CompleteEc2DiscoveryRunInput): Promise<Ec2DiscoveryRunRecord>;
   getRun(
     tenantId: string,

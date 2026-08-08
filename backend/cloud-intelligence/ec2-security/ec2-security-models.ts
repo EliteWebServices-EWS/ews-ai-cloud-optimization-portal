@@ -60,4 +60,8 @@ export interface Ec2SecurityAnalysisRunRecord {
   version: number;
   createdAt: string;
   updatedAt: string;
+  executionOwnerId?: string;
+  leaseExpiresAt?: string;
+  attemptCount?: number;
+  failureRetryable?: boolean;
 }

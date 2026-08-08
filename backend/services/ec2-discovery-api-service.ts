@@ -48,6 +48,10 @@ export interface Ec2DiscoveryCallContext {
 
 export interface StartEc2DiscoveryInput {
   regions?: string[];
+  /** When set (async worker), reuses a stable run id for idempotent stage recovery. */
+  runId?: string;
+  /** When set with runId, resumes a worker-claimed discovery run row. */
+  resumeRunExpectedVersion?: number;
 }
 
 function dedupeRegions(regions: string[]): string[] {
@@ -145,7 +149,7 @@ export class Ec2DiscoveryApiService {
     };
 
     const orchestrator = this.buildOrchestrator(roleConfig, stsContext);
-    const runId = `ec2run-${randomUUID()}`;
+    const runId = input?.runId ?? `ec2run-${randomUUID()}`;
     const startedAt = new Date().toISOString();
 
     const result = await orchestrator.runDiscovery({
@@ -154,6 +158,7 @@ export class Ec2DiscoveryApiService {
       regions,
       runId,
       startedAt,
+      resumeRunExpectedVersion: input?.resumeRunExpectedVersion,
     });
 
     return {
