@@ -124,4 +124,40 @@ describe('EC2 async job monitoring stack template', () => {
     assert.match(alarmsWidget, /ApiGateway5xxAlarm/);
     assert.match(alarmsWidget, /AuthorizationDenialAlarm/);
   });
+
+  it('Ec2AsyncJobHighRetryRateAlarm metric math returns data from exactly one query', () => {
+    const alarmBlock = template.slice(
+      template.indexOf('Ec2AsyncJobHighRetryRateAlarm:'),
+      template.indexOf('ProductionMonitoringDashboard:'),
+    );
+    assert.match(alarmBlock, /Metrics:/);
+    assert.match(alarmBlock, /- Id: started/);
+    assert.match(alarmBlock, /- Id: retries/);
+    assert.match(alarmBlock, /- Id: retryRate/);
+    assert.match(alarmBlock, /Expression: IF\(started>0,100\*retries\/started,0\)/);
+    assert.match(alarmBlock, /Threshold: !Ref Ec2JobRetryAlarmThresholdPercent/);
+    assert.match(alarmBlock, /ComparisonOperator: GreaterThanThreshold/);
+    assert.match(alarmBlock, /TreatMissingData: notBreaching/);
+
+    const startedSection = alarmBlock.slice(
+      alarmBlock.indexOf('- Id: started'),
+      alarmBlock.indexOf('- Id: retries'),
+    );
+    const retriesSection = alarmBlock.slice(
+      alarmBlock.indexOf('- Id: retries'),
+      alarmBlock.indexOf('- Id: retryRate'),
+    );
+    const expressionSection = alarmBlock.slice(alarmBlock.indexOf('- Id: retryRate'));
+
+    assert.match(startedSection, /ReturnData: false/);
+    assert.match(retriesSection, /ReturnData: false/);
+    assert.match(expressionSection, /ReturnData: true/);
+    assert.doesNotMatch(startedSection, /ReturnData: true/);
+    assert.doesNotMatch(retriesSection, /ReturnData: true/);
+
+    const returnTrueCount = (alarmBlock.match(/ReturnData: true/g) ?? []).length;
+    const returnFalseCount = (alarmBlock.match(/ReturnData: false/g) ?? []).length;
+    assert.equal(returnTrueCount, 1);
+    assert.equal(returnFalseCount, 2);
+  });
 });

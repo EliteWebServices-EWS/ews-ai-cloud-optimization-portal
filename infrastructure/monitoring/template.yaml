@@ -654,6 +654,7 @@ Resources:
         Values above 100 are expected when jobs retry multiple times.
       Metrics:
         - Id: started
+          ReturnData: false
           MetricStat:
             Metric:
               Namespace: SISUM/EC2AsyncJobs
@@ -661,6 +662,7 @@ Resources:
             Period: 300
             Stat: Sum
         - Id: retries
+          ReturnData: false
           MetricStat:
             Metric:
               Namespace: SISUM/EC2AsyncJobs
