@@ -50,6 +50,45 @@ Parameters:
       Optional email address for alarm notifications. Leave empty to create
       the monitoring stack without an email subscription.
 
+  Ec2AnalysisConsumerFunctionName:
+    Type: String
+    Default: sisum-ec2-analysis-consumer-production
+    Description: EC2 intelligence SQS consumer Lambda function name.
+
+  Ec2IntelligenceQueueName:
+    Type: String
+    Default: sisum-ec2-intelligence-production
+    Description: EC2 intelligence work queue name.
+
+  Ec2IntelligenceDlqName:
+    Type: String
+    Default: sisum-ec2-intelligence-dlq-production
+    Description: EC2 intelligence dead-letter queue name.
+
+  Ec2QueueAgeAlarmThresholdSeconds:
+    Type: Number
+    Default: 900
+    Description: >
+      Oldest visible message age (seconds) on the work queue before alarming.
+      Default 900s is above the 300s consumer timeout and below the 1800s
+      visibility timeout to surface backlog/stall without treating normal
+      in-flight work as an outage.
+
+  Ec2JobRetryAlarmThresholdPercent:
+    Type: Number
+    Default: 25
+    Description: >
+      Alarm when retry intensity exceeds this value. Retry intensity is
+      100 * (retry audit events / job started events) and can exceed 100
+      when one job retries multiple times (not unique-job retry percentage).
+
+  Ec2ConsumerNearTimeoutThresholdMilliseconds:
+    Type: Number
+    Default: 270000
+    Description: >
+      Maximum Lambda Duration statistic (milliseconds) before a near-timeout
+      alarm fires for the EC2 consumer (300000 ms Lambda timeout).
+
 Conditions:
   HasNotificationEmail: !Not
     - !Equals
@@ -419,6 +458,234 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  Ec2AsyncJobStartedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2AnalysisConsumerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.async_job_started" }'
+      MetricTransformations:
+        - MetricName: Ec2AsyncJobsStarted
+          MetricNamespace: SISUM/EC2AsyncJobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2AsyncJobSucceededMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2AnalysisConsumerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.async_job_succeeded" }'
+      MetricTransformations:
+        - MetricName: Ec2AsyncJobsSucceeded
+          MetricNamespace: SISUM/EC2AsyncJobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2AsyncJobFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2AnalysisConsumerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.async_job_failed" }'
+      MetricTransformations:
+        - MetricName: Ec2AsyncJobsFailed
+          MetricNamespace: SISUM/EC2AsyncJobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2AsyncJobRetryMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Ec2AnalysisConsumerFunctionName}"
+      FilterPattern: '{ $.eventName = "ec2.async_job_retrying" }'
+      MetricTransformations:
+        - MetricName: Ec2AsyncJobRetries
+          MetricNamespace: SISUM/EC2AsyncJobs
+          MetricValue: "1"
+          DefaultValue: 0
+
+  Ec2IntelligenceDlqDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-intelligence-dlq-depth
+      AlarmDescription: >
+        EC2 intelligence DLQ contains one or more messages (automatic retries exhausted).
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !Ref Ec2IntelligenceDlqName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  Ec2IntelligenceQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-intelligence-queue-age
+      AlarmDescription: >
+        Oldest visible message on the EC2 intelligence work queue exceeded the
+        configured age threshold (backlog or consumer stall).
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !Ref Ec2IntelligenceQueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref Ec2QueueAgeAlarmThresholdSeconds
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  Ec2AnalysisConsumerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-analysis-consumer-errors
+      AlarmDescription: >
+        EC2 analysis consumer Lambda reported one or more execution errors within five minutes.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Ec2AnalysisConsumerFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  Ec2AnalysisConsumerThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-analysis-consumer-throttles
+      AlarmDescription: >
+        EC2 analysis consumer Lambda was throttled one or more times within five minutes.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Ec2AnalysisConsumerFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  Ec2AnalysisConsumerNearTimeoutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-analysis-consumer-near-timeout
+      AlarmDescription: >
+        EC2 analysis consumer Lambda maximum duration exceeded the near-timeout
+        threshold (does not prove a hard Lambda timeout; investigate long stages).
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Ec2AnalysisConsumerFunctionName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: !Ref Ec2ConsumerNearTimeoutThresholdMilliseconds
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
+  Ec2AsyncJobHighRetryRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub sisum-${Environment}-ec2-async-job-high-retry-rate
+      AlarmDescription: >
+        EC2 async job retry intensity (100 * retry events / starts) exceeded
+        the configured threshold for two consecutive five-minute periods.
+        Values above 100 are expected when jobs retry multiple times.
+      Metrics:
+        - Id: started
+          MetricStat:
+            Metric:
+              Namespace: SISUM/EC2AsyncJobs
+              MetricName: Ec2AsyncJobsStarted
+            Period: 300
+            Stat: Sum
+        - Id: retries
+          MetricStat:
+            Metric:
+              Namespace: SISUM/EC2AsyncJobs
+              MetricName: Ec2AsyncJobRetries
+            Period: 300
+            Stat: Sum
+        - Id: retryRate
+          Expression: IF(started>0,100*retries/started,0)
+          Label: RetryIntensityPer100Starts
+          ReturnData: true
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref Ec2JobRetryAlarmThresholdPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref MonitoringAlarmTopic
+      OKActions:
+        - !Ref MonitoringAlarmTopic
+      Tags:
+        - Key: Project
+          Value: SISUM
+        - Key: Environment
+          Value: !Ref Environment
+
   ProductionMonitoringDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
@@ -746,9 +1013,320 @@ Resources:
               }
             },
             {
-              "type": "alarm",
+              "type": "text",
               "x": 0,
               "y": 27,
+              "width": 24,
+              "height": 2,
+              "properties": {
+                "markdown": "## EC2 Async Intelligence Pipeline\n**Consumer:** ${Ec2AnalysisConsumerFunctionName}  \n**Work queue:** ${Ec2IntelligenceQueueName}  \n**DLQ:** ${Ec2IntelligenceDlqName}"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 29,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "EC2 Queue Depth",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Maximum",
+                "metrics": [
+                  [
+                    "AWS/SQS",
+                    "ApproximateNumberOfMessagesVisible",
+                    "QueueName",
+                    "${Ec2IntelligenceQueueName}",
+                    {
+                      "label": "Work Queue Depth"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 29,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "EC2 Oldest Message Age (Seconds)",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Maximum",
+                "yAxis": {
+                  "left": {
+                    "label": "Seconds",
+                    "showUnits": false
+                  }
+                },
+                "metrics": [
+                  [
+                    "AWS/SQS",
+                    "ApproximateAgeOfOldestMessage",
+                    "QueueName",
+                    "${Ec2IntelligenceQueueName}",
+                    {
+                      "label": "Oldest Message Age"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 29,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "EC2 DLQ Depth",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Maximum",
+                "metrics": [
+                  [
+                    "AWS/SQS",
+                    "ApproximateNumberOfMessagesVisible",
+                    "QueueName",
+                    "${Ec2IntelligenceDlqName}",
+                    {
+                      "label": "DLQ Depth"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 35,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "EC2 Consumer Lambda Errors and Throttles",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  [
+                    "AWS/Lambda",
+                    "Errors",
+                    "FunctionName",
+                    "${Ec2AnalysisConsumerFunctionName}",
+                    {
+                      "label": "Errors"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Throttles",
+                    ".",
+                    ".",
+                    {
+                      "label": "Throttles"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Invocations",
+                    ".",
+                    ".",
+                    {
+                      "label": "Invocations"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 35,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "EC2 Consumer Lambda Duration and Concurrency",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "metrics": [
+                  [
+                    "AWS/Lambda",
+                    "Duration",
+                    "FunctionName",
+                    "${Ec2AnalysisConsumerFunctionName}",
+                    {
+                      "stat": "Average",
+                      "label": "Average Duration (ms)"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Duration",
+                    ".",
+                    ".",
+                    {
+                      "stat": "Maximum",
+                      "label": "Max Duration (ms)"
+                    }
+                  ],
+                  [
+                    ".",
+                    "ConcurrentExecutions",
+                    ".",
+                    ".",
+                    {
+                      "stat": "Maximum",
+                      "label": "Concurrent Executions"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 41,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "EC2 Job Success Rate % (terminal jobs only)",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "metrics": [
+                  [
+                    {
+                      "expression": "IF(m2+m3>0,100*m2/(m2+m3),0)",
+                      "label": "Success % when Succeeded+Failed > 0; else 0 (no terminal jobs)",
+                      "id": "successRate"
+                    }
+                  ],
+                  [
+                    "SISUM/EC2AsyncJobs",
+                    "Ec2AsyncJobsSucceeded",
+                    {
+                      "id": "m2",
+                      "visible": false,
+                      "stat": "Sum"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Ec2AsyncJobsFailed",
+                    {
+                      "id": "m3",
+                      "visible": false,
+                      "stat": "Sum"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 41,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "EC2 Retry Intensity (retries per 100 starts)",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "metrics": [
+                  [
+                    {
+                      "expression": "IF(m1>0,100*m4/m1,0)",
+                      "label": "100 * retry events / starts (can exceed 100)",
+                      "id": "retryIntensity"
+                    }
+                  ],
+                  [
+                    "SISUM/EC2AsyncJobs",
+                    "Ec2AsyncJobsStarted",
+                    {
+                      "id": "m1",
+                      "visible": false,
+                      "stat": "Sum"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Ec2AsyncJobRetries",
+                    {
+                      "id": "m4",
+                      "visible": false,
+                      "stat": "Sum"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 47,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "title": "EC2 Job Terminal Events (Counts)",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  [
+                    "SISUM/EC2AsyncJobs",
+                    "Ec2AsyncJobsStarted",
+                    {
+                      "label": "Jobs Started"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Ec2AsyncJobsSucceeded",
+                    {
+                      "label": "Jobs Succeeded"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Ec2AsyncJobsFailed",
+                    {
+                      "label": "Jobs Failed (business)"
+                    }
+                  ],
+                  [
+                    ".",
+                    "Ec2AsyncJobRetries",
+                    {
+                      "label": "Job Retry Events"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "alarm",
+              "x": 0,
+              "y": 53,
               "width": 24,
               "height": 6,
               "properties": {
@@ -763,7 +1341,14 @@ Resources:
                   "${CloudFront5xxErrorRateAlarm.Arn}",
                   "${AuditPersistenceFailureAlarm.Arn}",
                   "${AuditTableThrottleAlarm.Arn}",
-                  "${AuthorizationDenialAlarm.Arn}"
+                  "${AuthorizationDenialAlarm.Arn}",
+                  "${TenantAccessDeniedAlarm.Arn}",
+                  "${Ec2IntelligenceDlqDepthAlarm.Arn}",
+                  "${Ec2IntelligenceQueueAgeAlarm.Arn}",
+                  "${Ec2AnalysisConsumerErrorsAlarm.Arn}",
+                  "${Ec2AnalysisConsumerThrottlesAlarm.Arn}",
+                  "${Ec2AnalysisConsumerNearTimeoutAlarm.Arn}",
+                  "${Ec2AsyncJobHighRetryRateAlarm.Arn}"
                 ]
               }
             }

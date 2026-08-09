@@ -113,6 +113,7 @@ export const AUDIT_EVENTS = {
   EC2_ASYNC_JOB_VIEWED: 'ec2.async_job_viewed',
   EC2_ASYNC_JOB_EVENTS_VIEWED: 'ec2.async_job_events_viewed',
   EC2_ASYNC_JOB_STARTED: 'ec2.async_job_started',
+  EC2_ASYNC_JOB_RETRYING: 'ec2.async_job_retrying',
   EC2_ASYNC_JOB_SUCCEEDED: 'ec2.async_job_succeeded',
   EC2_ASYNC_JOB_FAILED: 'ec2.async_job_failed',
 } as const;
