@@ -673,3 +673,102 @@ code {
   padding-bottom: 2rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+.job-milestone-bar {
+  height: 6px;
+  background: var(--ews-gray-700, #2a2a2a);
+  border-radius: 4px;
+  margin: 0.75rem 0 1rem;
+  overflow: hidden;
+}
+
+.job-milestone-fill {
+  height: 100%;
+  background: var(--ews-gold, #ff9100);
+  transition: width 0.3s ease;
+}
+
+.job-elapsed,
+.job-timestamp-grid {
+  font-size: 0.82rem;
+  color: var(--ews-gray-400, #8a8a8a);
+}
+
+.job-timestamp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem 1rem;
+  margin-top: 1rem;
+}
+
+.job-timestamp-grid dt {
+  font-weight: 600;
+  margin: 0;
+}
+
+.job-timestamp-grid dd {
+  margin: 0.15rem 0 0;
+}
+
+.job-poll-warning {
+  color: #fbbf24;
+  font-size: 0.85rem;
+}
+
+.job-error-summary {
+  color: #ff453a;
+  font-size: 0.85rem;
+}
+
+.job-history-table-wrap {
+  overflow-x: auto;
+}
+
+.job-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.job-history-table th,
+.job-history-table td {
+  text-align: left;
+  padding: 0.5rem 0.35rem;
+  border-bottom: 1px solid var(--ews-gray-700, #2a2a2a);
+}
+
+.job-row-active {
+  background: rgba(255, 145, 0, 0.08);
+}
+
+.app-notification-toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 1000;
+  max-width: min(360px, 90vw);
+}
+
+.app-notification {
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--ews-gray-800, #1a1a1a);
+  border: 1px solid var(--ews-gray-700, #2a2a2a);
+  color: var(--ews-white, #fff);
+}
+
+.app-notification-success {
+  border-color: #16a34a;
+}
+
+.app-notification-error {
+  border-color: #ff453a;
+}
+
+.app-notification-warning {
+  border-color: #fbbf24;
+}

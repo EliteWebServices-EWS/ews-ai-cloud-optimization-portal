@@ -2,19 +2,10 @@
  * Decision Dashboard page — workflow analysis plus live EC2 decision widgets.
  */
 
-import { getMockInstances, getWorkflow, runWorkflow } from '../api/workflowApi';
-import { renderCandidateCard } from '../components/CandidateCard';
-import { renderConfidenceIndicator } from '../components/ConfidenceIndicator';
-import { renderEvidenceStatus } from '../components/EvidenceStatus';
-import { renderFinancialImpactCard } from '../components/FinancialImpactCard';
-import { renderGovernancePanel } from '../components/GovernancePanel';
-import { renderOptimizationOverview } from '../components/OptimizationOverview';
-import { renderRecommendationCard } from '../components/RecommendationCard';
 import { renderStateMessage } from '../components/StateMessage';
-import { renderVerificationPanel } from '../components/VerificationPanel';
-import { renderWorkflowProgress } from '../components/WorkflowProgress';
-import type { DashboardState, OverviewMetrics, WorkflowDetail } from '../types';
+import type { DashboardState } from '../types';
 import { ApiClientError } from '../api/client';
+import type { Ec2AsyncJobController } from '../ec2-async-job/Ec2AsyncJobController';
 import type { Ec2DashboardController } from './Ec2DashboardController';
 
 export interface DecisionDashboardElements {
@@ -34,12 +25,11 @@ export interface DecisionDashboardElements {
 
 export class DecisionDashboard {
   private state: DashboardState = 'idle';
-  private workflowDetail: WorkflowDetail | null = null;
-  private totalCandidates = 0;
 
   constructor(
     private readonly elements: DecisionDashboardElements,
     private readonly ec2Dashboard: Ec2DashboardController,
+    private readonly asyncJobs: Ec2AsyncJobController,
   ) {
     this.elements.analyzeButton.addEventListener('click', () => {
       void this.analyzeEnvironment();
@@ -49,52 +39,40 @@ export class DecisionDashboard {
   async initialize(): Promise<void> {
     try {
       await this.ec2Dashboard.load();
-      const instances = await getMockInstances();
-      this.totalCandidates = instances.length;
-      this.populateCandidateSelect(instances);
+      await this.asyncJobs.initialize();
+      this.configureLegacyCandidateSelect();
       this.setState(
         'idle',
-        'Live EC2 data loads above. Select a workflow candidate and click Analyze Environment to run optimization.',
+        'Live EC2 data loads above. Click Analyze Environment to run asynchronous EC2 analysis for the selected account and region.',
       );
+      this.clearWorkflowPanels();
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : 'Unable to connect to backend API.';
       this.setState('error', message);
     }
   }
 
-  private populateCandidateSelect(
-    instances: Array<{ instanceId: string; instanceType: string; tags: Record<string, string> }>,
-  ): void {
+  private configureLegacyCandidateSelect(): void {
     const select = this.elements.candidateSelect;
-    select.innerHTML = '<option value="">Default candidate</option>';
-    for (const instance of instances) {
-      const option = document.createElement('option');
-      option.value = instance.instanceId;
-      option.textContent = `${instance.instanceId} (${instance.instanceType}) — ${instance.tags.Environment ?? 'unknown'}`;
-      select.appendChild(option);
-    }
+    select.innerHTML = '';
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Legacy workflow candidate (not used for EC2 async analysis)';
+    select.appendChild(option);
+    select.disabled = true;
+    select.setAttribute('aria-disabled', 'true');
   }
 
   async analyzeEnvironment(): Promise<void> {
-    this.setState('loading');
+    this.setState('loading', 'Submitting EC2 analysis job…');
     this.elements.analyzeButton.disabled = true;
 
     try {
-      const resourceId = this.elements.candidateSelect.value || undefined;
-      const runResult = await runWorkflow({ plugin: 'ec2', mode: 'full', resourceId });
-
-      if (runResult.status === 'failed') {
-        const detail = await getWorkflow(runResult.workflowId);
-        this.workflowDetail = detail;
-        this.renderDashboard(detail);
-        this.setState('error', runResult.failure?.error.reason ?? 'Workflow failed during analysis.');
-        return;
-      }
-
-      const detail = await getWorkflow(runResult.workflowId);
-      this.workflowDetail = detail;
-      this.renderDashboard(detail);
-      this.setState('success', `Analysis completed in ${runResult.durationMs}ms. Workflow ${runResult.workflowId}.`);
+      await this.asyncJobs.startAnalysisFromUi();
+      this.setState(
+        'success',
+        'EC2 analysis queued. Track progress below; live EC2 panels refresh when the job completes.',
+      );
     } catch (error) {
       const message =
         error instanceof ApiClientError
@@ -103,44 +81,9 @@ export class DecisionDashboard {
             ? error.message
             : 'Analysis failed.';
       this.setState('error', message);
-      this.clearWorkflowPanels();
     } finally {
       this.elements.analyzeButton.disabled = false;
     }
-  }
-
-  private renderDashboard(detail: WorkflowDetail): void {
-    const overview = this.buildOverviewMetrics(detail);
-    renderOptimizationOverview(this.elements.overview, overview);
-    renderWorkflowProgress(
-      this.elements.progress,
-      detail.completedStages,
-      detail.failedStages,
-      detail.currentStage,
-    );
-    renderCandidateCard(this.elements.candidate, detail);
-    renderEvidenceStatus(this.elements.evidence, detail.evidence);
-    renderGovernancePanel(this.elements.governance, detail.governance);
-    renderFinancialImpactCard(this.elements.financial, detail.financialImpact);
-    renderConfidenceIndicator(this.elements.confidence, detail.confidence);
-    renderRecommendationCard(this.elements.recommendation, detail.recommendation);
-    renderVerificationPanel(this.elements.verification, {
-      execution: detail.execution,
-      verification: detail.verification,
-      reportSummary: detail.report?.summary,
-    });
-  }
-
-  private buildOverviewMetrics(detail: WorkflowDetail): OverviewMetrics {
-    const readinessStatus = detail.governance?.readiness?.status ?? '';
-    const isReady = readinessStatus === 'READY' || readinessStatus === 'PARTIALLY_READY';
-
-    return {
-      totalCandidates: this.totalCandidates,
-      readyCandidates: isReady ? 1 : 0,
-      potentialMonthlySavings: detail.financialImpact?.monthlySavings ?? 0,
-      averageConfidence: detail.confidence?.score ?? 0,
-    };
   }
 
   private setState(state: DashboardState, message?: string): void {
@@ -149,10 +92,9 @@ export class DecisionDashboard {
   }
 
   private clearWorkflowPanels(): void {
-    const empty = '<p class="empty-note">Awaiting analysis.</p>';
+    const empty = '<p class="empty-note">Workflow panels are not updated by asynchronous EC2 jobs. Use live EC2 panels above.</p>';
     for (const el of [
       this.elements.overview,
-      this.elements.progress,
       this.elements.candidate,
       this.elements.evidence,
       this.elements.governance,
@@ -167,10 +109,6 @@ export class DecisionDashboard {
 
   getState(): DashboardState {
     return this.state;
-  }
-
-  getWorkflowDetail(): WorkflowDetail | null {
-    return this.workflowDetail;
   }
 
   getEc2Controller(): Ec2DashboardController {

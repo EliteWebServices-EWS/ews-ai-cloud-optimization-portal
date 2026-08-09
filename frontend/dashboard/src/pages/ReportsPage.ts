@@ -12,6 +12,7 @@ import { renderStateMessage } from '../components/StateMessage';
 import { renderVerificationSummary } from '../components/VerificationSummary';
 import type { DashboardState, OptimizationReport, ReportFilterParams, ReportListItem } from '../types';
 import { ApiClientError } from '../api/client';
+import { consumeEc2AsyncJobCompletedSignal } from '../ec2-async-job/ec2-async-job-freshness';
 
 export interface ReportsPageElements {
   stateMessage: HTMLElement;
@@ -50,7 +51,14 @@ export class ReportsPage {
   }
 
   async initialize(): Promise<void> {
+    const ec2Completed = consumeEc2AsyncJobCompletedSignal();
     await this.loadReports();
+    if (ec2Completed && this.state !== 'error') {
+      this.setState(
+        'success',
+        `EC2 analysis completed (${ec2Completed.jobId.slice(0, 8)}…). Report list loaded from the Reporting Engine.`,
+      );
+    }
   }
 
   private async loadReports(): Promise<void> {
