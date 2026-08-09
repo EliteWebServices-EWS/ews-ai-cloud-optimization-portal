@@ -205,6 +205,16 @@ export class Ec2AsyncJobConsumerService {
         stage: updated.stage,
         errorSummary: safeSummary,
       });
+      writeAuditEvent({
+        eventName: AUDIT_EVENTS.EC2_ASYNC_JOB_RETRYING,
+        outcome: 'failure',
+        actor: context.actor,
+        tenantId: job.tenantId,
+        correlationId: context.correlationId,
+        requestId: context.requestId,
+        resource: { type: 'ec2_async_job', id: job.jobId, accountId: job.accountId },
+        reason: safeSummary,
+      });
     } catch (error) {
       if (error instanceof RepositoryConflictError) {
         throw new Ec2AsyncJobConsumerRetryableError('Retry metadata conflict.');
@@ -237,6 +247,16 @@ export class Ec2AsyncJobConsumerService {
       status: updated.status,
       stage: updated.stage,
       errorSummary: safeSummary,
+    });
+    writeAuditEvent({
+      eventName: AUDIT_EVENTS.EC2_ASYNC_JOB_FAILED,
+      outcome: 'failure',
+      actor: context.actor,
+      tenantId: job.tenantId,
+      correlationId: context.correlationId,
+      requestId: context.requestId,
+      resource: { type: 'ec2_async_job', id: job.jobId, accountId: job.accountId },
+      reason: safeSummary,
     });
     return updated;
   }
