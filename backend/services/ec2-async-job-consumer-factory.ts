@@ -1,17 +1,17 @@
-import { createAwsAccountRepository } from './services/aws-account-repository-factory';
-import { createEc2CloudResourceRepositories } from './services/ec2-cloud-resource-repository-factory';
-import { createEc2CostRepositories } from './services/ec2-cost-repository-factory';
-import { createEc2SecurityRepositories } from './services/ec2-security-repository-factory';
-import { createEc2AsyncJobRepository } from './services/ec2-async-job-repository-factory';
-import { Ec2DiscoveryApiService } from './services/ec2-discovery-api-service';
-import { Ec2CostAnalysisApiService } from './services/ec2-cost-analysis-api-service';
-import { Ec2SecurityAnalysisApiService } from './services/ec2-security-analysis-api-service';
+import { createAwsAccountRepository } from './aws-account-repository-factory';
+import { createEc2CloudResourceRepositories } from './ec2-cloud-resource-repository-factory';
+import { createEc2CostRepositories } from './ec2-cost-repository-factory';
+import { createEc2SecurityRepositories } from './ec2-security-repository-factory';
+import { createEc2AsyncJobRepository } from './ec2-async-job-repository-factory';
+import { Ec2DiscoveryApiService } from './ec2-discovery-api-service';
+import { Ec2CostAnalysisApiService } from './ec2-cost-analysis-api-service';
+import { Ec2SecurityAnalysisApiService } from './ec2-security-analysis-api-service';
 import {
   Ec2AsyncJobConsumerService,
   type Ec2AsyncJobConsumerServiceDeps,
-} from './services/ec2-async-job-consumer-service';
-import { Ec2AsyncJobStageCompletionService } from './services/ec2-async-job-stage-completion';
-import { Ec2AsyncJobStageExecutionService } from './services/ec2-async-job-stage-execution';
+} from './ec2-async-job-consumer-service';
+import { Ec2AsyncJobStageCompletionService } from './ec2-async-job-stage-completion';
+import { Ec2AsyncJobStageExecutionService } from './ec2-async-job-stage-execution';
 
 export function createEc2AsyncJobConsumerService(
   deps: Ec2AsyncJobConsumerServiceDeps,
