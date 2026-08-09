@@ -2,6 +2,7 @@
  * SISU'M Decision Dashboard entry point — authenticated live EC2 + workflow analysis.
  */
 
+import { Ec2AsyncJobController } from './ec2-async-job/Ec2AsyncJobController';
 import { DecisionDashboard } from './pages/DecisionDashboard';
 import { Ec2DashboardController } from './pages/Ec2DashboardController';
 import { requireAuthentication, getOrRefreshAccessToken } from './auth/guard';
@@ -116,6 +117,17 @@ async function initializeDashboard(): Promise<void> {
     void ec2Controller.load();
   });
 
+  const asyncJobController = new Ec2AsyncJobController({
+    progressPanel: getRequiredElement('progress-panel'),
+    historyPanel: getRequiredElement('job-history-panel'),
+    getAccountId: () => selectedAccountId ?? accountSelect?.value ?? undefined,
+    getRegions: () => {
+      const region = regionSelect?.value ?? 'us-east-1';
+      return region ? [region] : [];
+    },
+    ec2Dashboard: ec2Controller,
+  });
+
   const dashboard = new DecisionDashboard(
     {
       stateMessage: getRequiredElement('state-message'),
@@ -132,7 +144,12 @@ async function initializeDashboard(): Promise<void> {
       candidateSelect: getRequiredElement<HTMLSelectElement>('candidate-select'),
     },
     ec2Controller,
+    asyncJobController,
   );
+
+  window.addEventListener('beforeunload', () => {
+    asyncJobController.destroy();
+  });
 
   await dashboard.initialize();
 }
