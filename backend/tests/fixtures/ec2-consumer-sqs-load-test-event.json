@@ -1,0 +1,20 @@
+{
+  "Records": [
+    {
+      "messageId": "packaging-load-test",
+      "receiptHandle": "rh",
+      "body": "{\"invalid\":\"will fail parse but module should load\"}",
+      "attributes": {
+        "ApproximateReceiveCount": "1",
+        "SentTimestamp": "1",
+        "SenderId": "sender",
+        "ApproximateFirstReceiveTimestamp": "1"
+      },
+      "messageAttributes": {},
+      "md5OfBody": "md5",
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:sisum-ec2-intelligence-production",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

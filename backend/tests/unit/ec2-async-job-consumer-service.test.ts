@@ -945,4 +945,17 @@ describe('EC2 analysis consumer SAM template', () => {
     );
     assert.match(apiSection, /Role: !Sub "arn:\$\{AWS::Partition\}:iam::\$\{AWS::AccountId\}:role\/SisumLambdaExecutionRole"/);
   });
+
+  it('packages consumer with dist handler matching compiled entrypoint', () => {
+    const consumerSection = template.slice(
+      template.indexOf('SisumEc2AnalysisConsumerFunction:'),
+      template.indexOf('Outputs:'),
+    );
+    assert.match(consumerSection, /CodeUri: \./);
+    assert.match(consumerSection, /Handler: dist\/lambda-ec2-analysis-consumer\.handler/);
+    assert.match(consumerSection, /BatchSize: 1/);
+    assert.match(consumerSection, /ReportBatchItemFailures/);
+    assert.match(consumerSection, /Timeout: 300/);
+    assert.doesNotMatch(consumerSection, /BuildMethod: esbuild/);
+  });
 });
