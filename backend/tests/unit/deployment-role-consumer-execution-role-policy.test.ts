@@ -60,21 +60,26 @@ const ROLE_LIFECYCLE_ACTIONS = [
 
 ] as const;
 
-
-
-const INLINE_POLICY_LIFECYCLE_ACTIONS = [
-
-  'iam:PutRolePolicy',
-
-  'iam:GetRolePolicy',
-
-  'iam:DeleteRolePolicy',
-
-  'iam:ListRolePolicies',
-
+const EVENT_SOURCE_MAPPING_WRITE_ACTIONS = [
+  'lambda:CreateEventSourceMapping',
+  'lambda:UpdateEventSourceMapping',
+  'lambda:DeleteEventSourceMapping',
 ] as const;
 
+const EVENT_SOURCE_MAPPING_READ_ACTIONS = [
+  'lambda:GetEventSourceMapping',
+  'lambda:ListEventSourceMappings',
+] as const;
 
+const CONSUMER_FUNCTION_ARN_CONDITION =
+  'arn:aws:lambda:us-east-1:739275446782:function:sisum-ec2-analysis-consumer-*';
+
+const INLINE_POLICY_LIFECYCLE_ACTIONS = [
+  'iam:PutRolePolicy',
+  'iam:GetRolePolicy',
+  'iam:DeleteRolePolicy',
+  'iam:ListRolePolicies',
+] as const;
 
 function consumerDeployPolicySection(cfn: string): string {
 
@@ -194,9 +199,8 @@ describe('SisumBackendDeployRole EC2 consumer execution role IAM', () => {
     assert.doesNotMatch(consumerSection, /iam:\*/);
 
     assert.doesNotMatch(json, /iam:\*/);
-
-    assert.doesNotMatch(json, /"Resource": "\*"/);
-
+    assert.doesNotMatch(consumerSection, /lambda:\*/);
+    assert.doesNotMatch(json, /lambda:\*/);
   });
 
 
@@ -329,12 +333,51 @@ describe('SisumBackendDeployRole EC2 consumer execution role IAM', () => {
 
 
 
+  it('allows write EventSourceMapping actions with Resource * and lambda:FunctionArn', () => {
+    const write = document.Statement.find(
+      (entry) => entry.Sid === 'ManageSisumEc2AnalysisConsumerEventSourceMapping',
+    );
+    assert.equal(write?.Resource, '*');
+    assert.equal(write?.Condition?.StringLike?.['lambda:FunctionArn'], CONSUMER_FUNCTION_ARN_CONDITION);
+    assert.match(consumerSection, /Resource: "\*"/);
+    assert.doesNotMatch(consumerSection, /event-source-mapping:\*/);
+    assert.doesNotMatch(json, /event-source-mapping:\*/);
+    for (const action of EVENT_SOURCE_MAPPING_WRITE_ACTIONS) {
+      assert.match(consumerSection, new RegExp(action.replace(':', '\\:')));
+      const actions = write?.Action;
+      const list = Array.isArray(actions) ? actions : actions ? [actions] : [];
+      assert.ok(list.includes(action), `JSON missing ${action}`);
+    }
+  });
+
+  it('allows read EventSourceMapping actions with Resource * and no FunctionArn condition', () => {
+    const read = document.Statement.find(
+      (entry) => entry.Sid === 'ReadSisumEc2AnalysisConsumerEventSourceMappings',
+    );
+    assert.equal(read?.Resource, '*');
+    assert.equal(read?.Condition, undefined);
+    for (const action of EVENT_SOURCE_MAPPING_READ_ACTIONS) {
+      const actions = read?.Action;
+      const list = Array.isArray(actions) ? actions : actions ? [actions] : [];
+      assert.ok(list.includes(action), `JSON missing ${action}`);
+    }
+    assert.doesNotMatch(
+      consumerSection.slice(consumerSection.indexOf('ReadSisumEc2AnalysisConsumerEventSourceMappings')),
+      /lambda:FunctionArn/,
+    );
+  });
+
+  it('does not grant EventSourceMapping actions on consumer runtime execution role template', () => {
+    const runtimeRole = backendTemplate.slice(
+      backendTemplate.indexOf(`${CONSUMER_ROLE_NAME}:`),
+      backendTemplate.indexOf('SisumEc2IntelligenceQueueConsumePolicy:'),
+    );
+    assert.doesNotMatch(runtimeRole, /CreateEventSourceMapping/);
+  });
+
   it('parses consumer deploy JSON for manual bootstrap mirror', () => {
-
     assert.equal(document.Version, '2012-10-17');
-
-    assert.equal(document.Statement.length, 3);
-
+    assert.equal(document.Statement.length, 5);
   });
 
 });
