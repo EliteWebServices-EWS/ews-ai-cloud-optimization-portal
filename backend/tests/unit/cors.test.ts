@@ -249,7 +249,7 @@ test('production OPTIONS from approved origin returns 204', async () => {
     headers: {
       'Access-Control-Request-Method': 'POST',
       'Access-Control-Request-Headers':
-        'Authorization, Content-Type, X-Request-Id, X-Correlation-Id',
+        'Authorization, Content-Type, X-Request-Id, X-Correlation-Id, Idempotency-Key',
     },
   });
 
@@ -269,6 +269,10 @@ test('production OPTIONS from approved origin returns 204', async () => {
   assert.match(
     response.headers.get('access-control-allow-headers') ?? '',
     /X-Correlation-Id/i
+  );
+  assert.match(
+    response.headers.get('access-control-allow-headers') ?? '',
+    /Idempotency-Key/i
   );
   assert.match(
     response.headers.get('access-control-expose-headers') ?? '',

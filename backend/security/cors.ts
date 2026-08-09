@@ -32,6 +32,7 @@ const CORS_REQUEST_HEADERS = [
   'Authorization',
   'X-Request-Id',
   'X-Correlation-Id',
+  'Idempotency-Key',
 ].join(', ');
 
 const CORS_EXPOSE_HEADERS =

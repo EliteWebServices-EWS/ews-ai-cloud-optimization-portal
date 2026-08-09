@@ -42,4 +42,28 @@ describe('EC2 async intelligence SAM template', () => {
     assert.match(template, /ASYNC_JOBS_TABLE_NAME/);
     assert.match(template, /Ec2AsyncJobPersistence/);
   });
+
+  it('allows Idempotency-Key in HttpApi CORS without wildcards', () => {
+    const corsSection = template.slice(
+      template.indexOf('HttpApi:'),
+      template.indexOf('Resources:'),
+    );
+    assert.match(corsSection, /AllowOrigins:/);
+    assert.match(corsSection, /https:\/\/elitewebservices\.org/);
+    assert.match(corsSection, /https:\/\/www\.elitewebservices\.org/);
+    assert.doesNotMatch(corsSection, /AllowOrigins:\s*\n\s*-\s*"\*"/);
+    assert.doesNotMatch(corsSection, /AllowHeaders:\s*\n\s*-\s*"\*"/);
+    for (const header of [
+      'Content-Type',
+      'Authorization',
+      'X-Request-Id',
+      'X-Correlation-Id',
+      'Idempotency-Key',
+    ]) {
+      assert.match(corsSection, new RegExp(`- ${header}`));
+    }
+    for (const method of ['GET', 'POST', 'OPTIONS']) {
+      assert.match(corsSection, new RegExp(`- ${method}`));
+    }
+  });
 });
