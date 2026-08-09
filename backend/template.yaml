@@ -126,6 +126,7 @@ Globals:
         - Authorization
         - X-Request-Id
         - X-Correlation-Id
+        - Idempotency-Key
       AllowMethods:
         - GET
         - POST
