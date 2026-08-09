@@ -3,8 +3,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Supplemental IAM permissions for SisumBackendDeployRole so GitHub Actions
   can deploy SISU'M audit, tenant registry DynamoDB, and EC2 intelligence
-  SQS resources through CloudFormation. Apply with an administrator role
-  before re-running the backend deployment.
+  SQS resources through CloudFormation. EC2 analysis consumer execution-role
+  deploy permissions are in a separate inline policy resource in this stack.
+  Apply with an administrator role before re-running the backend deployment.
 
 Parameters:
   BackendDeployRoleName:
@@ -16,6 +17,13 @@ Parameters:
     Type: String
     Default: SisumLambdaExecutionRole
     Description: Lambda execution role that receives the audit table policy.
+
+  Ec2AnalysisConsumerExecutionRoleName:
+    Type: String
+    Default: SisumEc2AnalysisConsumerExecutionRole
+    Description: >
+      Dedicated Lambda execution role for the EC2 intelligence SQS consumer
+      (Sprint 15 Engineer 2).
 
 Resources:
   SisumBackendDeployAuditPolicy:
@@ -86,7 +94,57 @@ Resources:
               - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/sisum-audit-dynamodb-*
               - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${LambdaExecutionRoleName}
 
+  SisumBackendDeployConsumerExecutionRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SisumBackendDeployConsumerExecutionRole
+      Roles:
+        - !Ref BackendDeployRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ManageSisumEc2AnalysisConsumerExecutionRole
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:GetRole
+              - iam:DeleteRole
+              - iam:UpdateAssumeRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:ListAttachedRolePolicies
+              - iam:TagRole
+              - iam:UntagRole
+              - iam:ListRoleTags
+            Resource:
+              - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Ec2AnalysisConsumerExecutionRoleName}
+
+          - Sid: ManageSisumEc2AnalysisConsumerExecutionRoleInlinePolicies
+            Effect: Allow
+            Action:
+              - iam:PutRolePolicy
+              - iam:GetRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:ListRolePolicies
+            Resource:
+              - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Ec2AnalysisConsumerExecutionRoleName}
+
+          - Sid: PassSisumEc2AnalysisConsumerExecutionRoleToLambda
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Ec2AnalysisConsumerExecutionRoleName}
+            Condition:
+              StringEquals:
+                iam:PassedToService: lambda.amazonaws.com
+
 Outputs:
   BackendDeployAuditPolicyName:
     Description: Supplemental deploy policy attached to SisumBackendDeployRole.
     Value: SisumBackendDeployAuditResources
+  BackendDeployConsumerExecutionRolePolicyName:
+    Description: >
+      Consumer execution role deploy permissions on SisumBackendDeployRole.
+      Does not replace SisumBackendDeployAuditResources.
+    Value: SisumBackendDeployConsumerExecutionRole
