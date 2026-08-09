@@ -31,6 +31,17 @@ export function requireKeyValue(value: string, fieldName: string): string {
   return normalizedValue;
 }
 
+/** Validates a non-empty opaque identifier that may contain `#` (e.g. async stage run ids). */
+export function requireOpaqueKeyValue(value: string, fieldName: string): string {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    throw new Error(`${fieldName} must not be empty`);
+  }
+
+  return normalizedValue;
+}
+
 /**
  * Creates the partition key for a tenant-owned record.
  *

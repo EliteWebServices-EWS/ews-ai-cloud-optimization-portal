@@ -1,4 +1,4 @@
-import { requireKeyValue, tenantPartitionKey } from '../dynamodb-keys';
+import { requireKeyValue, requireOpaqueKeyValue, tenantPartitionKey } from '../dynamodb-keys';
 
 const CLOUD_RESOURCE_ENTITY = 'CLOUD_RESOURCE' as const;
 const EC2_DISCOVERY_RUN_ENTITY = 'EC2_DISCOVERY_RUN' as const;
@@ -29,7 +29,7 @@ export function cloudResourceSortKey(
 }
 
 export function ec2DiscoveryRunSortKey(runId: string): string {
-  return `${EC2_DISCOVERY_RUN_SK_PREFIX}${requireKeyValue(runId, 'runId')}`;
+  return `${EC2_DISCOVERY_RUN_SK_PREFIX}${requireOpaqueKeyValue(runId, 'runId')}`;
 }
 
 /** GSI1 — list resources for tenant/account (optionally filtered by begins_with on sk pattern via pk query). */

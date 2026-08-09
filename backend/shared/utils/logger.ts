@@ -17,6 +17,19 @@ export interface LogContext {
   recommendationStatus?: string;
   verifiedSavings?: number;
   verificationStatus?: string;
+  jobId?: string;
+  tenantId?: string;
+  accountId?: string;
+  runId?: string;
+  correlationId?: string;
+  requestId?: string;
+  errorName?: string;
+  awsErrorCode?: string;
+  httpStatusCode?: number;
+  awsRequestId?: string;
+  retryable?: boolean;
+  attemptCount?: number;
+  resumeRunExpectedVersion?: number;
 }
 
 export class Logger {

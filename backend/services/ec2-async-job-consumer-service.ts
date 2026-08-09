@@ -35,6 +35,12 @@ import {
   createEc2AsyncJobWorkerCallContext,
   type Ec2AsyncJobWorkerCallContext,
 } from './ec2-async-job-worker-context';
+import {
+  logEc2ConsumerStageDiagnostic,
+  logEc2ConsumerStageFailure,
+  safeConsumerErrorDetails,
+  type Ec2ConsumerStageDiagnosticContext,
+} from './ec2-async-job-consumer-diagnostics';
 
 const logger = createLogger('Ec2AsyncJobConsumer');
 
@@ -295,32 +301,93 @@ export class Ec2AsyncJobConsumerService {
     context: Ec2AsyncJobWorkerCallContext,
   ): Promise<Ec2AsyncJobRecord> {
     const runId = ec2AsyncJobDiscoveryRunId(job.jobId);
-    const proof = await this.deps.stageCompletion.discoveryRunProof(
-      job.tenantId,
-      job.accountId,
+    const stageContext: Ec2ConsumerStageDiagnosticContext = {
+      jobId: job.jobId,
+      tenantId: job.tenantId,
+      accountId: job.accountId,
+      stage: 'DISCOVERY',
+      correlationId: context.correlationId,
+      requestId: context.requestId,
       runId,
-    );
+    };
+    let proof: StageCompletionProof;
+    try {
+      proof = await this.deps.stageCompletion.discoveryRunProof(
+        job.tenantId,
+        job.accountId,
+        runId,
+      );
+      logEc2ConsumerStageDiagnostic(
+        logger,
+        'info',
+        'ec2.async_job_stage_proof_loaded',
+        stageContext,
+        'discovery_proof_load',
+        { status: proof.state },
+      );
+    } catch (error) {
+      logEc2ConsumerStageFailure(logger, stageContext, 'discovery_proof_load', error);
+      throw error;
+    }
     if (stageProofIsComplete(proof)) {
       return this.recoverAdvanceStage(job, 'COST_ANALYSIS', context);
     }
     this.resolveProofBeforeExecution(proof);
     let resumeRunExpectedVersion: number | undefined;
     if (stageProofRequiresExecutionClaim(proof)) {
-      const claim = await this.deps.stageExecution.claimDiscoveryExecution({
-        jobId: job.jobId,
-        tenantId: job.tenantId,
-        accountId: job.accountId,
-        regions: job.regions,
-      });
-      resumeRunExpectedVersion = claim.resumeRunExpectedVersion;
+      try {
+        const claim = await this.deps.stageExecution.claimDiscoveryExecution({
+          jobId: job.jobId,
+          tenantId: job.tenantId,
+          accountId: job.accountId,
+          regions: job.regions,
+        });
+        resumeRunExpectedVersion = claim.resumeRunExpectedVersion;
+        logEc2ConsumerStageDiagnostic(
+          logger,
+          'info',
+          'ec2.async_job_stage_execution_claimed',
+          stageContext,
+          'discovery_execution_claim',
+          {
+            status: 'RUNNING',
+            attemptCount: claim.attemptCount,
+            resumeRunExpectedVersion: claim.resumeRunExpectedVersion,
+          },
+        );
+      } catch (error) {
+        logEc2ConsumerStageFailure(logger, stageContext, 'discovery_execution_claim', error);
+        throw error;
+      }
     }
 
-    await this.deps.discovery.startDiscovery(
-      job.tenantId,
-      job.accountId,
-      { regions: job.regions, runId, resumeRunExpectedVersion },
-      context,
-    );
+    try {
+      logEc2ConsumerStageDiagnostic(
+        logger,
+        'info',
+        'ec2.async_job_stage_starting',
+        stageContext,
+        'discovery_start',
+        { resumeRunExpectedVersion },
+      );
+      await this.deps.discovery.startDiscovery(
+        job.tenantId,
+        job.accountId,
+        { regions: job.regions, runId, resumeRunExpectedVersion },
+        context,
+      );
+      logEc2ConsumerStageDiagnostic(
+        logger,
+        'info',
+        'ec2.async_job_stage_orchestrator_finished',
+        stageContext,
+        'discovery_complete',
+        { status: 'ok' },
+      );
+    } catch (error) {
+      logEc2ConsumerStageFailure(logger, stageContext, 'discovery_start', error);
+      throw error;
+    }
     const after = await this.deps.stageCompletion.discoveryRunProof(
       job.tenantId,
       job.accountId,
@@ -577,11 +644,20 @@ export class Ec2AsyncJobConsumerService {
       return 'ack';
     } catch (error) {
       const safeSummary = sanitizeConsumerErrorSummary(error);
-      logger.error(
-        `EC2 async job processing failed jobId=${job.jobId} tenantId=${job.tenantId} correlationId=${context.correlationId} errorName=${
-          error instanceof Error ? error.name : 'UnknownError'
-        }`,
-      );
+      const errorDetails = safeConsumerErrorDetails(error);
+      logger.error('EC2 async job processing failed', {
+        jobId: job.jobId,
+        tenantId: job.tenantId,
+        accountId: job.accountId,
+        stage: job.stage,
+        correlationId: context.correlationId,
+        requestId: context.requestId,
+        errorName: errorDetails.errorName,
+        awsErrorCode: errorDetails.awsErrorCode,
+        httpStatusCode: errorDetails.httpStatusCode,
+        awsRequestId: errorDetails.awsRequestId,
+        retryable: errorDetails.retryable,
+      });
 
       if (isRetryableConsumerError(error)) {
         await this.markRetrying(job, context, safeSummary);
