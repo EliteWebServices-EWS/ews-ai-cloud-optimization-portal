@@ -139,6 +139,24 @@ Resources:
               StringEquals:
                 iam:PassedToService: lambda.amazonaws.com
 
+          - Sid: ManageSisumEc2AnalysisConsumerEventSourceMapping
+            Effect: Allow
+            Action:
+              - lambda:CreateEventSourceMapping
+              - lambda:UpdateEventSourceMapping
+              - lambda:DeleteEventSourceMapping
+            Resource: "*"
+            Condition:
+              StringLike:
+                lambda:FunctionArn: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:sisum-ec2-analysis-consumer-*
+
+          - Sid: ReadSisumEc2AnalysisConsumerEventSourceMappings
+            Effect: Allow
+            Action:
+              - lambda:GetEventSourceMapping
+              - lambda:ListEventSourceMappings
+            Resource: "*"
+
 Outputs:
   BackendDeployAuditPolicyName:
     Description: Supplemental deploy policy attached to SisumBackendDeployRole.
