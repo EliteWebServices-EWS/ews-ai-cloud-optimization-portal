@@ -1,4 +1,4 @@
-import { requireKeyValue } from '../dynamodb-keys';
+import { requireKeyValue, requireOpaqueKeyValue } from '../dynamodb-keys';
 import { cloudResourceAccountPartitionKey } from './cloud-resource-keys';
 
 export const EC2_SECURITY_ANALYSIS_RUN_ENTITY = 'EC2_SECURITY_ANALYSIS_RUN' as const;
@@ -10,7 +10,7 @@ export const EC2_SECURITY_FINDING_SK_PREFIX = `${EC2_SECURITY_FINDING_ENTITY}#`;
 export const EC2_SECURITY_SUMMARY_SK_PREFIX = `${EC2_SECURITY_SUMMARY_ENTITY}#`;
 
 export function ec2SecurityAnalysisRunSortKey(runId: string): string {
-  return `${EC2_SECURITY_ANALYSIS_RUN_SK_PREFIX}${requireKeyValue(runId, 'runId')}`;
+  return `${EC2_SECURITY_ANALYSIS_RUN_SK_PREFIX}${requireOpaqueKeyValue(runId, 'runId')}`;
 }
 
 export const EC2_SECURITY_RULE_VERSION = '1' as const;

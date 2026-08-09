@@ -72,6 +72,7 @@ function createConsumer(deps: {
   costCalls?: { count: number };
   securityCalls?: { count: number };
   discoveryError?: Error;
+  discoveryEmptyInventory?: boolean;
   nowMs?: () => number;
 }) {
   const discoveryCalls = deps.discoveryCalls ?? { count: 0 };
@@ -126,7 +127,7 @@ function createConsumer(deps: {
           expectedVersion: run.version,
           status: 'SUCCEEDED',
           completedAt: startedAt,
-          resourceCounts: { INSTANCE: 1 },
+          resourceCounts: deps.discoveryEmptyInventory ? {} : { INSTANCE: 1 },
           regionsSucceeded: input?.regions ?? ['us-east-1'],
           regionsFailed: [],
           warnings: [],
@@ -526,6 +527,72 @@ describe('Ec2AsyncJobConsumerService', () => {
     const outcome = await consumer.processValidatedMessage(messageForJob(job.jobId), 'req-amb');
     assert.equal(outcome, 'retry');
     assert.equal(discoveryCalls.count, 0);
+  });
+
+  it('claims a new discovery run when proof is missing even if cloud resources already exist', async () => {
+    const jobs = new MockEc2AsyncJobRepository();
+    const awsAccounts = new MockAwsAccountRepository();
+    const cloudRepo = new MockEc2CloudResourceRepository();
+    await seedVerifiedAccount(awsAccounts, TENANT, ACCOUNT, 'us-east-1');
+    await cloudRepo.upsertDiscoveredResource({
+      tenantId: TENANT,
+      accountId: ACCOUNT,
+      region: 'us-east-1',
+      resourceType: 'INSTANCE',
+      resourceId: 'i-prior',
+      tags: [],
+      status: 'ACTIVE',
+      metadata: { state: 'running' },
+      discoveredAt: '2026-01-01T00:00:00.000Z',
+    });
+    const job = await seedQueuedJob(jobs, 'job-prior-inventory', 'idem-prior-inventory');
+    const runId = ec2AsyncJobDiscoveryRunId(job.jobId);
+    await jobs.updateJob(
+      TENANT,
+      job.jobId,
+      { status: 'RUNNING', stage: 'DISCOVERY', startedAt: new Date().toISOString() },
+      { expectedVersion: job.version },
+    );
+    const discoveryCalls = { count: 0 };
+    const consumer = createConsumer({ jobs, awsAccounts, cloudRepo, discoveryCalls });
+    const outcome = await consumer.processValidatedMessage(
+      messageForJob(job.jobId),
+      'req-prior-inventory',
+    );
+    assert.equal(outcome, 'ack');
+    assert.equal(discoveryCalls.count, 1);
+    const run = await cloudRepo.getRun(TENANT, ACCOUNT, runId);
+    assert.equal(run?.status, 'SUCCEEDED');
+    assert.ok(run?.executionOwnerId == null || run.completedAt);
+    assert.ok((run?.version ?? 0) >= 1);
+  });
+
+  it('completes discovery with zero EC2 resources when orchestrator returns empty inventory', async () => {
+    const jobs = new MockEc2AsyncJobRepository();
+    const awsAccounts = new MockAwsAccountRepository();
+    const cloudRepo = new MockEc2CloudResourceRepository();
+    await seedVerifiedAccount(awsAccounts, TENANT, ACCOUNT, 'us-east-1');
+    const job = await seedQueuedJob(jobs, 'job-zero-ec2', 'idem-zero-ec2');
+    await jobs.updateJob(
+      TENANT,
+      job.jobId,
+      { status: 'RUNNING', stage: 'DISCOVERY', startedAt: new Date().toISOString() },
+      { expectedVersion: job.version },
+    );
+    const discoveryCalls = { count: 0 };
+    const consumer = createConsumer({
+      jobs,
+      awsAccounts,
+      cloudRepo,
+      discoveryCalls,
+      discoveryEmptyInventory: true,
+    });
+    const outcome = await consumer.processValidatedMessage(messageForJob(job.jobId), 'req-zero');
+    assert.equal(outcome, 'ack');
+    assert.equal(discoveryCalls.count, 1);
+    const run = await cloudRepo.getRun(TENANT, ACCOUNT, ec2AsyncJobDiscoveryRunId(job.jobId));
+    assert.equal(run?.status, 'SUCCEEDED');
+    assert.deepEqual(run?.resourceCounts, {});
   });
 
   it('recovers security analysis from persisted run without re-executing security service', async () => {

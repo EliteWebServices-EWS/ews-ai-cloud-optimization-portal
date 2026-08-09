@@ -1,4 +1,4 @@
-import { requireKeyValue } from '../dynamodb-keys';
+import { requireKeyValue, requireOpaqueKeyValue } from '../dynamodb-keys';
 import { cloudResourceAccountPartitionKey } from './cloud-resource-keys';
 
 export const EC2_COST_ANALYSIS_RUN_ENTITY = 'EC2_COST_ANALYSIS_RUN' as const;
@@ -8,7 +8,7 @@ export const EC2_COST_ANALYSIS_RUN_SK_PREFIX = `${EC2_COST_ANALYSIS_RUN_ENTITY}#
 export const EC2_COST_RECOMMENDATION_SK_PREFIX = `${EC2_COST_RECOMMENDATION_ENTITY}#`;
 
 export function ec2CostAnalysisRunSortKey(runId: string): string {
-  return `${EC2_COST_ANALYSIS_RUN_SK_PREFIX}${requireKeyValue(runId, 'runId')}`;
+  return `${EC2_COST_ANALYSIS_RUN_SK_PREFIX}${requireOpaqueKeyValue(runId, 'runId')}`;
 }
 
 export function ec2CostRecommendationSortKey(input: {
