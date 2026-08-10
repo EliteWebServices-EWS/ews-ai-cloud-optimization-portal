@@ -44,7 +44,7 @@ export interface MockInstance {
 
 export interface EvidenceTelemetry {
   cpuUtilization: number;
-  memoryUtilization: number;
+  memoryUtilization?: number;
   networkUtilization?: number;
   observationWindowDays: number;
 }
@@ -92,9 +92,10 @@ export interface ReadinessFactor {
 export interface GovernanceResult {
   status: string;
   decision: string;
-  readinessScore: number;
+  /** Omitted when demo fixture has qualitative outcome only. */
+  readinessScore?: number;
   readiness?: {
-    score: number;
+    score?: number;
     status: string;
     factors: ReadinessFactor[];
   };
@@ -114,10 +115,11 @@ export interface FinancialImpact {
 }
 
 export interface ConfidenceResult {
-  score: number;
+  /** Numeric recommendation confidence when present in source data — not inferred from level labels. */
+  score?: number;
   status: string;
   reason: string;
-  factors?: Array<{ name: string; score: number; detail: string }>;
+  factors?: Array<{ name: string; score?: number; detail: string }>;
 }
 
 export interface RecommendationDecision {

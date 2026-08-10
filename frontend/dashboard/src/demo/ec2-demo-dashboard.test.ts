@@ -21,8 +21,24 @@ function createPanelElements() {
   };
 }
 
+function createDecisionElements() {
+  return {
+    workflowProgress: document.createElement('div'),
+    learningOutcome: document.createElement('div'),
+    candidate: document.createElement('div'),
+    evidence: document.createElement('div'),
+    governance: document.createElement('div'),
+    financial: document.createElement('div'),
+    confidence: document.createElement('div'),
+    recommendation: document.createElement('div'),
+    verification: document.createElement('div'),
+    reportPreview: document.createElement('div'),
+  };
+}
+
 function createDemoDashboard() {
   const panels = createPanelElements();
+  const decision = createDecisionElements();
   const provider = new PublicDemoEc2DashboardDataProvider();
   const ec2Controller = new Ec2DashboardController({ provider, panels });
   const scenarioSelect = document.createElement('select');
@@ -31,11 +47,11 @@ function createDemoDashboard() {
   const exportButton = document.createElement('button');
 
   const dashboard = new Ec2DemoDashboard(
-    { scenarioSelect, analyzeButton, stateMessage, exportButton, panels },
+    { scenarioSelect, analyzeButton, stateMessage, exportButton, panels, decision },
     ec2Controller,
   );
 
-  return { dashboard, ec2Controller, panels, scenarioSelect, analyzeButton, exportButton };
+  return { dashboard, ec2Controller, panels, decision, scenarioSelect, analyzeButton, exportButton };
 }
 
 describe('Ec2DemoDashboard', () => {
@@ -129,5 +145,55 @@ describe('Ec2DemoDashboard', () => {
     expect(ids).toContain('i-mock-002');
     expect(ids).toContain('i-mock-003');
     expect(ids).toContain('i-mock-004');
+  });
+
+  it('renders eight workflow stages after analyze', async () => {
+    const { dashboard, decision, scenarioSelect } = createDemoDashboard();
+    scenarioSelect.value = 'i-mock-001';
+    await runAnalyze(dashboard);
+    expect(decision.workflowProgress.textContent).toContain('Evidence Collection');
+    expect(decision.workflowProgress.textContent).toContain('Learning Store');
+    expect(decision.workflowProgress.textContent).toContain('Execution Simulation');
+    expect(decision.workflowProgress.querySelectorAll('.progress-step').length).toBe(8);
+  });
+
+  it('renders decision intelligence panels after analyze', async () => {
+    const { dashboard, decision, scenarioSelect } = createDemoDashboard();
+    scenarioSelect.value = 'i-mock-002';
+    await runAnalyze(dashboard);
+    expect(decision.candidate.textContent).toContain('Optimization Candidate');
+    expect(decision.evidence.textContent).toContain('Evidence Status');
+    expect(decision.governance.textContent).toContain('Governance Status');
+    expect(decision.financial.textContent).toContain('Financial Impact');
+    expect(decision.confidence.textContent).toContain('Confidence Intelligence');
+    expect(decision.confidence.textContent).toContain('HIGH');
+    expect(decision.confidence.textContent).not.toMatch(/\d+\s*%/);
+    expect(decision.recommendation.textContent).toContain('Recommendation');
+    expect(decision.verification.textContent).toMatch(/SIMULATED|Verification/);
+    expect(decision.learningOutcome.textContent).toMatch(/not persisted/i);
+  });
+
+  it('report preview and JSON include decision intelligence for analyzed scenario', async () => {
+    const { dashboard, ec2Controller, decision, scenarioSelect } = createDemoDashboard();
+    scenarioSelect.value = 'i-mock-004';
+    await runAnalyze(dashboard);
+    expect(decision.reportPreview.textContent).toContain('Demo Report Preview');
+    expect(decision.reportPreview.textContent).toContain('124.1');
+    const json = ec2Controller.exportJsonReport() ?? '';
+    expect(json).toContain('decisionIntelligence');
+    expect(json).toContain('SIMULATED');
+  });
+
+  it('mock-003 shows confidence not available in decision panel', async () => {
+    const { dashboard, decision, scenarioSelect } = createDemoDashboard();
+    scenarioSelect.value = 'i-mock-003';
+    await runAnalyze(dashboard);
+    expect(decision.confidence.textContent).toMatch(/Not available/i);
+    expect(decision.recommendation.textContent).toMatch(/No optimization recommendation/i);
+  });
+
+  it('export remains disabled before analysis', () => {
+    const { exportButton } = createDemoDashboard();
+    expect(exportButton.disabled).toBe(true);
   });
 });

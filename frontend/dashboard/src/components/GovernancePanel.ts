@@ -26,12 +26,17 @@ export function renderGovernancePanel(container: HTMLElement, governance?: Gover
     )
     .join('');
 
+  const readinessScoreMarkup =
+    governance.readinessScore != null
+      ? `<span class="score-value">${governance.readinessScore}% readiness</span>`
+      : '<span class="score-value card-meta">Illustrative outcome — no readiness score in demo fixture</span>';
+
   container.innerHTML = `
     <section class="dashboard-card" aria-labelledby="governance-heading">
       <h3 id="governance-heading" class="card-title">Governance Status</h3>
       <div class="governance-score">
         <span class="${statusClass(governance.readiness?.status ?? governance.status)}">${escapeHtml(governance.readiness?.status ?? governance.status)}</span>
-        <span class="score-value">${governance.readinessScore}% readiness</span>
+        ${readinessScoreMarkup}
       </div>
       <p class="card-summary">${escapeHtml(governance.reason)}</p>
       <div class="policy-summary">

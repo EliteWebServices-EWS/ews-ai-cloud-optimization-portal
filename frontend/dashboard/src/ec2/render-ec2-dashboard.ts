@@ -167,12 +167,14 @@ export function renderEc2DashboardPanels(
 }
 
 export function buildEc2JsonReport(vm: Ec2DashboardViewModel): string {
-  const payload = {
+  const payload: Record<string, unknown> = {
     label: vm.reports.watermark ?? vm.reports.label,
     mode: vm.mode,
     generatedAt: vm.generatedAt,
     accountIdSuffix: vm.accountIdSuffix,
     region: vm.region,
+    demoScenarioId: vm.demoScenarioId,
+    demoScenarioLabel: vm.demoScenarioLabel,
     inventory: vm.inventory,
     cost: {
       validatedMonthlySavings: vm.cost.validatedMonthlySavings,
@@ -187,5 +189,23 @@ export function buildEc2JsonReport(vm: Ec2DashboardViewModel): string {
       latestCostAnalysisAt: vm.latestCostAnalysisAt,
     },
   };
+  if (vm.demoDecisionIntelligence) {
+    const di = vm.demoDecisionIntelligence;
+    payload.decisionIntelligence = {
+      scenarioId: di.scenarioId,
+      illustrativeDisclaimer: di.illustrativeDisclaimer,
+      learningOutcome: di.learningOutcome,
+      completedStages: di.completedStages,
+      reportPreview: di.reportPreview,
+      executionStatus: di.execution.status,
+      verificationStatus: di.verification.status,
+      recommendationSummary: di.reportPreview.recommendationSummary,
+      confidenceSummary: di.reportPreview.confidenceSummary,
+      confidenceLevel: di.confidence?.status ?? null,
+      confidenceScore: di.confidence?.score ?? null,
+      governanceDecision: di.governance?.decision ?? null,
+      governanceReadinessScore: di.governance?.readinessScore ?? null,
+    };
+  }
   return JSON.stringify(payload, null, 2);
 }

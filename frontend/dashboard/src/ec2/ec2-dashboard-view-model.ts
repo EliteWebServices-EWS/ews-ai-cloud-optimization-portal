@@ -2,6 +2,7 @@
  * Normalized EC2 dashboard view model — sole input for shared EC2 widgets.
  */
 
+import type { DemoDecisionIntelligenceSnapshot } from '../demo/ec2-demo-decision-types';
 import type {
   Ec2CostBreakdown,
   Ec2DashboardSummary,
@@ -123,6 +124,8 @@ export interface Ec2DashboardViewModel {
   /** Public demo page — active scenario identifier (no live AWS). */
   demoScenarioId?: string;
   demoScenarioLabel?: string;
+  /** Illustrative decision workflow snapshot (public demo only). */
+  demoDecisionIntelligence?: DemoDecisionIntelligenceSnapshot;
 }
 
 export function maskAccountId(accountId: string): string {

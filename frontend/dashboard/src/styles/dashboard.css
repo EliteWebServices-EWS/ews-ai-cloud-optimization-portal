@@ -801,3 +801,25 @@ code {
   background: rgba(255, 255, 255, 0.06);
   font-size: 0.9rem;
 }
+
+.demo-decision-section {
+  margin-top: 2rem;
+}
+
+.demo-decision-section h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.demo-decision-grid {
+  margin-top: 1rem;
+}
+
+.progress-list .step-state-text {
+  font-size: 0.75rem;
+  color: var(--ews-gray-500, #6b6b6b);
+}
+
+.demo-learning-outcome {
+  margin: 0.5rem 0 1rem;
+}
