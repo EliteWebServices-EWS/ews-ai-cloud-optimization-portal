@@ -208,4 +208,192 @@ describe('Ec2AsyncJobController integration', () => {
     expect(retryPaths).toHaveLength(0);
     fetchSpy.mockRestore();
   });
+
+  it('shows select-job empty state when history exists but nothing selected', async () => {
+    const listJobs = vi.fn().mockResolvedValue({
+      items: [sampleJob({ jobId: 'job-old', status: 'SUCCEEDED', stage: 'COMPLETE' })],
+    });
+    const controller = createController({ listJobs });
+    await controller.initialize();
+    expect(progress.textContent).toContain('Select an analysis job below to view its progress.');
+  });
+
+  it('renders View progress on history rows', async () => {
+    const listJobs = vi.fn().mockResolvedValue({ items: [sampleJob()] });
+    const controller = createController({ listJobs, getJob: vi.fn() });
+    await controller.initialize();
+    expect(history.querySelector('.job-view-progress-btn')).toBeTruthy();
+    expect(history.textContent).toContain('View progress');
+  });
+
+  it('loads completed job via getJob when View progress is used', async () => {
+    const completed = sampleJob({
+      jobId: 'job-done',
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      completedAt: '2026-01-01T01:00:00.000Z',
+    });
+    const getJob = vi.fn().mockResolvedValue(completed);
+    const startJob = vi.fn();
+    const controller = createController({
+      getJob,
+      startJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [completed] }),
+    });
+    await controller.initialize();
+    await controller.viewJobProgress('job-done');
+    expect(getJob).toHaveBeenCalledWith('job-done');
+    expect(startJob).not.toHaveBeenCalled();
+    expect(controller.getSelectedJobId()).toBe('job-done');
+    expect(progress.querySelectorAll('.progress-step.step-completed')).toHaveLength(8);
+  });
+
+  it('viewJobProgress does not invoke start analysis', async () => {
+    const failed = sampleJob({
+      jobId: 'job-fail',
+      status: 'FAILED',
+      stage: 'DISCOVERY',
+      errorSummary: 'Safe failure summary',
+    });
+    const getJob = vi.fn().mockResolvedValue(failed);
+    const startJob = vi.fn();
+    const controller = createController({
+      getJob,
+      startJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [failed] }),
+    });
+    await controller.initialize();
+    await controller.viewJobProgress('job-fail');
+    expect(startJob).not.toHaveBeenCalled();
+    expect(progress.textContent).toContain('Safe failure summary');
+    expect(progress.textContent).toContain('Failed');
+  });
+
+  it('marks selected history row with aria-current', async () => {
+    const job = sampleJob({ jobId: 'job-sel' });
+    const getJob = vi.fn().mockResolvedValue(job);
+    const controller = createController({
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [job] }),
+    });
+    await controller.initialize();
+    await controller.viewJobProgress('job-sel');
+    const row = history.querySelector('tr[aria-current="true"]');
+    expect(row).toBeTruthy();
+    expect(row?.classList.contains('job-row-selected')).toBe(true);
+  });
+
+  it('auto-selects newly started job in progress panel', async () => {
+    const startJob = vi.fn().mockResolvedValue({
+      jobId: 'job-new',
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c-new',
+    });
+    const getJob = vi.fn().mockResolvedValue(sampleJob({ jobId: 'job-new' }));
+    const controller = createController({
+      startJob,
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [] }),
+    });
+    await controller.initialize();
+    await controller.startAnalysisFromUi();
+    expect(controller.getSelectedJobId()).toBe('job-new');
+    expect(controller.getDisplayJob()?.jobId).toBe('job-new');
+    expect(progress.textContent).not.toContain('Select an analysis job');
+  });
+
+  it('retry remains separate from view progress', async () => {
+    const keys: string[] = [];
+    const failed = sampleJob({ jobId: 'job-fail', status: 'FAILED', stage: 'DISCOVERY' });
+    const getJob = vi.fn().mockResolvedValue(failed);
+    const startJob = vi.fn().mockResolvedValue({
+      jobId: 'job-retry-new',
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c2',
+    });
+    const controller = createController({
+      startJob,
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [failed] }),
+      createKey: () => {
+        keys.push(`k${keys.length}`);
+        return keys[keys.length - 1];
+      },
+    });
+    await controller.initialize();
+    await controller.viewJobProgress('job-fail');
+    expect(startJob).not.toHaveBeenCalled();
+    await controller.retryJob(failed);
+    expect(startJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not poll indefinitely when viewing a completed historical job', async () => {
+    vi.useFakeTimers();
+    const completed = sampleJob({
+      jobId: 'job-done',
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      completedAt: '2026-01-01T01:00:00.000Z',
+    });
+    const getJob = vi.fn().mockResolvedValue(completed);
+    const controller = createController({
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [completed] }),
+    });
+    await controller.initialize();
+    await controller.viewJobProgress('job-done');
+    expect(getJob).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getJob).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('updates progress panel when active job polls and is selected', async () => {
+    vi.useFakeTimers();
+    const running = sampleJob({ jobId: 'job-live', status: 'RUNNING', stage: 'DISCOVERY' });
+    const getJob = vi.fn().mockResolvedValue(running);
+    const startJob = vi.fn().mockResolvedValue({
+      jobId: 'job-live',
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c1',
+    });
+    const controller = createController({
+      startJob,
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [] }),
+    });
+    await controller.initialize();
+    await controller.startAnalysisFromUi();
+    expect(progress.textContent).toContain('Discovering Resources');
+    vi.useRealTimers();
+  });
+
+  it('replaces progress when switching selected jobs', async () => {
+    const jobA = sampleJob({
+      jobId: 'job-a',
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      completedAt: '2026-01-01T01:00:00.000Z',
+    });
+    const jobB = sampleJob({
+      jobId: 'job-b',
+      status: 'FAILED',
+      stage: 'COST_ANALYSIS',
+      errorSummary: 'Cost step failed',
+    });
+    const getJob = vi.fn(async (id: string) => (id === 'job-a' ? jobA : jobB));
+    const controller = createController({
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [jobA, jobB] }),
+    });
+    await controller.initialize();
+    await controller.viewJobProgress('job-a');
+    expect(progress.textContent).toContain('job-a');
+    await controller.viewJobProgress('job-b');
+    expect(progress.textContent).toContain('job-b');
+    expect(progress.textContent).toContain('Cost step failed');
+  });
 });
