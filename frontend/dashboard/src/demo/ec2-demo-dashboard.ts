@@ -25,6 +25,7 @@ export interface Ec2DemoDashboardElements {
   analyzeButton: HTMLButtonElement;
   stateMessage: HTMLElement;
   exportButton: HTMLButtonElement;
+  viewDemoReportLink?: HTMLAnchorElement;
   panels: Ec2DashboardPanelElements;
   decision: DemoDecisionPanelElements;
 }
@@ -96,6 +97,9 @@ export class Ec2DemoDashboard {
     clearDemoDecisionPanels(this.elements.decision);
     this.setAnalysisState('ready', 'Ready — select a demo scenario and click Analyze Demo Environment.');
     this.elements.exportButton.disabled = true;
+    if (this.elements.viewDemoReportLink) {
+      this.elements.viewDemoReportLink.hidden = true;
+    }
   }
 
   private renderDecisionIntelligence(): void {
@@ -137,6 +141,10 @@ export class Ec2DemoDashboard {
         `Completed — ${vm.demoScenarioLabel ?? this.selectedScenarioId} (demonstration data only).`,
       );
       this.elements.exportButton.disabled = !vm.reports.available;
+      if (this.elements.viewDemoReportLink) {
+        this.elements.viewDemoReportLink.hidden = false;
+        this.elements.viewDemoReportLink.href = `/dashboard/demo-reports.html?scenario=${encodeURIComponent(this.selectedScenarioId)}`;
+      }
     } catch {
       this.setAnalysisState('error', 'Demo analysis failed.');
       this.elements.exportButton.disabled = true;

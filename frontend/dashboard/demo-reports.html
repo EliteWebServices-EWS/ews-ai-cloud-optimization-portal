@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SISU'M Demo Reports | EWS Cloud Optimization</title>
+  <link rel="icon" href="/assets/logo/ews-logo-primary.png">
+  <link rel="stylesheet" href="./src/styles/brand-colors.css">
+  <link rel="stylesheet" href="./src/styles/dashboard.css">
+</head>
+<body>
+  <header class="dashboard-header">
+    <a href="/index.html" class="brand-link">
+      <img src="/assets/logo/ews-logo-primary.png" alt="EWS" width="36" height="36">
+      <div>
+        <strong>SISU'M</strong>
+        <span>Demo Reports</span>
+      </div>
+    </a>
+    <nav class="dashboard-nav">
+      <a href="/dashboard/demo.html">EC2 Demo</a>
+      <a href="/dashboard/demo-reports.html" aria-current="page">Demo Reports</a>
+      <a href="/dashboard/index.html">Sign in for live data</a>
+    </nav>
+  </header>
+
+  <main class="dashboard-layout reports-layout">
+    <section class="dashboard-hero">
+      <div>
+        <h1>Demo Reports</h1>
+        <p class="hero-subtitle">
+          <span class="demo-badge">DEMO DATA</span>
+          Illustrative reports generated from SISU'M demo scenarios. No live AWS account connected.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <button id="demo-reports-export-json-btn" type="button" class="btn-secondary">
+          Download SAMPLE REPORT (JSON)
+        </button>
+      </div>
+    </section>
+
+    <p id="demo-reports-state-message" class="ec2-demo-state-message" role="status"></p>
+
+    <div class="reports-grid">
+      <aside id="demo-reports-list" class="panel-slot report-list-panel"></aside>
+      <div class="reports-detail-column">
+        <div id="demo-reports-body" class="panel-slot panel-wide"></div>
+        <div id="demo-reports-verification" class="panel-slot panel-wide"></div>
+        <div id="demo-reports-meta" class="panel-slot"></div>
+      </div>
+    </div>
+
+    <p class="dashboard-footer">
+      Demonstration reports only · Not written to production storage ·
+      <a href="/dashboard/reports.html">Live AWS EC2 reports</a> require sign-in.
+    </p>
+  </main>
+
+  <script type="module" src="./src/demo-reports-main.ts"></script>
+</body>
+</html>

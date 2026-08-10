@@ -170,7 +170,17 @@ describe('Ec2DemoDashboard', () => {
     expect(decision.confidence.textContent).not.toMatch(/\d+\s*%/);
     expect(decision.recommendation.textContent).toContain('Recommendation');
     expect(decision.verification.textContent).toMatch(/SIMULATED|Verification/);
+    expect(decision.verification.textContent).toContain('Not available — execution not performed');
+    expect(decision.verification.textContent).not.toMatch(/Verified Savings[\s\S]*\$0\.00/);
     expect(decision.learningOutcome.textContent).toMatch(/not persisted/i);
+  });
+
+  it('report preview includes Decision Basis for analyzed scenario', async () => {
+    const { dashboard, decision, scenarioSelect } = createDemoDashboard();
+    scenarioSelect.value = 'i-mock-001';
+    await runAnalyze(dashboard);
+    expect(decision.reportPreview.textContent).toContain('Decision Basis');
+    expect(decision.reportPreview.textContent).toMatch(/numeric score unavailable/i);
   });
 
   it('report preview and JSON include decision intelligence for analyzed scenario', async () => {
@@ -182,6 +192,7 @@ describe('Ec2DemoDashboard', () => {
     const json = ec2Controller.exportJsonReport() ?? '';
     expect(json).toContain('decisionIntelligence');
     expect(json).toContain('SIMULATED');
+    expect(json).toContain('"verifiedSavings": null');
   });
 
   it('mock-003 shows confidence not available in decision panel', async () => {

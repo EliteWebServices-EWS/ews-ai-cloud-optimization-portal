@@ -54,7 +54,7 @@ describe('ReportsPage', () => {
 
   it('labels live EC2 async reports from backend reportSource', async () => {
     vi.spyOn(freshness, 'consumeEc2AsyncJobCompletedSignal').mockReturnValue(null);
-    vi.spyOn(reportApi, 'listReports').mockResolvedValue({
+    const listSpy = vi.spyOn(reportApi, 'listReports').mockResolvedValue({
       total: 1,
       reports: [
         {
@@ -124,9 +124,83 @@ describe('ReportsPage', () => {
     const page = new ReportsPage(elements);
     await page.initialize();
 
+    expect(listSpy).toHaveBeenCalledWith(expect.objectContaining({ reportSource: 'ec2_async' }));
     expect(elements.reportList.textContent).toContain('Live EC2 async');
     expect(elements.recommendationPanel.textContent).toContain('No recommendations');
     expect(elements.reportDetail.textContent).toContain('Live EC2 async analysis');
+    expect(elements.reportList.textContent).not.toContain('i-mock-001');
+  });
+
+  it('requests only ec2_async reports and excludes demo/workflow from customer list', async () => {
+    vi.spyOn(freshness, 'consumeEc2AsyncJobCompletedSignal').mockReturnValue(null);
+    const listSpy = vi.spyOn(reportApi, 'listReports').mockResolvedValue({
+      total: 1,
+      reports: [
+        {
+          reportId: 'rep-live-only',
+          workflowId: 'ec2-async:job-only',
+          plugin: 'ec2',
+          status: 'complete',
+          workflowStatus: 'completed',
+          createdAt: new Date().toISOString(),
+          region: 'us-east-1',
+          reportSource: 'ec2_async',
+          summary: {
+            headline: 'Live only',
+            opportunityCount: 0,
+            estimatedMonthlySavings: 0,
+            verifiedMonthlySavings: 0,
+            verifiedCount: 0,
+            currency: 'USD',
+            optimizationStatus: 'complete',
+            executiveSummary: 'Live',
+          },
+          resourceCount: 0,
+        },
+      ],
+    });
+    vi.spyOn(reportApi, 'getReport').mockResolvedValue({
+      reportId: 'rep-live-only',
+      workflowId: 'ec2-async:job-only',
+      plugin: 'ec2',
+      status: 'complete',
+      workflowStatus: 'completed',
+      createdAt: new Date().toISOString(),
+      region: 'us-east-1',
+      reportSource: 'ec2_async',
+      summary: {
+        headline: 'Live only',
+        opportunityCount: 0,
+        estimatedMonthlySavings: 0,
+        verifiedMonthlySavings: 0,
+        verifiedCount: 0,
+        currency: 'USD',
+        optimizationStatus: 'complete',
+        executiveSummary: 'Live',
+        technicalSummary: 'Live',
+      },
+      resources: [],
+      financialImpact: {
+        currentMonthlyCost: 0,
+        projectedMonthlyCost: 0,
+        estimatedMonthlySavings: 0,
+        estimatedAnnualSavings: 0,
+        verifiedMonthlySavings: 0,
+        percentageReduction: 0,
+        currency: 'USD',
+        status: 'UNAVAILABLE',
+      },
+      recommendations: [],
+      exportOptions: jsonExportOptions,
+    });
+
+    const elements = createElements();
+    const page = new ReportsPage(elements);
+    await page.initialize();
+
+    expect(listSpy).toHaveBeenCalledWith(expect.objectContaining({ reportSource: 'ec2_async' }));
+    expect(elements.stateMessage.textContent).toContain('1 live EC2 report(s) loaded');
+    expect(elements.reportList.textContent).not.toContain('Demo workflow');
     expect(elements.reportList.textContent).not.toContain('i-mock-001');
   });
 
@@ -276,7 +350,7 @@ describe('ReportsPage', () => {
 
     elements.filtersForm.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => {
-      expect(listSpy).toHaveBeenLastCalledWith({});
+      expect(listSpy).toHaveBeenLastCalledWith({ reportSource: 'ec2_async' });
     });
   });
 

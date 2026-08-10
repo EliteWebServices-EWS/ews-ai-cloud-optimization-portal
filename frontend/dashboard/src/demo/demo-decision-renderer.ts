@@ -8,9 +8,9 @@ import { renderEvidenceStatus } from '../components/EvidenceStatus';
 import { renderFinancialImpactCard } from '../components/FinancialImpactCard';
 import { renderGovernancePanel } from '../components/GovernancePanel';
 import { renderRecommendationCard } from '../components/RecommendationCard';
-import { renderVerificationPanel } from '../components/VerificationPanel';
-import { escapeHtml } from '../utils/format';
-import type { DemoDecisionIntelligenceSnapshot, DemoDecisionPanelElements } from './ec2-demo-decision-types';
+import { escapeHtml, formatCurrency, statusClass } from '../utils/format';
+import type { DemoDecisionIntelligenceSnapshot, DemoDecisionPanelElements, DemoReportPreviewSnapshot } from './ec2-demo-decision-types';
+import type { VerificationResult } from '../types';
 
 const DEMO_STAGE_LABELS: Record<string, string> = {
   evidence: 'Evidence Collection',
@@ -113,6 +113,96 @@ export function renderDemoRecommendationPanel(
   renderRecommendationCard(container, snapshot.recommendation);
 }
 
+function demoVerificationMetricRows(verification: VerificationResult): string {
+  if (verification.status === 'NOT_EXECUTED') {
+    const expectedDisplay =
+      verification.expectedSavings > 0
+        ? escapeHtml(formatCurrency(verification.expectedSavings))
+        : 'Not applicable';
+    return `
+        <dl class="detail-list">
+          <div><dt>Expected Savings</dt><dd>${expectedDisplay}</dd></div>
+          <div><dt>Verified Savings</dt><dd>Not available — execution not performed</dd></div>
+          <div><dt>Variance</dt><dd>Not applicable</dd></div>
+          <div><dt>State Matched</dt><dd>Not evaluated</dd></div>
+        </dl>
+    `;
+  }
+  return `
+        <dl class="detail-list">
+          <div><dt>Expected Savings</dt><dd>${escapeHtml(formatCurrency(verification.expectedSavings))}</dd></div>
+          <div><dt>Verified Savings</dt><dd class="highlight">${escapeHtml(formatCurrency(verification.verifiedSavings))}</dd></div>
+          <div><dt>Variance</dt><dd>${escapeHtml(formatCurrency(verification.variance))} (${verification.variancePercentage.toFixed(1)}%)</dd></div>
+          <div><dt>State Matched</dt><dd>${verification.stateMatched ? 'Yes' : 'No'}</dd></div>
+        </dl>
+  `;
+}
+
+export function renderDemoVerificationPanel(
+  container: HTMLElement,
+  snapshot: DemoDecisionIntelligenceSnapshot,
+): void {
+  const { execution, verification } = snapshot;
+  container.innerHTML = `
+    <section class="dashboard-card verification-card" aria-labelledby="verification-heading">
+      <h3 id="verification-heading" class="card-title">Verification Result</h3>
+      <div class="verification-row">
+        <span class="label">Execution</span>
+        <span class="${statusClass(execution.status)}">${escapeHtml(execution.status)}</span>
+        ${execution.change ? `<span class="card-meta">${escapeHtml(execution.change.from)} → ${escapeHtml(execution.change.to)}</span>` : ''}
+      </div>
+      <div class="verification-row">
+        <span class="label">Verification</span>
+        <span class="${statusClass(verification.status)}">${escapeHtml(verification.status)}</span>
+      </div>
+      ${demoVerificationMetricRows(verification)}
+      ${verification.message ? `<p class="card-summary">${escapeHtml(verification.message)}</p>` : ''}
+      <p class="card-meta">${escapeHtml(snapshot.illustrativeDisclaimer)}</p>
+    </section>
+  `;
+}
+
+export function renderDemoReportPreviewSection(
+  container: HTMLElement,
+  preview: DemoReportPreviewSnapshot,
+  options?: { heading?: string; subtitle?: string },
+): void {
+  const basis = preview.decisionBasis;
+  const heading = options?.heading ?? 'Demo Report Preview';
+  const subtitle =
+    options?.subtitle ?? 'Illustrative reporting summary — not the authenticated Reports page.';
+  container.innerHTML = `
+    <section class="dashboard-card demo-report-preview" aria-labelledby="demo-report-preview-heading">
+      <h3 id="demo-report-preview-heading" class="card-title">${escapeHtml(heading)}</h3>
+      <p class="card-meta">${escapeHtml(subtitle)}</p>
+      <h4>Executive Summary</h4>
+      <p><strong>${escapeHtml(preview.executiveHeadline)}</strong></p>
+      <p>${escapeHtml(preview.executiveSummary)}</p>
+      <h4>Savings Summary</h4>
+      <dl class="detail-list">
+        <div><dt>Current monthly</dt><dd>${preview.currentMonthlyCost != null ? `$${preview.currentMonthlyCost.toFixed(2)}` : 'Unavailable in demo fixture'}</dd></div>
+        <div><dt>Projected monthly</dt><dd>${preview.projectedMonthlyCost != null ? `$${preview.projectedMonthlyCost.toFixed(2)}` : 'Unavailable in demo fixture'}</dd></div>
+        <div><dt>Estimated monthly savings</dt><dd>$${preview.estimatedMonthlySavings.toFixed(2)}</dd></div>
+        <div><dt>Estimated annual savings</dt><dd>$${preview.estimatedAnnualSavings.toFixed(2)}</dd></div>
+      </dl>
+      <h4>Recommendation Summary</h4>
+      <p>${escapeHtml(preview.recommendationSummary)}</p>
+      <p><strong>Confidence:</strong> ${escapeHtml(preview.confidenceSummary)}</p>
+      <p><strong>Governance:</strong> ${escapeHtml(preview.governanceDecision)}</p>
+      <h4>Decision Basis</h4>
+      <dl class="detail-list demo-decision-basis">
+        <div><dt>Evidence</dt><dd>${escapeHtml(basis.evidence)}</dd></div>
+        <div><dt>Governance</dt><dd>${escapeHtml(basis.governance)}</dd></div>
+        <div><dt>Confidence</dt><dd>${escapeHtml(basis.confidence)}</dd></div>
+        <div><dt>Execution</dt><dd>${escapeHtml(basis.execution)}</dd></div>
+        <div><dt>Verification</dt><dd>${escapeHtml(basis.verification)}</dd></div>
+      </dl>
+      <h4>Verification Result</h4>
+      <p>${escapeHtml(preview.verificationSummary)}</p>
+    </section>
+  `;
+}
+
 export function renderDemoDecisionIntelligence(
   elements: DemoDecisionPanelElements,
   snapshot: DemoDecisionIntelligenceSnapshot,
@@ -128,35 +218,9 @@ export function renderDemoDecisionIntelligence(
   renderDemoConfidencePanel(elements.confidence, snapshot);
   renderDemoRecommendationPanel(elements.recommendation, snapshot);
 
-  renderVerificationPanel(elements.verification, {
-    execution: snapshot.execution,
-    verification: snapshot.verification,
-    reportSummary: snapshot.illustrativeDisclaimer,
-  });
+  renderDemoVerificationPanel(elements.verification, snapshot);
 
-  const preview = snapshot.reportPreview;
-  elements.reportPreview.innerHTML = `
-    <section class="dashboard-card demo-report-preview" aria-labelledby="demo-report-preview-heading">
-      <h3 id="demo-report-preview-heading" class="card-title">Demo Report Preview</h3>
-      <p class="card-meta">Illustrative reporting summary — not the authenticated Reports page.</p>
-      <h4>Executive Summary</h4>
-      <p><strong>${escapeHtml(preview.executiveHeadline)}</strong></p>
-      <p>${escapeHtml(preview.executiveSummary)}</p>
-      <h4>Savings Summary</h4>
-      <dl class="detail-list">
-        <div><dt>Current monthly</dt><dd>${preview.currentMonthlyCost != null ? `$${preview.currentMonthlyCost.toFixed(2)}` : 'Unavailable in demo fixture'}</dd></div>
-        <div><dt>Projected monthly</dt><dd>${preview.projectedMonthlyCost != null ? `$${preview.projectedMonthlyCost.toFixed(2)}` : 'Unavailable in demo fixture'}</dd></div>
-        <div><dt>Estimated monthly savings</dt><dd>$${preview.estimatedMonthlySavings.toFixed(2)}</dd></div>
-        <div><dt>Estimated annual savings</dt><dd>$${preview.estimatedAnnualSavings.toFixed(2)}</dd></div>
-      </dl>
-      <h4>Recommendation Summary</h4>
-      <p>${escapeHtml(preview.recommendationSummary)}</p>
-      <p><strong>Confidence:</strong> ${escapeHtml(preview.confidenceSummary)}</p>
-      <p><strong>Governance:</strong> ${escapeHtml(preview.governanceDecision)}</p>
-      <h4>Verification Result</h4>
-      <p>${escapeHtml(preview.verificationSummary)}</p>
-    </section>
-  `;
+  renderDemoReportPreviewSection(elements.reportPreview, snapshot.reportPreview);
 }
 
 /**

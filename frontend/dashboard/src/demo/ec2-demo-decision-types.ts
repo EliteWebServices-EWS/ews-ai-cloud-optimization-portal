@@ -24,6 +24,14 @@ export const DEMO_DECISION_WORKFLOW_STAGES = [
   'learning',
 ] as const;
 
+export interface DemoDecisionBasisSnapshot {
+  evidence: string;
+  governance: string;
+  confidence: string;
+  execution: string;
+  verification: string;
+}
+
 export interface DemoReportPreviewSnapshot {
   executiveHeadline: string;
   executiveSummary: string;
@@ -35,6 +43,7 @@ export interface DemoReportPreviewSnapshot {
   confidenceSummary: string;
   governanceDecision: string;
   verificationSummary: string;
+  decisionBasis: DemoDecisionBasisSnapshot;
 }
 
 export interface DemoDecisionIntelligenceSnapshot {

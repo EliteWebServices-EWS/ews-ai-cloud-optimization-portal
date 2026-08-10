@@ -37,7 +37,6 @@
     </nav>
     <div class="dashboard-session">
   <span id="authenticated-user" class="authenticated-user"></span>
-  <span id="reports-workflow-demo-badge" class="demo-badge" title="Workflow reports use the platform mock provider when ProviderMode is mock. Live EC2 async reports are labeled separately in the list.">Workflow demo · Mock provider</span>
   <button id="logout-btn" type="button" class="btn-secondary">
     Sign Out
   </button>
@@ -47,8 +46,8 @@
   <main class="dashboard-layout reports-layout">
     <section class="dashboard-hero">
       <div>
-        <h1>Optimization Reports</h1>
-        <p class="hero-subtitle">Structured summaries from the Reporting Engine — aggregation only, no client-side calculations.</p>
+        <h1>AWS EC2 Optimization Reports</h1>
+        <p class="hero-subtitle">Reports generated from completed live EC2 analyses for connected AWS accounts — Reporting Engine aggregation only.</p>
       </div>
       <div class="hero-actions">
         <button id="refresh-reports-btn" type="button" class="btn-secondary">Refresh</button>
@@ -111,7 +110,7 @@
       </div>
     </div>
 
-    <p class="dashboard-footer">Reports aggregated by Reporting Engine · JSON export available for selected reports</p>
+    <p class="dashboard-footer">Live EC2 async reports · JSON export for selected reports · Demo scenarios are on Demo Reports (public)</p>
   </main>
 
   <script type="module" src="./src/reports-main.ts"></script>
