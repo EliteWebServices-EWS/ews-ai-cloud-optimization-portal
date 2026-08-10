@@ -17,6 +17,9 @@ import {
   type Ec2IntelligenceQueueSender,
 } from '../async-jobs/ec2-intelligence-queue-sender';
 import type { Ec2AsyncJobRecord } from '../async-jobs/ec2-async-job-models';
+import { isEc2AsyncJobActive } from './ec2-async-job-active';
+import type { Ec2AsyncJobStageCompletionService } from './ec2-async-job-stage-completion';
+import { isEc2AsyncJobBlockingSameScopeStart } from './ec2-async-job-scope-blocker';
 
 export class Ec2AsyncJobValidationError extends Error {
   constructor(message: string) {
@@ -44,6 +47,7 @@ export class Ec2AsyncJobProducerService {
     private readonly awsAccounts: AwsAccountRepository,
     private readonly jobs: Ec2AsyncJobRepository,
     private readonly queue: Ec2IntelligenceQueueSender,
+    private readonly stageCompletion?: Ec2AsyncJobStageCompletionService,
   ) {}
 
   async resolveVerifiedAccount(tenantId: string, accountId: string) {
@@ -95,11 +99,16 @@ export class Ec2AsyncJobProducerService {
       requestFingerprint,
     );
     if (activeJob) {
-      return {
-        job: activeJob,
-        reused: true,
-        enqueued: activeJob.queueStatus === 'ENQUEUED',
-      };
+      const blocksScope = this.stageCompletion
+        ? await isEc2AsyncJobBlockingSameScopeStart(activeJob, this.stageCompletion)
+        : isEc2AsyncJobActive(activeJob);
+      if (blocksScope) {
+        return {
+          job: activeJob,
+          reused: true,
+          enqueued: activeJob.queueStatus === 'ENQUEUED',
+        };
+      }
     }
 
     const jobId = deriveIdempotentAsyncJobId(tenantId, context.idempotencyKey);

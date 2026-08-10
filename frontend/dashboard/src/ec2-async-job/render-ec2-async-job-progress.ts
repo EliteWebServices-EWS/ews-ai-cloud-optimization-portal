@@ -10,6 +10,11 @@ import {
   type Ec2AsyncJobProgressLabel,
 } from './ec2-async-job-status-mapping';
 import { computeElapsedMs, formatElapsedDuration, formatJobTimestamp } from './ec2-async-job-time';
+import {
+  EC2_EXECUTION_NO_LONGER_ACTIVE_NOTE,
+  formatPersistedStatusLabel,
+  isEc2AsyncJobExecutionNoLongerActive,
+} from './ec2-async-job-execution-presentation';
 
 export interface Ec2AsyncJobProgressViewModel {
   job: Ec2AsyncJob;
@@ -20,7 +25,13 @@ export interface Ec2AsyncJobProgressViewModel {
   onReturnToActive?: () => void;
 }
 
-function stepStateLabel(state: 'pending' | 'active' | 'completed' | 'failed'): string {
+function stepStateLabel(
+  state: 'pending' | 'active' | 'completed' | 'failed',
+  executionInactive?: boolean,
+): string {
+  if (executionInactive && state === 'active') {
+    return 'Not active';
+  }
   switch (state) {
     case 'completed':
       return 'Complete';
@@ -37,7 +48,22 @@ function stepState(
   step: Ec2AsyncJobProgressLabel,
   current: Ec2AsyncJobProgressLabel,
   display: ReturnType<typeof mapEc2AsyncJobToDisplayState>,
+  executionInactive?: boolean,
 ): 'pending' | 'active' | 'completed' | 'failed' {
+  if (executionInactive) {
+    const order = EC2_ASYNC_PROGRESS_STEPS;
+    const stepIdx = order.indexOf(step);
+    const currentIdx = order.indexOf(current);
+    if (stepIdx >= 0 && currentIdx >= 0) {
+      if (stepIdx < currentIdx) {
+        return 'completed';
+      }
+      if (stepIdx === currentIdx) {
+        return 'active';
+      }
+    }
+    return 'pending';
+  }
   if (display.failed && step === 'Failed') {
     return 'failed';
   }
@@ -83,15 +109,29 @@ export function renderEc2AsyncJobProgress(
       ? mapEc2AsyncJobToDisplayState('RUNNING', job.stage).label
       : null;
   const currentLabel = display.failed ? failedStageLabel ?? 'Discovering Resources' : display.label;
+  const executionInactive = isEc2AsyncJobExecutionNoLongerActive(job);
   const steps = EC2_ASYNC_PROGRESS_STEPS.map((step) => {
-    const state = stepState(step, currentLabel, display);
-    const stateLabel = stepStateLabel(state);
+    const state = stepState(step, currentLabel, display, executionInactive);
+    const stateLabel = stepStateLabel(state, executionInactive);
     return `<li class="progress-step step-${state}" aria-label="${escapeHtml(step)}: ${escapeHtml(stateLabel)}"><span class="step-dot" aria-hidden="true"></span><span>${escapeHtml(step)}</span> <span class="step-state-text">(${escapeHtml(stateLabel)})</span></li>`;
   }).join('');
 
   const elapsed = formatElapsedDuration(computeElapsedMs(job, nowMs));
   const statusText = display.label;
   const milestone = display.milestonePercent;
+
+  const executionInactiveBlock = executionInactive
+    ? `<p class="job-execution-inactive" role="status">
+        Persisted status: ${escapeHtml(formatPersistedStatusLabel(job.status, job.stage))}.
+        ${escapeHtml(EC2_EXECUTION_NO_LONGER_ACTIVE_NOTE)}
+      </p>`
+    : '';
+
+  const statusBadgeText = executionInactive
+    ? formatPersistedStatusLabel(job.status, job.stage)
+    : display.failed
+      ? 'Failed'
+      : statusText;
 
   const errorBlock =
     job.errorSummary && display.failed
@@ -113,8 +153,9 @@ export function renderEc2AsyncJobProgress(
     <section class="dashboard-card" aria-labelledby="progress-heading">
       <h3 id="progress-heading" class="card-title">EC2 Analysis Progress</h3>
       ${returnActiveBlock}
+      ${executionInactiveBlock}
       <p class="job-progress-status" aria-live="polite">
-        <span class="status-badge">${escapeHtml(display.failed ? 'Failed' : statusText)}</span>
+        <span class="status-badge">${escapeHtml(statusBadgeText)}</span>
         <span class="job-elapsed">Elapsed: ${escapeHtml(elapsed)}</span>
       </p>
       <div

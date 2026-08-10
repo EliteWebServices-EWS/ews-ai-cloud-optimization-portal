@@ -445,6 +445,7 @@ describe('Ec2AsyncJobController integration', () => {
       status: 'RUNNING',
       stage: 'DISCOVERY',
       createdAt: '2026-08-10T06:56:00.000Z',
+      isScopeBlocking: true,
     });
     const completed = sampleJob({
       jobId: 'job-done',
@@ -464,6 +465,31 @@ describe('Ec2AsyncJobController integration', () => {
     expect(startJob).not.toHaveBeenCalled();
     expect(controller.getActiveJobId()).toBe('job-run');
     expect(controller.getSelectedJobId()).toBe('job-run');
+  });
+
+  it('allows new analysis when same-scope RUNNING job is not scope-blocking', async () => {
+    const stale = sampleJob({
+      jobId: 'job-stale',
+      status: 'RUNNING',
+      stage: 'DISCOVERY',
+      isScopeBlocking: false,
+    });
+    const startJob = vi.fn().mockResolvedValue({
+      jobId: 'job-new',
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c-new',
+    });
+    const getJob = vi.fn().mockResolvedValue(sampleJob({ jobId: 'job-new' }));
+    const controller = createController({
+      startJob,
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [stale] }),
+    });
+    await controller.initialize();
+    await controller.startAnalysisFromUi();
+    expect(startJob).toHaveBeenCalledTimes(1);
+    expect(controller.getActiveJobId()).toBe('job-new');
   });
 
   it('latest failed job remains the default latest row', async () => {
@@ -487,5 +513,47 @@ describe('Ec2AsyncJobController integration', () => {
     await controller.initialize();
     expect(history.textContent).toContain('Failed');
     expect(history.querySelectorAll('tbody tr')).toHaveLength(1);
+  });
+
+  it('does not offer View active analysis for stale non-blocking RUNNING job', async () => {
+    const stale = sampleJob({
+      jobId: 'job-stale',
+      status: 'RUNNING',
+      stage: 'DISCOVERY',
+      isScopeBlocking: false,
+    });
+    const completed = sampleJob({
+      jobId: 'job-done',
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      createdAt: '2026-08-10T06:56:00.000Z',
+    });
+    const getJob = vi.fn(async (id: string) => (id === 'job-stale' ? stale : completed));
+    const controller = createController({
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [completed, stale] }),
+    });
+    await controller.initialize();
+    controller['activeJobId'] = 'job-stale';
+    controller['activeJob'] = stale;
+    await controller.viewJobProgress('job-done');
+    expect(progress.textContent).not.toContain('View active analysis');
+  });
+
+  it('shows execution inactive copy when inspecting stale RUNNING job', async () => {
+    const stale = sampleJob({
+      jobId: 'job-stale',
+      status: 'RUNNING',
+      stage: 'DISCOVERY',
+      isScopeBlocking: false,
+    });
+    const getJob = vi.fn(async () => stale);
+    const controller = createController({
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [stale] }),
+    });
+    await controller.initialize();
+    await controller.viewJobProgress('job-stale');
+    expect(progress.textContent).toContain('Execution: No longer active');
   });
 });

@@ -43,6 +43,7 @@ import { Ec2SecurityAnalysisApiService } from './services/ec2-security-analysis-
 import { createEc2AsyncJobRepository } from './services/ec2-async-job-repository-factory';
 import { Ec2AsyncJobProducerService } from './services/ec2-async-job-producer-service';
 import { Ec2AsyncJobApiService } from './services/ec2-async-job-api-service';
+import { Ec2AsyncJobStageCompletionService } from './services/ec2-async-job-stage-completion';
 import { createEc2IntelligenceQueueSenderFromEnv } from './async-jobs/sqs-ec2-intelligence-queue-sender';
 import {
   createCognitoIdentityAlignmentPort,
@@ -156,12 +157,21 @@ export function createApp(options?: CreateAppOptions): express.Application {
 
   const ec2AsyncJobRepository = createEc2AsyncJobRepository();
   const ec2IntelligenceQueue = createEc2IntelligenceQueueSenderFromEnv();
+  const ec2AsyncJobStageCompletion = new Ec2AsyncJobStageCompletionService(
+    ec2CloudResourceRepositories.runs,
+    ec2CostRepositories.runs,
+    ec2SecurityRepositories.runs,
+  );
   const ec2AsyncJobProducer = new Ec2AsyncJobProducerService(
     awsAccountRepository,
     ec2AsyncJobRepository,
     ec2IntelligenceQueue,
+    ec2AsyncJobStageCompletion,
   );
-  const ec2AsyncJobApi = new Ec2AsyncJobApiService(ec2AsyncJobRepository);
+  const ec2AsyncJobApi = new Ec2AsyncJobApiService(
+    ec2AsyncJobRepository,
+    ec2AsyncJobStageCompletion,
+  );
 
   const cognitoAlignment =
     process.env.NODE_ENV === 'test'

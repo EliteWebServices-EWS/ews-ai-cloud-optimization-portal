@@ -22,7 +22,6 @@ import {
 import {
   Ec2AsyncJobApiService,
   sanitizeEc2AsyncJobEventForApi,
-  sanitizeEc2AsyncJobForApi,
 } from '../../services/ec2-async-job-api-service';
 import {
   Ec2AsyncJobValidationError,
@@ -220,7 +219,9 @@ export function createEc2AsyncJobRoutes(deps: Ec2AsyncJobRouteDeps): Router {
         res.json(
           buildSuccessResponse(
             {
-              items: page.items.map(sanitizeEc2AsyncJobForApi),
+              items: await Promise.all(
+                page.items.map((job) => deps.ec2AsyncJobApi.presentJobForApi(job)),
+              ),
               nextToken: page.nextToken,
             },
             requestId,
@@ -259,7 +260,9 @@ export function createEc2AsyncJobRoutes(deps: Ec2AsyncJobRouteDeps): Router {
             resource: { type: 'ec2_async_job', id: job.jobId, accountId: job.accountId },
           }),
         );
-        res.json(buildSuccessResponse(sanitizeEc2AsyncJobForApi(job), requestId));
+        res.json(
+          buildSuccessResponse(await deps.ec2AsyncJobApi.presentJobForApi(job), requestId),
+        );
       } catch (error) {
         handleEc2AsyncJobRouteError(res, error, requestId);
       }

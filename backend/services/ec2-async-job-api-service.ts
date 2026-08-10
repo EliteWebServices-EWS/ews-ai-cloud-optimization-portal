@@ -2,8 +2,21 @@ import { InvalidPaginationTokenError, RepositoryNotFoundError } from '../databas
 import type { Ec2AsyncJobRepository } from '../repositories/contracts/ec2-async-job-repository';
 import type { Ec2AsyncJobRecord, Ec2AsyncJobEventRecord } from '../async-jobs/ec2-async-job-models';
 import type { PageResult } from '../repositories/contracts/repository-types';
+import type { Ec2AsyncJobStageCompletionService } from './ec2-async-job-stage-completion';
+import { isEc2AsyncJobActive } from './ec2-async-job-active';
+import { isEc2AsyncJobBlockingSameScopeStart } from './ec2-async-job-scope-blocker';
 
-export function sanitizeEc2AsyncJobForApi(job: Ec2AsyncJobRecord) {
+export function sanitizeEc2AsyncJobForApi(
+  job: Ec2AsyncJobRecord,
+  options?: {
+    /**
+     * When set, means this job currently prevents starting another analysis for the
+     * same account/regions scope (POST /analysis/ec2/start duplicate guard).
+     * Not equivalent to persisted status RUNNING and not a health indicator.
+     */
+    isScopeBlocking?: boolean;
+  },
+) {
   return {
     jobId: job.jobId,
     accountId: job.accountId,
@@ -19,6 +32,9 @@ export function sanitizeEc2AsyncJobForApi(job: Ec2AsyncJobRecord) {
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     version: job.version,
+    ...(options?.isScopeBlocking !== undefined
+      ? { isScopeBlocking: options.isScopeBlocking }
+      : {}),
   };
 }
 
@@ -36,7 +52,24 @@ export function sanitizeEc2AsyncJobEventForApi(event: Ec2AsyncJobEventRecord) {
 }
 
 export class Ec2AsyncJobApiService {
-  constructor(private readonly jobs: Ec2AsyncJobRepository) {}
+  constructor(
+    private readonly jobs: Ec2AsyncJobRepository,
+    private readonly stageCompletion?: Ec2AsyncJobStageCompletionService,
+  ) {}
+
+  async presentJobForApi(job: Ec2AsyncJobRecord) {
+    if (!this.stageCompletion) {
+      return sanitizeEc2AsyncJobForApi(job);
+    }
+    if (!isEc2AsyncJobActive(job)) {
+      return sanitizeEc2AsyncJobForApi(job, { isScopeBlocking: false });
+    }
+    const isScopeBlocking = await isEc2AsyncJobBlockingSameScopeStart(
+      job,
+      this.stageCompletion,
+    );
+    return sanitizeEc2AsyncJobForApi(job, { isScopeBlocking });
+  }
 
   async getJob(tenantId: string, jobId: string): Promise<Ec2AsyncJobRecord> {
     const job = await this.jobs.getJob(tenantId, jobId);

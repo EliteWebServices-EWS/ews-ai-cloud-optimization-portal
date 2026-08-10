@@ -68,6 +68,16 @@ export function pickLatestEc2ReportsByScope(reports: ReportListItem[]): ReportLi
   return [...latestByScope.values()].sort(compareReportsNewestFirst);
 }
 
+export function isEc2AsyncJobScopeBlocking(job: Ec2AsyncJob): boolean {
+  if (job.isScopeBlocking !== undefined) {
+    return job.isScopeBlocking;
+  }
+  if (job.queueStatus === 'ENQUEUE_FAILED') {
+    return false;
+  }
+  return !isTerminalJobStatus(job.status, job.stage);
+}
+
 export function findActiveEc2AnalysisJobForScope(
   jobs: Ec2AsyncJob[],
   scope: { accountId: string; regions?: string[] },
@@ -78,7 +88,7 @@ export function findActiveEc2AnalysisJobForScope(
     .find(
       (job) =>
         buildEc2AnalysisScopeKeyFromJob(job) === targetKey &&
-        !isTerminalJobStatus(job.status, job.stage),
+        isEc2AsyncJobScopeBlocking(job),
     );
 }
 

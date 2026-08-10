@@ -7,6 +7,10 @@ import {
   mapEc2AsyncJobToDisplayState,
   type Ec2AsyncJobDisplayState,
 } from './ec2-async-job-status-mapping';
+import {
+  formatPersistedStatusLabel,
+  isEc2AsyncJobExecutionNoLongerActive,
+} from './ec2-async-job-execution-presentation';
 
 /** Align with backend/async-jobs/ec2-intelligence-processing-limits.ts and SQS redrive. */
 export const EC2_ASYNC_JOB_SQS_MAX_RECEIVE_COUNT = 5;
@@ -34,7 +38,16 @@ export function isEc2AsyncJobHistoryAbandoned(
 export function mapEc2AsyncJobHistoryDisplay(
   job: Ec2AsyncJob,
   options?: { activeJobId?: string | null; localStarting?: boolean },
-): Ec2AsyncJobDisplayState {
+): Ec2AsyncJobDisplayState & { historyStatusDetail?: string } {
+  if (isEc2AsyncJobExecutionNoLongerActive(job)) {
+    const base = mapEc2AsyncJobToDisplayState(job.status, job.stage, {
+      localStarting: options?.localStarting,
+    });
+    return {
+      ...base,
+      historyStatusDetail: `Persisted: ${formatPersistedStatusLabel(job.status, job.stage)}. Execution inactive.`,
+    };
+  }
   if (isEc2AsyncJobHistoryAbandoned(job, options)) {
     return {
       label: 'Failed',

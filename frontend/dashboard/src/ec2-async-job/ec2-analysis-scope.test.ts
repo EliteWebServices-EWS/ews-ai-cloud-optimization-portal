@@ -4,6 +4,7 @@ import type { ReportListItem } from '../types';
 import {
   buildEc2AnalysisScopeKey,
   findActiveEc2AnalysisJobForScope,
+  isEc2AsyncJobScopeBlocking,
   pickLatestEc2AnalysisJobsByScope,
   pickLatestEc2ReportsByScope,
 } from './ec2-analysis-scope';
@@ -69,6 +70,7 @@ describe('ec2-analysis-scope', () => {
         createdAt: '2026-08-10T06:56:00.000Z',
         status: 'RUNNING',
         stage: 'DISCOVERY',
+        isScopeBlocking: true,
       }),
     ];
     const active = findActiveEc2AnalysisJobForScope(jobs, {
@@ -76,6 +78,25 @@ describe('ec2-analysis-scope', () => {
       regions: ['us-east-1'],
     });
     expect(active?.jobId).toBe('running');
+  });
+
+  it('does not treat stale RUNNING job as scope-blocking active', () => {
+    const jobs = [
+      job({
+        jobId: 'stale',
+        createdAt: '2026-08-09T12:00:00.000Z',
+        status: 'RUNNING',
+        stage: 'DISCOVERY',
+        isScopeBlocking: false,
+      }),
+    ];
+    expect(
+      findActiveEc2AnalysisJobForScope(jobs, {
+        accountId: '572262081497',
+        regions: ['us-east-1'],
+      }),
+    ).toBeUndefined();
+    expect(isEc2AsyncJobScopeBlocking(jobs[0]!)).toBe(false);
   });
 
   it('groups reports by account and regions', () => {
