@@ -980,6 +980,7 @@ Resources:
           ASYNC_JOBS_TABLE_NAME: !Ref SisumAsyncJobsTable
           EC2_INTELLIGENCE_QUEUE_URL: !Ref SisumEc2IntelligenceQueue
           EC2_COST_SAMPLE_PRICING_ENABLED: 'false'
+          SISUM_PLATFORM_AWS_ACCOUNT_ID: !Ref AWS::AccountId
 
       Events:
         PublicHealthRoute:

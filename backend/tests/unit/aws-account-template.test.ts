@@ -29,4 +29,24 @@ describe('AWS accounts SAM template', () => {
     assert.match(policySection, /dynamodb:Query/);
     assert.match(policySection, /SisumAwsAccountsTable/);
   });
+
+  it('injects platform account id for integration trust policy generation on API Lambda', () => {
+    const backendSection = template.slice(
+      template.indexOf('SisumBackendFunction:'),
+      template.indexOf('SisumEc2AnalysisConsumerLogGroup:'),
+    );
+    assert.match(
+      backendSection,
+      /SISUM_PLATFORM_AWS_ACCOUNT_ID:\s*!Ref AWS::AccountId/,
+    );
+    assert.doesNotMatch(backendSection, /739275446782/);
+  });
+
+  it('does not inject SISUM_PLATFORM_AWS_ACCOUNT_ID on EC2 analysis consumer Lambda', () => {
+    const consumerSection = template.slice(
+      template.indexOf('SisumEc2AnalysisConsumerFunction:'),
+      template.indexOf('Outputs:'),
+    );
+    assert.doesNotMatch(consumerSection, /SISUM_PLATFORM_AWS_ACCOUNT_ID/);
+  });
 });
