@@ -1579,6 +1579,9 @@ export function createReportRoutes(
                   report.workflowStatus,
                 createdAt: report.createdAt,
                 region: report.region,
+                reportSource: report.reportSource ?? 'workflow',
+                ec2AsyncJobId: report.ec2AsyncJobId,
+                accountId: report.accountId,
                 summary: {
                   headline:
                     report.summary.headline,
@@ -1606,8 +1609,10 @@ export function createReportRoutes(
                 resourceCount:
                   report.resources.length,
                 confidenceStatus:
-                  report.recommendations[0]
-                    ?.decision.confidenceStatus,
+                  report.recommendations[0]?.decision.confidenceStatus ??
+                  (report.reportSource === 'ec2_async'
+                    ? 'NOT_APPLICABLE'
+                    : undefined),
                 verificationStatus:
                   report.verification?.status,
               })),

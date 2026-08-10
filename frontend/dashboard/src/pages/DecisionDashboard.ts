@@ -26,6 +26,9 @@ export interface DecisionDashboardElements {
 export class DecisionDashboard {
   private state: DashboardState = 'idle';
 
+  static readonly LEGACY_WORKFLOW_DISCLAIMER =
+    'Workflow panels are not updated by asynchronous EC2 jobs. Use live EC2 panels above.';
+
   constructor(
     private readonly elements: DecisionDashboardElements,
     private readonly ec2Dashboard: Ec2DashboardController,
@@ -92,9 +95,9 @@ export class DecisionDashboard {
   }
 
   private clearWorkflowPanels(): void {
-    const empty = '<p class="empty-note">Workflow panels are not updated by asynchronous EC2 jobs. Use live EC2 panels above.</p>';
+    this.elements.overview.innerHTML = `<p class="empty-note legacy-workflow-disclaimer">${DecisionDashboard.LEGACY_WORKFLOW_DISCLAIMER}</p>`;
+    const placeholder = '<p class="empty-note legacy-workflow-placeholder">—</p>';
     for (const el of [
-      this.elements.overview,
       this.elements.candidate,
       this.elements.evidence,
       this.elements.governance,
@@ -103,7 +106,7 @@ export class DecisionDashboard {
       this.elements.recommendation,
       this.elements.verification,
     ]) {
-      el.innerHTML = empty;
+      el.innerHTML = placeholder;
     }
   }
 

@@ -18,6 +18,8 @@ import { MockEc2CostRepository } from '../../repositories/mock/mock-ec2-cost-rep
 import { MockEc2SecurityRepository } from '../../repositories/mock/mock-ec2-security-repository';
 import { Ec2AsyncJobStageCompletionService } from '../../services/ec2-async-job-stage-completion';
 import { Ec2AsyncJobStageExecutionService } from '../../services/ec2-async-job-stage-execution';
+import { createReportingEngine } from '../../engines/reporting';
+import { Ec2AsyncReportProjectionService } from '../../services/ec2-async-report-projection-service';
 import { computeLeaseExpiresAtIso } from '../../services/ec2-stage-run-execution-metadata';
 import {
   ec2AsyncJobCostRunId,
@@ -74,6 +76,7 @@ function createConsumer(deps: {
   discoveryError?: Error;
   discoveryEmptyInventory?: boolean;
   nowMs?: () => number;
+  reportProjection?: Ec2AsyncReportProjectionService;
 }) {
   const discoveryCalls = deps.discoveryCalls ?? { count: 0 };
   const costCalls = deps.costCalls ?? { count: 0 };
@@ -220,6 +223,17 @@ function createConsumer(deps: {
         return { runId, status: 'SUCCEEDED' };
       },
     } as never,
+    reportProjection:
+      deps.reportProjection ??
+      new Ec2AsyncReportProjectionService({
+        reportingEngine: createReportingEngine(),
+        discoveryRuns: cloudRepo,
+        costRuns: costRepo,
+        costRecommendations: costRepo,
+        securityRuns: securityRepo,
+        securitySummaries: securityRepo,
+        securityFindings: securityRepo,
+      }),
   });
 }
 
@@ -307,6 +321,35 @@ describe('Ec2AsyncJobConsumerService', () => {
     assert.ok(updated?.completedAt === undefined);
     const events = await jobs.listEvents(TENANT, job.jobId);
     assert.ok(events.items.some((event) => event.eventType === EC2_ASYNC_JOB_EVENT.RETRYING));
+  });
+
+  it('marks job FAILED and acks when retryCount reaches SQS max receive count', async () => {
+    const jobs = new MockEc2AsyncJobRepository();
+    const awsAccounts = new MockAwsAccountRepository();
+    await seedVerifiedAccount(awsAccounts, TENANT, ACCOUNT, 'us-east-1');
+    const job = await seedQueuedJob(jobs, 'job-exhaust', 'idem-exhaust');
+    await jobs.updateJob(
+      TENANT,
+      job.jobId,
+      {
+        status: 'RUNNING',
+        stage: 'DISCOVERY',
+        startedAt: new Date().toISOString(),
+        retryCount: 4,
+      },
+      { expectedVersion: job.version },
+    );
+    const consumer = createConsumer({
+      jobs,
+      awsAccounts,
+      discoveryError: new Ec2AsyncJobConsumerRetryableError('still failing'),
+    });
+    const outcome = await consumer.processValidatedMessage(messageForJob(job.jobId), 'req-exhaust');
+    assert.equal(outcome, 'ack');
+    const updated = await jobs.getJob(TENANT, job.jobId);
+    assert.equal(updated?.status, 'FAILED');
+    assert.ok(updated?.completedAt);
+    assert.equal(updated?.retryCount, 5);
   });
 
   it('resumes a RUNNING job from the current durable stage', async () => {
@@ -766,6 +809,142 @@ describe('Ec2AsyncJobConsumerService', () => {
     const finished = await jobs.getJob(TENANT, job.jobId);
     assert.equal(finished?.status, 'SUCCEEDED');
     assert.equal(finished?.stage, 'COMPLETE');
+  });
+
+  it('returns retry when report projection fails and succeeds on the next delivery', async () => {
+    const jobs = new MockEc2AsyncJobRepository();
+    const awsAccounts = new MockAwsAccountRepository();
+    const cloudRepo = new MockEc2CloudResourceRepository();
+    const costRepo = new MockEc2CostRepository();
+    const securityRepo = new MockEc2SecurityRepository();
+    await seedVerifiedAccount(awsAccounts, TENANT, ACCOUNT, 'us-east-1');
+    const job = await seedQueuedJob(jobs, 'job-report-retry', 'idem-report-retry');
+    const startedAt = new Date().toISOString();
+    const discoveryRunId = ec2AsyncJobDiscoveryRunId(job.jobId);
+    const costRunId = ec2AsyncJobCostRunId(job.jobId);
+    const securityRunId = ec2AsyncJobSecurityRunId(job.jobId);
+
+    const discoveryRun = await cloudRepo.createRun({
+      runId: discoveryRunId,
+      tenantId: TENANT,
+      accountId: ACCOUNT,
+      requestedRegions: ['us-east-1'],
+      startedAt,
+    });
+    await cloudRepo.completeRun({
+      tenantId: TENANT,
+      accountId: ACCOUNT,
+      runId: discoveryRunId,
+      expectedVersion: discoveryRun.version,
+      status: 'SUCCEEDED',
+      completedAt: startedAt,
+      resourceCounts: {},
+      regionsSucceeded: ['us-east-1'],
+      regionsFailed: [],
+      warnings: [],
+    });
+    const costRun = await costRepo.createRun({
+      runId: costRunId,
+      tenantId: TENANT,
+      accountId: ACCOUNT,
+      regions: ['us-east-1'],
+      observationDays: 14,
+      periodSeconds: 3600,
+      requestedAt: startedAt,
+      startedAt,
+    });
+    await costRepo.completeRun({
+      tenantId: TENANT,
+      accountId: ACCOUNT,
+      runId: costRunId,
+      expectedVersion: costRun.version,
+      status: 'SUCCEEDED',
+      completedAt: startedAt,
+      instancesFound: 0,
+      instancesEvaluated: 0,
+      recommendationsCreated: 0,
+      recommendationsUpdated: 0,
+      recommendationsResolved: 0,
+      insufficientDataCount: 0,
+      regionsSucceeded: ['us-east-1'],
+      regionsFailed: [],
+      warnings: [],
+    });
+    const securityRun = await securityRepo.createRun({
+      runId: securityRunId,
+      tenantId: TENANT,
+      accountId: ACCOUNT,
+      regions: ['us-east-1'],
+      startedAt,
+    });
+    await securityRepo.completeRun({
+      tenantId: TENANT,
+      accountId: ACCOUNT,
+      runId: securityRunId,
+      expectedVersion: securityRun.version,
+      status: 'SUCCEEDED',
+      completedAt: startedAt,
+      instancesFound: 0,
+      instancesAnalyzed: 0,
+      findingsCreated: 0,
+      findingsUpdated: 0,
+      findingsResolved: 0,
+    });
+
+    await jobs.updateJob(
+      TENANT,
+      job.jobId,
+      { status: 'RUNNING', stage: 'FINALIZING', startedAt },
+      { expectedVersion: job.version },
+    );
+
+    const reportingEngine = createReportingEngine();
+    const realProjection = new Ec2AsyncReportProjectionService({
+      reportingEngine,
+      discoveryRuns: cloudRepo,
+      costRuns: costRepo,
+      costRecommendations: costRepo,
+      securityRuns: securityRepo,
+      securitySummaries: securityRepo,
+      securityFindings: securityRepo,
+    });
+    let failProjection = true;
+    const consumer = createConsumer({
+      jobs,
+      awsAccounts,
+      cloudRepo,
+      costRepo,
+      securityRepo,
+      reportProjection: {
+        projectReportForCompletedJob: async (runningJob) => {
+          if (failProjection) {
+            failProjection = false;
+            throw new Ec2AsyncJobConsumerRetryableError('report projection failed');
+          }
+          return realProjection.projectReportForCompletedJob(runningJob);
+        },
+      } as Ec2AsyncReportProjectionService,
+    });
+
+    const firstOutcome = await consumer.processValidatedMessage(
+      messageForJob(job.jobId),
+      'req-report-retry-1',
+    );
+    assert.equal(firstOutcome, 'retry');
+    const afterFailure = await jobs.getJob(TENANT, job.jobId);
+    assert.equal(afterFailure?.status, 'RUNNING');
+    assert.equal(afterFailure?.stage, 'FINALIZING');
+
+    const secondOutcome = await consumer.processValidatedMessage(
+      messageForJob(job.jobId),
+      'req-report-retry-2',
+    );
+    assert.equal(secondOutcome, 'ack');
+    const finished = await jobs.getJob(TENANT, job.jobId);
+    assert.equal(finished?.status, 'SUCCEEDED');
+    assert.equal(finished?.stage, 'COMPLETE');
+    const reports = await reportingEngine.listReports(TENANT);
+    assert.equal(reports.filter((report) => report.ec2AsyncJobId === job.jobId).length, 1);
   });
 
   it('returns retry when concurrent recovery advances collide on expectedVersion', async () => {

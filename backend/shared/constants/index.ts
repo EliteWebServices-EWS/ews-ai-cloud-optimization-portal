@@ -142,7 +142,16 @@ export const CONFIDENCE_STATUS = {
   HIGH: 'HIGH',
   MEDIUM: 'MEDIUM',
   LOW: 'LOW',
+  NOT_APPLICABLE: 'NOT_APPLICABLE',
 } as const;
+
+export const REPORT_SOURCE = {
+  WORKFLOW: 'workflow',
+  DEMO: 'demo',
+  EC2_ASYNC: 'ec2_async',
+} as const;
+
+export type ReportSource = (typeof REPORT_SOURCE)[keyof typeof REPORT_SOURCE];
 
 export type ConfidenceStatus = (typeof CONFIDENCE_STATUS)[keyof typeof CONFIDENCE_STATUS];
 

@@ -11,7 +11,7 @@
  */
 
 import type { OptimizationReport } from '../../shared/types';
-import { OwnershipConflictError } from '../../database';
+import { OwnershipConflictError, RepositoryConflictError } from '../../database';
 import {
   buildTenantPartitionKey,
   type PersistedItem,
@@ -52,6 +52,10 @@ function reportSk(reportId: string): string {
 
 function workflowPointerSk(workflowId: string): string {
   return `REPORTWF#${workflowId}`;
+}
+
+function ec2AsyncJobPointerSk(jobId: string): string {
+  return `REPORTEC2JOB#${jobId}`;
 }
 
 function historyPrefix(reportId: string): string {
@@ -104,6 +108,47 @@ export class DynamoDbReportRepository implements ReportRepository {
   ) {}
 
   async save(report: OptimizationReport): Promise<OptimizationReport> {
+    await this.writeReport(report, { createOnly: false });
+    return report;
+  }
+
+  async saveEc2AsyncReportIfAbsent(
+    report: OptimizationReport,
+  ): Promise<OptimizationReport> {
+    if (!report.ec2AsyncJobId) {
+      throw new Error('ec2AsyncJobId is required for EC2 async report create.');
+    }
+
+    const existing = await this.findByEc2AsyncJobId(
+      report.tenantId,
+      report.ec2AsyncJobId,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    try {
+      await this.writeReport(report, { createOnly: true });
+      return report;
+    } catch (error) {
+      if (error instanceof RepositoryConflictError) {
+        const raced = await this.findByEc2AsyncJobId(
+          report.tenantId,
+          report.ec2AsyncJobId,
+        );
+        if (raced) {
+          return raced;
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  private async writeReport(
+    report: OptimizationReport,
+    options: { createOnly: boolean },
+  ): Promise<void> {
     const pk = buildTenantPartitionKey(report.tenantId);
     const existingItem = await this.table.getItem(pk, reportSk(report.reportId));
     const existing = existingItem?.data as OptimizationReport | undefined;
@@ -145,23 +190,53 @@ export class DynamoDbReportRepository implements ReportRepository {
       expiresAt,
     };
 
+    const transactItems: Parameters<typeof executeTransactWrite>[1] = [
+      {
+        tableName: this.table.name,
+        item: reportItem,
+        ...(options.createOnly
+          ? { conditionExpression: 'attribute_not_exists(sk)' }
+          : {}),
+      },
+      {
+        tableName: this.table.name,
+        item: pointerItem,
+        ...(options.createOnly
+          ? { conditionExpression: 'attribute_not_exists(sk)' }
+          : {}),
+      },
+      {
+        tableName: this.ownershipTable.name,
+        item: reportOwnerItem,
+        conditionExpression: SAME_OWNER_CONDITION,
+        expressionAttributeValues: ownerValues,
+      },
+      {
+        tableName: this.ownershipTable.name,
+        item: workflowOwnerItem,
+        conditionExpression: SAME_OWNER_CONDITION,
+        expressionAttributeValues: ownerValues,
+      },
+    ];
+
+    if (report.ec2AsyncJobId) {
+      transactItems.splice(2, 0, {
+        tableName: this.table.name,
+        item: {
+          pk,
+          sk: ec2AsyncJobPointerSk(report.ec2AsyncJobId),
+          entityType: 'report-ec2-async-job-index',
+          reportId: report.reportId,
+          expiresAt,
+        },
+        ...(options.createOnly
+          ? { conditionExpression: 'attribute_not_exists(sk)' }
+          : {}),
+      });
+    }
+
     try {
-      await executeTransactWrite(this.table.documentClient, [
-        { tableName: this.table.name, item: reportItem },
-        { tableName: this.table.name, item: pointerItem },
-        {
-          tableName: this.ownershipTable.name,
-          item: reportOwnerItem,
-          conditionExpression: SAME_OWNER_CONDITION,
-          expressionAttributeValues: ownerValues,
-        },
-        {
-          tableName: this.ownershipTable.name,
-          item: workflowOwnerItem,
-          conditionExpression: SAME_OWNER_CONDITION,
-          expressionAttributeValues: ownerValues,
-        },
-      ]);
+      await executeTransactWrite(this.table.documentClient, transactItems);
     } catch (error) {
       if (error instanceof OwnershipConflictError) {
         throw error;
@@ -171,8 +246,6 @@ export class DynamoDbReportRepository implements ReportRepository {
     }
 
     await this.appendHistory(report, existing ? 'updated' : 'created');
-
-    return report;
   }
 
   async findById(
@@ -194,6 +267,19 @@ export class DynamoDbReportRepository implements ReportRepository {
     const pointer = await this.table.getItem(
       buildTenantPartitionKey(tenantId),
       workflowPointerSk(workflowId)
+    );
+
+    const reportId = pointer?.reportId as string | undefined;
+    return reportId ? this.findById(tenantId, reportId) : undefined;
+  }
+
+  async findByEc2AsyncJobId(
+    tenantId: string,
+    jobId: string
+  ): Promise<OptimizationReport | undefined> {
+    const pointer = await this.table.getItem(
+      buildTenantPartitionKey(tenantId),
+      ec2AsyncJobPointerSk(jobId)
     );
 
     const reportId = pointer?.reportId as string | undefined;

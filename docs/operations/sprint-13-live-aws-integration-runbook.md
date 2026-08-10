@@ -68,9 +68,13 @@ API responses **redact** External ID on subsequent reads; retain your secure cop
 ## 7. Customer IAM trust policy steps
 
 1. Create role `SisumReadOnlyIntegrationRole` (name may vary; ARN must match registration).
-2. Trust entity: AWS account **`739275446782`** (platform) or role principal **`arn:aws:iam::739275446782:role/SisumLambdaExecutionRole`** per your standard.
-3. Require **`sts:ExternalId`** = `<EXTERNAL_ID>` from registration.
-4. Allow **`sts:AssumeRole`** for the platform principal only.
+2. Trust **both** platform role principals (replace `<PLATFORM_ACCOUNT_ID>` with the SISU'M AWS account):
+   - `arn:aws:iam::<PLATFORM_ACCOUNT_ID>:role/SisumLambdaExecutionRole`
+   - `arn:aws:iam::<PLATFORM_ACCOUNT_ID>:role/SisumEc2AnalysisConsumerExecutionRole`
+3. Require **`sts:ExternalId`** = `<EXTERNAL_ID>` from registration (see [aws-account-integration-trust-policy.md](./aws-account-integration-trust-policy.md)).
+4. Allow **`sts:AssumeRole`** only for those principals (not account root, not `*`).
+
+**Existing accounts:** If only the API role was trusted previously, add the consumer role without changing ExternalId (migration section in the trust policy doc).
 
 ---
 

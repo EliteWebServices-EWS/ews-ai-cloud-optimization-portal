@@ -4,7 +4,7 @@
 
 import type { Ec2AsyncJob } from '../api/ec2-async-job-types';
 import { escapeHtml } from '../utils/format';
-import { mapEc2AsyncJobToDisplayState } from './ec2-async-job-status-mapping';
+import { mapEc2AsyncJobHistoryDisplay } from './ec2-async-job-history-display';
 import { formatJobTimestamp } from './ec2-async-job-time';
 
 export interface Ec2AsyncJobHistoryViewModel {
@@ -57,11 +57,15 @@ export function renderEc2AsyncJobHistory(
 
   const rows = model.items
     .map((job) => {
-      const display = mapEc2AsyncJobToDisplayState(job.status, job.stage);
+      const display = mapEc2AsyncJobHistoryDisplay(job, {
+        activeJobId: model.activeJobId,
+      });
       const isActive = model.activeJobId === job.jobId;
       const regions = job.regions?.length ? job.regions.join(', ') : '—';
+      const showRetry =
+        (job.status === 'FAILED' || display.failed) && handlers?.onRetry;
       const retryButton =
-        job.status === 'FAILED' && handlers?.onRetry
+        showRetry
           ? `<button type="button" class="btn-secondary job-retry-btn" data-job-id="${escapeHtml(job.jobId)}" ${
               model.retryInFlight ? 'disabled aria-busy="true"' : ''
             }>${model.retryInFlight ? 'Retrying…' : 'Retry analysis'}</button>`

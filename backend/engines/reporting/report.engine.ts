@@ -4,6 +4,7 @@
  */
 
 import type { OptimizationReport, ReportGenerationInput, Result } from '../../shared/types';
+import { PROVIDER_NAMES, REPORT_SOURCE } from '../../shared/constants';
 import { createLogger } from '../../shared/utils';
 import { REPORT_ERROR_CODES, createReportError } from './report.errors';
 import { generateReport } from './report.generator';
@@ -15,6 +16,19 @@ import type { ReportRepository } from './report.repository';
 import type { ReportQuery, ReportQueryResult } from './report.query';
 
 const logger = createLogger('ReportingEngine');
+
+function attachWorkflowReportSource(report: OptimizationReport): OptimizationReport {
+  if (report.reportSource) {
+    return report;
+  }
+
+  const providerMode = (process.env.PROVIDER_MODE ?? PROVIDER_NAMES.MOCK).toLowerCase();
+  return {
+    ...report,
+    reportSource:
+      providerMode === PROVIDER_NAMES.MOCK ? REPORT_SOURCE.DEMO : REPORT_SOURCE.WORKFLOW,
+  };
+}
 
 export interface ReportingEngineOptions {
   repository?: ReportRepository;
@@ -101,7 +115,7 @@ export class ReportingEngine {
         };
       }
 
-      const report = generateReport(input);
+      const report = attachWorkflowReportSource(generateReport(input));
       await this.repository.save(report);
 
       logger.info('Report generated', {
@@ -146,6 +160,21 @@ export class ReportingEngine {
     workflowId: string
   ): Promise<OptimizationReport | undefined> {
     return this.repository.findByWorkflowId(tenantId, workflowId);
+  }
+
+  getReportByEc2AsyncJobId(
+    tenantId: string,
+    jobId: string
+  ): Promise<OptimizationReport | undefined> {
+    return this.repository.findByEc2AsyncJobId(tenantId, jobId);
+  }
+
+  saveReport(report: OptimizationReport): Promise<OptimizationReport> {
+    return this.repository.save(report);
+  }
+
+  saveEc2AsyncReportIfAbsent(report: OptimizationReport): Promise<OptimizationReport> {
+    return this.repository.saveEc2AsyncReportIfAbsent(report);
   }
 
   resolveReportOwnerTenantId(

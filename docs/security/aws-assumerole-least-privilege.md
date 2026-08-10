@@ -9,7 +9,7 @@
 
 ### Trust
 
-- Principal: SISU'M platform account
+- Principal: **both** SISU'M platform roles (`SisumLambdaExecutionRole` and `SisumEc2AnalysisConsumerExecutionRole`) in the platform account — see [aws-account-integration-trust-policy.md](../operations/aws-account-integration-trust-policy.md)
 - **`sts:ExternalId`**: tenant-specific value from registration (confused-deputy protection)
 
 ### Required read permissions (minimum)

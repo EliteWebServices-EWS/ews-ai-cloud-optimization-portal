@@ -2,6 +2,7 @@ import { RepositoryConflictError } from '../database';
 import type { AwsAccountRepository } from '../repositories/contracts';
 import type { Ec2AsyncJobRepository } from '../repositories/contracts/ec2-async-job-repository';
 import type { Ec2AsyncJobRecord } from '../async-jobs/ec2-async-job-models';
+import { EC2_INTELLIGENCE_SQS_MAX_RECEIVE_COUNT } from '../async-jobs/ec2-intelligence-processing-limits';
 import type { Ec2IntelligenceQueueMessage } from '../async-jobs/ec2-intelligence-queue-message';
 import { AUDIT_EVENTS } from '../audit/audit-events';
 import { writeAuditEvent } from '../audit';
@@ -15,6 +16,7 @@ import {
   stageProofRequiresExecutionClaim,
   type StageCompletionProof,
 } from './ec2-async-job-stage-completion';
+import type { Ec2AsyncReportProjectionService } from './ec2-async-report-projection-service';
 import { Ec2AsyncJobStageExecutionService } from './ec2-async-job-stage-execution';
 import { Ec2StageRunActiveLeaseError } from '../repositories/ec2-stage-run-execution-claim';
 import {
@@ -64,6 +66,7 @@ export interface Ec2AsyncJobConsumerServiceDeps {
   security: Ec2SecurityAnalysisApiService;
   stageCompletion: Ec2AsyncJobStageCompletionService;
   stageExecution: Ec2AsyncJobStageExecutionService;
+  reportProjection: Ec2AsyncReportProjectionService;
 }
 
 export class Ec2AsyncJobConsumerService {
@@ -191,7 +194,7 @@ export class Ec2AsyncJobConsumerService {
     job: Ec2AsyncJobRecord,
     context: Ec2AsyncJobWorkerCallContext,
     safeSummary: string,
-  ): Promise<void> {
+  ): Promise<'retrying' | 'exhausted'> {
     try {
       const updated = await this.deps.jobs.updateJob(
         job.tenantId,
@@ -221,6 +224,15 @@ export class Ec2AsyncJobConsumerService {
         resource: { type: 'ec2_async_job', id: job.jobId, accountId: job.accountId },
         reason: safeSummary,
       });
+      if (updated.retryCount >= EC2_INTELLIGENCE_SQS_MAX_RECEIVE_COUNT) {
+        await this.markTerminalFailure(
+          updated,
+          context,
+          'EC2 async job processing exhausted queue retries.',
+        );
+        return 'exhausted';
+      }
+      return 'retrying';
     } catch (error) {
       if (error instanceof RepositoryConflictError) {
         throw new Ec2AsyncJobConsumerRetryableError('Retry metadata conflict.');
@@ -547,6 +559,7 @@ export class Ec2AsyncJobConsumerService {
           job = await this.runGovernanceStage(job, context);
           break;
         case 'FINALIZING': {
+          await this.deps.reportProjection.projectReportForCompletedJob(job);
           const completedAt = new Date().toISOString();
           job = await this.deps.jobs.updateJob(
             job.tenantId,
@@ -659,14 +672,18 @@ export class Ec2AsyncJobConsumerService {
         retryable: errorDetails.retryable,
       });
 
+      const recordRetryOutcome = async (): Promise<'ack' | 'retry'> => {
+        const outcome = await this.markRetrying(job, context, safeSummary);
+        return outcome === 'exhausted' ? 'ack' : 'retry';
+      };
+
       if (isRetryableConsumerError(error)) {
-        await this.markRetrying(job, context, safeSummary);
-        return 'retry';
+        return await recordRetryOutcome();
       }
 
       if (error instanceof RepositoryConflictError) {
         try {
-          await this.markRetrying(job, context, safeSummary);
+          return await recordRetryOutcome();
         } catch {
           // Concurrent workers may collide again while recording retry metadata.
         }
@@ -675,7 +692,7 @@ export class Ec2AsyncJobConsumerService {
 
       if (error instanceof Ec2StageRunActiveLeaseError) {
         try {
-          await this.markRetrying(job, context, safeSummary);
+          return await recordRetryOutcome();
         } catch {
           // Concurrent workers may collide again while recording retry metadata.
         }
@@ -687,8 +704,7 @@ export class Ec2AsyncJobConsumerService {
         return 'ack';
       }
 
-      await this.markRetrying(job, context, safeSummary);
-      return 'retry';
+      return await recordRetryOutcome();
     }
   }
 }

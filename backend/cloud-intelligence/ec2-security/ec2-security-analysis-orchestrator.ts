@@ -269,6 +269,25 @@ export class Ec2SecurityAnalysisOrchestrator {
           }
         }
       }
+      for (const region of input.regions) {
+        const regionalSummary = summarizeRegionalAnalysisResults([]);
+        await this.summaries.upsertSummary({
+          tenantId: input.tenantId,
+          accountId: input.accountId,
+          region,
+          securityScore: regionalSummary.securityScore,
+          governanceScore: regionalSummary.governanceScore,
+          complianceScore: regionalSummary.complianceScore,
+          riskLevel: regionalSummary.riskLevel,
+          instancesAnalyzed: 0,
+          openFindingCount: 0,
+          analyzedAt: now,
+          analysisRunId: runId,
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       const completed = await this.runs.completeRun({
         tenantId: input.tenantId,
         accountId: input.accountId,

@@ -340,6 +340,9 @@ export interface ReportListItem {
   workflowStatus: string;
   createdAt: string;
   region: string;
+  reportSource?: string;
+  ec2AsyncJobId?: string;
+  accountId?: string;
   summary: ReportSummaryView;
   resourceCount: number;
   confidenceStatus?: string;
@@ -411,6 +414,10 @@ export interface OptimizationReport {
   createdAt: string;
   completedAt?: string;
   region: string;
+  reportSource?: string;
+  ec2AsyncJobId?: string;
+  accountId?: string;
+  regions?: string[];
   summary: ReportSummaryView;
   resources: ResourceSummaryView[];
   financialImpact: SavingsSummaryView;

@@ -12,6 +12,8 @@ import {
 } from './ec2-async-job-consumer-service';
 import { Ec2AsyncJobStageCompletionService } from './ec2-async-job-stage-completion';
 import { Ec2AsyncJobStageExecutionService } from './ec2-async-job-stage-execution';
+import { createReportingEngine } from '../engines/reporting';
+import { Ec2AsyncReportProjectionService } from './ec2-async-report-projection-service';
 
 export function createEc2AsyncJobConsumerService(
   deps: Ec2AsyncJobConsumerServiceDeps,
@@ -25,6 +27,7 @@ export function createEc2AsyncJobConsumerServiceFromEnv(): Ec2AsyncJobConsumerSe
   const ec2Cost = createEc2CostRepositories();
   const ec2Security = createEc2SecurityRepositories();
   const jobs = createEc2AsyncJobRepository();
+  const reportingEngine = createReportingEngine();
 
   return createEc2AsyncJobConsumerService({
     jobs,
@@ -57,5 +60,14 @@ export function createEc2AsyncJobConsumerServiceFromEnv(): Ec2AsyncJobConsumerSe
       ec2Cost.runs,
       ec2Security.runs,
     ),
+    reportProjection: new Ec2AsyncReportProjectionService({
+      reportingEngine,
+      discoveryRuns: ec2Resources.runs,
+      costRuns: ec2Cost.runs,
+      costRecommendations: ec2Cost.recommendations,
+      securityRuns: ec2Security.runs,
+      securitySummaries: ec2Security.summaries,
+      securityFindings: ec2Security.findings,
+    }),
   });
 }

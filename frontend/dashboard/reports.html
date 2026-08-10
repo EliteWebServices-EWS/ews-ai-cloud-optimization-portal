@@ -37,7 +37,7 @@
     </nav>
     <div class="dashboard-session">
   <span id="authenticated-user" class="authenticated-user"></span>
-  <span class="demo-badge">Demo Mode · Mock Provider</span>
+  <span id="reports-workflow-demo-badge" class="demo-badge" title="Workflow reports use the platform mock provider when ProviderMode is mock. Live EC2 async reports are labeled separately in the list.">Workflow demo · Mock provider</span>
   <button id="logout-btn" type="button" class="btn-secondary">
     Sign Out
   </button>
@@ -52,7 +52,7 @@
       </div>
       <div class="hero-actions">
         <button id="refresh-reports-btn" type="button" class="btn-secondary">Refresh</button>
-        <button id="generate-report-btn" type="button" class="btn-primary">Generate Demo Report</button>
+        <button id="generate-report-btn" type="button" class="btn-primary" title="Runs the legacy mock workflow and persists a demo workflow report">Generate Demo Report</button>
       </div>
     </section>
 

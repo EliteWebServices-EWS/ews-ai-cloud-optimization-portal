@@ -52,7 +52,7 @@ export class ReportsPage {
 
   async initialize(): Promise<void> {
     const ec2Completed = consumeEc2AsyncJobCompletedSignal();
-    await this.loadReports();
+    await this.loadReports(ec2Completed?.jobId);
     if (ec2Completed && this.state !== 'error') {
       this.setState(
         'success',
@@ -61,7 +61,7 @@ export class ReportsPage {
     }
   }
 
-  private async loadReports(): Promise<void> {
+  private async loadReports(preferEc2AsyncJobId?: string): Promise<void> {
     this.setState('loading', 'Loading optimization reports…');
 
     try {
@@ -75,7 +75,7 @@ export class ReportsPage {
         return;
       }
 
-      await this.selectReport(this.reports[0].reportId);
+      await this.selectReport(this.resolveDefaultReportId(preferEc2AsyncJobId));
       this.setState('success', `${result.total} report(s) loaded.`);
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : 'Failed to load reports.';
@@ -139,7 +139,7 @@ export class ReportsPage {
           <li>
             <button type="button" class="report-list-item" data-report-id="${report.reportId}">
               <span class="report-list-title">${report.summary.headline}</span>
-              <span class="report-list-meta">${report.reportId} · ${report.status} · ${report.summary.opportunityCount} opp.</span>
+              <span class="report-list-meta">${report.reportId} · ${this.formatReportSource(report)} · ${report.status} · ${report.summary.opportunityCount} opp.</span>
             </button>
           </li>
         `
@@ -175,6 +175,7 @@ export class ReportsPage {
         <h3 class="card-title">Report Details</h3>
         <dl class="detail-grid">
           <div><dt>Report ID</dt><dd>${report.reportId}</dd></div>
+          <div><dt>Source</dt><dd>${this.formatReportSourceDetail(report)}</dd></div>
           <div><dt>Workflow</dt><dd>${report.workflowId}</dd></div>
           <div><dt>Plugin</dt><dd>${report.plugin}</dd></div>
           <div><dt>Region</dt><dd>${report.region}</dd></div>
@@ -198,6 +199,47 @@ export class ReportsPage {
     this.elements.savingsPanel.innerHTML = empty;
     this.elements.recommendationPanel.innerHTML = empty;
     this.elements.verificationPanel.innerHTML = empty;
+  }
+
+  private resolveDefaultReportId(preferEc2AsyncJobId?: string): string {
+    if (preferEc2AsyncJobId) {
+      const match = this.reports.find(
+        (report) =>
+          report.ec2AsyncJobId === preferEc2AsyncJobId ||
+          report.workflowId === `ec2-async:${preferEc2AsyncJobId}`,
+      );
+      if (match) {
+        return match.reportId;
+      }
+    }
+
+    return this.reports[0]!.reportId;
+  }
+
+  private formatReportSource(report: ReportListItem): string {
+    switch (report.reportSource) {
+      case 'ec2_async':
+        return 'Live EC2 async';
+      case 'demo':
+        return 'Demo workflow';
+      case 'workflow':
+        return 'Workflow';
+      default:
+        return 'Legacy workflow';
+    }
+  }
+
+  private formatReportSourceDetail(report: OptimizationReport): string {
+    switch (report.reportSource) {
+      case 'ec2_async':
+        return `Live EC2 async analysis${report.ec2AsyncJobId ? ` (${report.ec2AsyncJobId})` : ''}`;
+      case 'demo':
+        return 'Demo workflow (mock provider)';
+      case 'workflow':
+        return 'Workflow report';
+      default:
+        return 'Legacy workflow report';
+    }
   }
 
   private setState(state: DashboardState, message?: string): void {

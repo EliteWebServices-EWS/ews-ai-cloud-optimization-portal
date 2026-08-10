@@ -21,6 +21,10 @@ function workflowKey(tenantId: string, workflowId: string): string {
   return `${tenantId}:${workflowId}`;
 }
 
+function ec2AsyncJobKey(tenantId: string, jobId: string): string {
+  return `${tenantId}:ec2-job:${jobId}`;
+}
+
 function clone<T>(value: T): T {
   return structuredClone(value);
 }
@@ -32,6 +36,7 @@ function clone<T>(value: T): T {
 export class MockReportRepository implements ReportRepository {
   private readonly reports = new Map<string, OptimizationReport>();
   private readonly workflowIndex = new Map<string, string>();
+  private readonly ec2AsyncJobIndex = new Map<string, string>();
   private readonly history = new Map<string, ReportHistoryEntry[]>();
   private readonly reportOwnerIndex = new Map<string, string>();
   private readonly workflowOwnerIndex = new Map<string, string>();
@@ -52,6 +57,12 @@ export class MockReportRepository implements ReportRepository {
       workflowKey(stored.tenantId, stored.workflowId),
       stored.reportId
     );
+    if (stored.ec2AsyncJobId) {
+      this.ec2AsyncJobIndex.set(
+        ec2AsyncJobKey(stored.tenantId, stored.ec2AsyncJobId),
+        stored.reportId
+      );
+    }
     this.reportOwnerIndex.set(stored.reportId, stored.tenantId);
     this.workflowOwnerIndex.set(stored.workflowId, stored.tenantId);
     this.appendHistory(stored, existing ? 'updated' : 'created');
@@ -73,6 +84,49 @@ export class MockReportRepository implements ReportRepository {
   ): Promise<OptimizationReport | undefined> {
     const reportId = this.workflowIndex.get(workflowKey(tenantId, workflowId));
     return reportId ? this.findById(tenantId, reportId) : undefined;
+  }
+
+  async findByEc2AsyncJobId(
+    tenantId: string,
+    jobId: string
+  ): Promise<OptimizationReport | undefined> {
+    const reportId = this.ec2AsyncJobIndex.get(ec2AsyncJobKey(tenantId, jobId));
+    return reportId ? this.findById(tenantId, reportId) : undefined;
+  }
+
+  async saveEc2AsyncReportIfAbsent(
+    report: OptimizationReport,
+  ): Promise<OptimizationReport> {
+    if (!report.ec2AsyncJobId) {
+      throw new Error('ec2AsyncJobId is required for EC2 async report create.');
+    }
+
+    const indexed = this.ec2AsyncJobIndex.get(
+      ec2AsyncJobKey(report.tenantId, report.ec2AsyncJobId),
+    );
+    if (indexed) {
+      const existing = await this.findById(report.tenantId, indexed);
+      if (existing) {
+        return clone(existing);
+      }
+    }
+
+    const stored = clone(report);
+    this.reports.set(reportKey(stored.tenantId, stored.reportId), stored);
+    this.workflowIndex.set(
+      workflowKey(stored.tenantId, stored.workflowId),
+      stored.reportId,
+    );
+    const jobId = report.ec2AsyncJobId;
+    this.ec2AsyncJobIndex.set(
+      ec2AsyncJobKey(stored.tenantId, jobId),
+      stored.reportId,
+    );
+    this.reportOwnerIndex.set(stored.reportId, stored.tenantId);
+    this.workflowOwnerIndex.set(stored.workflowId, stored.tenantId);
+    this.appendHistory(stored, 'created');
+
+    return clone(stored);
   }
 
   async listMetadata(tenantId: string): Promise<ReportMetadata[]> {
@@ -116,6 +170,9 @@ export class MockReportRepository implements ReportRepository {
 
     this.reports.delete(key);
     this.workflowIndex.delete(workflowKey(tenantId, report.workflowId));
+    if (report.ec2AsyncJobId) {
+      this.ec2AsyncJobIndex.delete(ec2AsyncJobKey(tenantId, report.ec2AsyncJobId));
+    }
     this.reportOwnerIndex.delete(reportId);
     this.workflowOwnerIndex.delete(report.workflowId);
     this.appendHistory(report, 'deleted');

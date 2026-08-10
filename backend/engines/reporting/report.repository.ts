@@ -52,6 +52,17 @@ export interface ReportRepository {
     tenantId: string,
     workflowId: string
   ): Promise<OptimizationReport | undefined>;
+  findByEc2AsyncJobId(
+    tenantId: string,
+    jobId: string
+  ): Promise<OptimizationReport | undefined>;
+  /**
+   * Creates an EC2 async report and job pointer atomically. Returns an existing
+   * report when the job pointer is already present (concurrent-safe create).
+   */
+  saveEc2AsyncReportIfAbsent(
+    report: OptimizationReport
+  ): Promise<OptimizationReport>;
   listMetadata(tenantId: string): Promise<ReportMetadata[]>;
   list(tenantId: string): Promise<OptimizationReport[]>;
   /**
