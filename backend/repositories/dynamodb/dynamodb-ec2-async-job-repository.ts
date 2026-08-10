@@ -36,6 +36,7 @@ import type {
   Ec2AsyncJobEventRecord,
   Ec2AsyncJobRecord,
 } from '../../async-jobs/ec2-async-job-models';
+import { isEc2AsyncJobActive } from '../../services/ec2-async-job-active';
 import { BaseDynamoDbRepository } from './base-dynamodb-repository';
 
 type JobItem = Ec2AsyncJobRecord & {
@@ -299,6 +300,26 @@ export class DynamoDbEc2AsyncJobRepository
       items,
       nextToken: encodeNextToken(response.LastEvaluatedKey),
     };
+  }
+
+  async findNewestActiveJobByRequestFingerprint(
+    tenantId: string,
+    requestFingerprint: string,
+  ): Promise<Ec2AsyncJobRecord | undefined> {
+    let nextToken: string | undefined;
+    do {
+      const page = await this.listJobsByTenant(tenantId, { limit: 50, nextToken });
+      for (const job of page.items) {
+        if (
+          job.requestFingerprint === requestFingerprint &&
+          isEc2AsyncJobActive(job)
+        ) {
+          return job;
+        }
+      }
+      nextToken = page.nextToken;
+    } while (nextToken);
+    return undefined;
   }
 
   async appendEvent(input: AppendEc2AsyncJobEventInput): Promise<Ec2AsyncJobEventRecord> {

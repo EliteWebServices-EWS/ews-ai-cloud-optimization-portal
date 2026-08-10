@@ -16,6 +16,7 @@ import type {
   Ec2AsyncJobEventRecord,
   Ec2AsyncJobRecord,
 } from '../../async-jobs/ec2-async-job-models';
+import { isEc2AsyncJobActive } from '../../services/ec2-async-job-active';
 
 function jobKey(tenantId: string, jobId: string): string {
   return `${tenantId}#${jobId}`;
@@ -26,6 +27,26 @@ export class MockEc2AsyncJobRepository implements Ec2AsyncJobRepository {
   private readonly idempotency = new Map<string, { jobId: string; requestFingerprint: string }>();
   private readonly events = new Map<string, Ec2AsyncJobEventRecord[]>();
   private readonly createLocks = new Map<string, Promise<Ec2AsyncJobRecord>>();
+
+  async findNewestActiveJobByRequestFingerprint(
+    tenantId: string,
+    requestFingerprint: string,
+  ): Promise<Ec2AsyncJobRecord | undefined> {
+    let nextToken: string | undefined;
+    do {
+      const page = await this.listJobsByTenant(tenantId, { limit: 50, nextToken });
+      for (const job of page.items) {
+        if (
+          job.requestFingerprint === requestFingerprint &&
+          isEc2AsyncJobActive(job)
+        ) {
+          return job;
+        }
+      }
+      nextToken = page.nextToken;
+    } while (nextToken);
+    return undefined;
+  }
 
   async getIdempotencyJobId(
     tenantId: string,

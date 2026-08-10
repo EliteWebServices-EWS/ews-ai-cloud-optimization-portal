@@ -396,4 +396,96 @@ describe('Ec2AsyncJobController integration', () => {
     expect(progress.textContent).toContain('job-b');
     expect(progress.textContent).toContain('Cost step failed');
   });
+
+  it('shows only newest job per scope by default', async () => {
+    const jobs = [
+      sampleJob({
+        jobId: 'job-new',
+        createdAt: '2026-08-10T06:56:00.000Z',
+        status: 'SUCCEEDED',
+        stage: 'COMPLETE',
+      }),
+      sampleJob({
+        jobId: 'job-old',
+        createdAt: '2026-08-09T17:31:00.000Z',
+        status: 'SUCCEEDED',
+        stage: 'COMPLETE',
+      }),
+    ];
+    const controller = createController({
+      listJobs: vi.fn().mockResolvedValue({ items: jobs }),
+    });
+    await controller.initialize();
+    expect(history.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(history.textContent).toContain('Show analysis history (1)');
+    expect(history.textContent).toContain('2 total runs');
+  });
+
+  it('expands analysis history with aria-expanded', async () => {
+    const jobs = [
+      sampleJob({ jobId: 'job-new', createdAt: '2026-08-10T06:56:00.000Z' }),
+      sampleJob({ jobId: 'job-old', createdAt: '2026-08-09T17:31:00.000Z' }),
+    ];
+    const controller = createController({
+      listJobs: vi.fn().mockResolvedValue({ items: jobs }),
+    });
+    await controller.initialize();
+    const toggle = history.querySelector('#job-history-toggle') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    toggle.click();
+    expect(controller.isHistoryExpanded()).toBe(true);
+    expect(history.querySelectorAll('tbody tr')).toHaveLength(2);
+    const toggleAfter = history.querySelector('#job-history-toggle') as HTMLButtonElement;
+    expect(toggleAfter.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('does not start a second job when same-scope analysis is already active', async () => {
+    const running = sampleJob({
+      jobId: 'job-run',
+      status: 'RUNNING',
+      stage: 'DISCOVERY',
+      createdAt: '2026-08-10T06:56:00.000Z',
+    });
+    const completed = sampleJob({
+      jobId: 'job-done',
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      createdAt: '2026-08-09T12:00:00.000Z',
+    });
+    const startJob = vi.fn();
+    const getJob = vi.fn().mockResolvedValue(running);
+    const controller = createController({
+      startJob,
+      getJob,
+      listJobs: vi.fn().mockResolvedValue({ items: [running, completed] }),
+    });
+    await controller.initialize();
+    await controller.startAnalysisFromUi();
+    expect(startJob).not.toHaveBeenCalled();
+    expect(controller.getActiveJobId()).toBe('job-run');
+    expect(controller.getSelectedJobId()).toBe('job-run');
+  });
+
+  it('latest failed job remains the default latest row', async () => {
+    const jobs = [
+      sampleJob({
+        jobId: 'failed-new',
+        createdAt: '2026-08-10T06:56:00.000Z',
+        status: 'FAILED',
+        stage: 'DISCOVERY',
+      }),
+      sampleJob({
+        jobId: 'success-old',
+        createdAt: '2026-08-09T12:00:00.000Z',
+        status: 'SUCCEEDED',
+        stage: 'COMPLETE',
+      }),
+    ];
+    const controller = createController({
+      listJobs: vi.fn().mockResolvedValue({ items: jobs }),
+    });
+    await controller.initialize();
+    expect(history.textContent).toContain('Failed');
+    expect(history.querySelectorAll('tbody tr')).toHaveLength(1);
+  });
 });

@@ -9,6 +9,8 @@ import { formatJobTimestamp } from './ec2-async-job-time';
 
 export interface Ec2AsyncJobHistoryViewModel {
   items: Ec2AsyncJob[];
+  /** Full loaded history for action handlers when `items` is a latest-only subset. */
+  allItems?: Ec2AsyncJob[];
   loading: boolean;
   error?: string;
   activeJobId?: string;
@@ -16,6 +18,10 @@ export interface Ec2AsyncJobHistoryViewModel {
   nextToken?: string;
   loadMoreEnabled?: boolean;
   retryInFlight?: boolean;
+  totalJobCount?: number;
+  latestVisibleCount?: number;
+  historyExpanded?: boolean;
+  historySummary?: string;
 }
 
 export function renderEc2AsyncJobHistory(
@@ -25,8 +31,10 @@ export function renderEc2AsyncJobHistory(
     onViewProgress?: (job: Ec2AsyncJob) => void;
     onRetry?: (job: Ec2AsyncJob) => void;
     onLoadMore?: () => void;
+    onToggleHistory?: () => void;
   },
 ): void {
+  const lookupItems = model.allItems ?? model.items;
   if (model.loading && model.items.length === 0) {
     container.innerHTML = `
       <section class="dashboard-card" aria-labelledby="job-history-heading">
@@ -103,9 +111,28 @@ export function renderEc2AsyncJobHistory(
       ? `<button type="button" class="btn-secondary" id="job-history-load-more">Load more</button>`
       : '';
 
+  const totalCount = model.totalJobCount ?? model.items.length;
+  const latestCount = model.latestVisibleCount ?? model.items.length;
+  const hiddenOlder = Math.max(0, totalCount - latestCount);
+  const showHistoryToggle =
+    hiddenOlder > 0 && handlers?.onToggleHistory && model.historyExpanded !== undefined;
+  const historyToggle = showHistoryToggle
+    ? `<button type="button" class="btn-secondary" id="job-history-toggle" aria-expanded="${model.historyExpanded ? 'true' : 'false'}" aria-controls="job-history-table-body">${
+        model.historyExpanded
+          ? 'Hide analysis history'
+          : `Show analysis history (${hiddenOlder})`
+      }</button>`
+    : '';
+
+  const summaryLine = model.historySummary
+    ? `<p class="job-history-summary" id="job-history-summary">${escapeHtml(model.historySummary)}</p>`
+    : '';
+
   container.innerHTML = `
     <section class="dashboard-card" aria-labelledby="job-history-heading">
-      <h3 id="job-history-heading" class="card-title">Analysis Jobs</h3>
+      <h3 id="job-history-heading" class="card-title">${model.historyExpanded || hiddenOlder === 0 ? 'Analysis Jobs' : 'Latest Analysis'}</h3>
+      ${summaryLine}
+      ${historyToggle}
       ${model.error ? `<p class="job-poll-warning" role="status">${escapeHtml(model.error)}</p>` : ''}
       <div class="job-history-table-wrap">
         <table class="job-history-table" aria-describedby="job-history-heading">
@@ -119,7 +146,7 @@ export function renderEc2AsyncJobHistory(
               <th scope="col">Actions</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody id="job-history-table-body">${rows}</tbody>
         </table>
       </div>
       ${loadMore}
@@ -130,7 +157,7 @@ export function renderEc2AsyncJobHistory(
     button.addEventListener('click', (event) => {
       const target = event.currentTarget as HTMLButtonElement;
       const jobId = target.getAttribute('data-job-id');
-      const job = model.items.find((item) => item.jobId === jobId);
+      const job = lookupItems.find((item) => item.jobId === jobId);
       if (job && handlers?.onViewProgress) {
         handlers.onViewProgress(job);
       }
@@ -141,7 +168,7 @@ export function renderEc2AsyncJobHistory(
     button.addEventListener('click', (event) => {
       const target = event.currentTarget as HTMLButtonElement;
       const jobId = target.getAttribute('data-job-id');
-      const job = model.items.find((item) => item.jobId === jobId);
+      const job = lookupItems.find((item) => item.jobId === jobId);
       if (job && handlers?.onRetry) {
         handlers.onRetry(job);
       }
@@ -152,6 +179,13 @@ export function renderEc2AsyncJobHistory(
   if (loadMoreBtn && handlers?.onLoadMore) {
     loadMoreBtn.addEventListener('click', () => {
       handlers.onLoadMore?.();
+    });
+  }
+
+  const historyToggleBtn = container.querySelector('#job-history-toggle');
+  if (historyToggleBtn && handlers?.onToggleHistory) {
+    historyToggleBtn.addEventListener('click', () => {
+      handlers.onToggleHistory?.();
     });
   }
 }

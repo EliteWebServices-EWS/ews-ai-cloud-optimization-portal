@@ -1586,6 +1586,7 @@ export function createReportRoutes(
                   report.workflowStatus,
                 createdAt: report.createdAt,
                 region: report.region,
+                regions: report.regions,
                 reportSource: report.reportSource ?? 'workflow',
                 ec2AsyncJobId: report.ec2AsyncJobId,
                 accountId: report.accountId,

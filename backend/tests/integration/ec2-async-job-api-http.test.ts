@@ -231,6 +231,7 @@ describe('EC2 async job API HTTP', () => {
     queue.failNext = true;
     const failed = await httpWithIdempotency(baseUrl, 'POST', START_PATH, id, 'idem-fail', {
       accountId: ACCOUNT_A,
+      regions: ['us-west-2'],
     });
     assert.notEqual(failed.status, 202);
     assert.equal(errorCode(failed.body), 'EC2_ASYNC_JOB_ENQUEUE_FAILED');
@@ -248,6 +249,7 @@ describe('EC2 async job API HTTP', () => {
     queue.failNext = false;
     const retry = await httpWithIdempotency(baseUrl, 'POST', START_PATH, id, 'idem-fail', {
       accountId: ACCOUNT_A,
+      regions: ['us-west-2'],
     });
     assert.equal(retry.status, 202);
     assert.equal(data(retry.body).queueStatus, 'ENQUEUED');
