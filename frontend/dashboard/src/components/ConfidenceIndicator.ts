@@ -16,15 +16,23 @@ export function renderConfidenceIndicator(
 
   const level = confidence.status;
   const factors = confidence.factors
-    ?.map((f) => `<li><strong>${escapeHtml(f.name)}</strong>: ${escapeHtml(f.detail)} (${f.score})</li>`)
+    ?.map((f) => {
+      const scoreSuffix = f.score != null ? ` (${f.score})` : '';
+      return `<li><strong>${escapeHtml(f.name)}</strong>: ${escapeHtml(f.detail)}${scoreSuffix}</li>`;
+    })
     .join('') ?? '';
+
+  const scoreMarkup =
+    confidence.score != null
+      ? `<span class="confidence-score">${confidence.score}%</span>`
+      : '';
 
   container.innerHTML = `
     <section class="dashboard-card" aria-labelledby="confidence-heading">
       <h3 id="confidence-heading" class="card-title">Confidence Intelligence</h3>
       <div class="confidence-display">
         <span class="confidence-level level-${escapeHtml(level.toLowerCase())}">${escapeHtml(level)}</span>
-        <span class="confidence-score">${confidence.score}%</span>
+        ${scoreMarkup}
       </div>
       <p class="card-summary">"${escapeHtml(confidence.reason)}"</p>
       ${factors ? `<ul class="factor-list">${factors}</ul>` : ''}

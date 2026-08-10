@@ -22,10 +22,10 @@ export function renderEvidenceStatus(container: HTMLElement, evidence?: Evidence
         <span class="card-meta">${validation?.valid ? 'Validated' : 'Incomplete'}</span>
       </div>
       <dl class="detail-list">
-        <div><dt>CPU Utilization</dt><dd>${telemetry?.cpuUtilization ?? '—'}%</dd></div>
-        <div><dt>Memory Utilization</dt><dd>${telemetry?.memoryUtilization ?? '—'}%</dd></div>
+        <div><dt>CPU Utilization</dt><dd>${telemetry?.cpuUtilization != null ? `${telemetry.cpuUtilization}%` : 'Unavailable in demo fixture'}</dd></div>
+        <div><dt>Memory Utilization</dt><dd>${telemetry?.memoryUtilization != null ? `${telemetry.memoryUtilization}%` : 'Unavailable in demo fixture'}</dd></div>
         <div><dt>Observation Window</dt><dd>${telemetry?.observationWindowDays ?? '—'} days</dd></div>
-        <div><dt>Monthly Rate</dt><dd>${evidence.pricing?.monthlyRate != null ? `$${evidence.pricing.monthlyRate.toFixed(2)}` : '—'}</dd></div>
+        <div><dt>Monthly Rate</dt><dd>${evidence.pricing?.monthlyRate != null && evidence.pricing.monthlyRate !== 0 ? `$${evidence.pricing.monthlyRate.toFixed(2)}` : evidence.pricing?.monthlyRate === 0 ? '$0.00' : 'Unavailable in demo fixture'}</dd></div>
       </dl>
       ${validation?.warnings?.length ? `<p class="card-warning">${escapeHtml(validation.warnings.join('; '))}</p>` : ''}
     </section>

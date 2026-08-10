@@ -28,6 +28,19 @@ const panels = {
   executive: getRequiredElement('ec2-executive-panel'),
 };
 
+const decision = {
+  workflowProgress: getRequiredElement('demo-workflow-progress-panel'),
+  learningOutcome: getRequiredElement('demo-learning-outcome-panel'),
+  candidate: getRequiredElement('demo-candidate-panel'),
+  evidence: getRequiredElement('demo-evidence-panel'),
+  governance: getRequiredElement('demo-governance-panel'),
+  financial: getRequiredElement('demo-financial-panel'),
+  confidence: getRequiredElement('demo-confidence-panel'),
+  recommendation: getRequiredElement('demo-recommendation-panel'),
+  verification: getRequiredElement('demo-verification-panel'),
+  reportPreview: getRequiredElement('demo-report-preview-panel'),
+};
+
 const ec2Controller = new Ec2DashboardController({ provider, panels });
 
 const demoDashboard = new Ec2DemoDashboard(
@@ -37,6 +50,7 @@ const demoDashboard = new Ec2DemoDashboard(
     stateMessage: getRequiredElement('demo-state-message'),
     exportButton: getRequiredElement<HTMLButtonElement>('ec2-export-json-btn'),
     panels,
+    decision,
   },
   ec2Controller,
 );

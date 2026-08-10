@@ -275,6 +275,8 @@ describe('live route source guard', () => {
     expect(demoSource).not.toContain('LiveEc2DashboardDataProvider');
     expect(demoSource).not.toContain('analysis/ec2/start');
     expect(demoSource).not.toContain('Ec2AsyncJobController');
+    expect(demoSource).not.toContain('/workflows/run');
+    expect(demoSource).not.toContain('/reports/generate');
   });
 });
 

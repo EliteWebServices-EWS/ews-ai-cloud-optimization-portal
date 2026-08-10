@@ -5,12 +5,18 @@
 import type { Ec2DashboardController } from '../pages/Ec2DashboardController';
 import { renderEc2DashboardPanels } from '../ec2/render-ec2-dashboard';
 import type { Ec2DashboardPanelElements } from '../ec2/render-ec2-dashboard';
+import type { DemoDecisionPanelElements } from './ec2-demo-decision-types';
 import { buildDemoIdleViewModel } from './ec2-demo-scenario-view-models';
 import {
   DEFAULT_DEMO_SCENARIO_ID,
   EC2_DEMO_SCENARIOS,
   listDemoScenarioIds,
 } from './ec2-demo-scenarios';
+import {
+  clearDemoDecisionPanels,
+  renderDemoDecisionIntelligence,
+  runDemoWorkflowProgressAnimation,
+} from './demo-decision-renderer';
 
 export type DemoAnalysisState = 'ready' | 'analyzing' | 'completed' | 'error';
 
@@ -20,6 +26,7 @@ export interface Ec2DemoDashboardElements {
   stateMessage: HTMLElement;
   exportButton: HTMLButtonElement;
   panels: Ec2DashboardPanelElements;
+  decision: DemoDecisionPanelElements;
 }
 
 const DEMO_ANALYSIS_DELAY_MS = 350;
@@ -41,6 +48,7 @@ export class Ec2DemoDashboard {
       this.selectedScenarioId = this.elements.scenarioSelect.value;
       if (this.analysisState === 'completed' && this.lastAnalyzedScenarioId !== this.selectedScenarioId) {
         this.setAnalysisState('ready', 'Scenario changed — click Analyze Demo Environment to refresh results.');
+        clearDemoDecisionPanels(this.elements.decision);
       }
     });
     this.renderIdle();
@@ -85,14 +93,31 @@ export class Ec2DemoDashboard {
   private renderIdle(): void {
     const idle = buildDemoIdleViewModel();
     renderEc2DashboardPanels(this.elements.panels, idle);
+    clearDemoDecisionPanels(this.elements.decision);
     this.setAnalysisState('ready', 'Ready — select a demo scenario and click Analyze Demo Environment.');
     this.elements.exportButton.disabled = true;
+  }
+
+  private renderDecisionIntelligence(): void {
+    const vm = this.ec2Controller.getViewModel();
+    const snapshot = vm?.demoDecisionIntelligence;
+    if (!snapshot) {
+      clearDemoDecisionPanels(this.elements.decision);
+      return;
+    }
+    renderDemoDecisionIntelligence(this.elements.decision, snapshot);
   }
 
   async analyzeDemoEnvironment(): Promise<void> {
     this.selectedScenarioId = this.elements.scenarioSelect.value;
     this.elements.analyzeButton.disabled = true;
     this.setAnalysisState('analyzing', 'Analyzing demo scenario… (mock provider snapshot, not live AWS)');
+
+    this.setAnalysisState('analyzing', 'Analyzing demo scenario… (mock provider snapshot, not live AWS)');
+
+    runDemoWorkflowProgressAnimation(this.elements.decision.workflowProgress, () => {
+      /* stages rendered synchronously before load completes */
+    });
 
     await new Promise((resolve) => setTimeout(resolve, DEMO_ANALYSIS_DELAY_MS));
 
@@ -102,9 +127,11 @@ export class Ec2DemoDashboard {
       if (!vm || vm.dataStatus === 'ERROR') {
         this.setAnalysisState('error', 'Demo analysis failed. Retry or choose another scenario.');
         this.elements.exportButton.disabled = true;
+        clearDemoDecisionPanels(this.elements.decision);
         return;
       }
       this.lastAnalyzedScenarioId = this.selectedScenarioId;
+      this.renderDecisionIntelligence();
       this.setAnalysisState(
         'completed',
         `Completed — ${vm.demoScenarioLabel ?? this.selectedScenarioId} (demonstration data only).`,
