@@ -73,6 +73,8 @@ export class Ec2AsyncJobController {
   private notifiedTransitions = new Set<string>();
   private completionRefreshDone = new Set<string>();
   private lastNotifiedStageKey = new Map<string, string>();
+  /** Ignores stale listJobs responses when multiple refreshHistory calls overlap. */
+  private historyFetchGeneration = 0;
 
   private readonly listJobsFn: typeof listEc2AnalysisJobs;
   private readonly getJobFn: typeof getEc2AnalysisJob;
@@ -216,6 +218,7 @@ export class Ec2AsyncJobController {
     this.displayJob = this.activeJob;
     this.notifyOnce(startResult.jobId, 'queued', 'Analysis queued.');
     this.renderProgress();
+    this.upsertHistoryItem(this.activeJob);
     void this.refreshHistory();
 
     this.beginPolling(startResult.jobId, generation);
@@ -282,6 +285,7 @@ export class Ec2AsyncJobController {
         this.activeJob = job;
         this.reconcileStaleActiveJob(job);
         this.syncDisplayJobFromActivePoll();
+        this.upsertHistoryItem(job);
         void this.refreshHistory();
         if (job.status === 'FAILED') {
           this.notifyOnce(job.jobId, 'failed', 'Analysis failed.');
@@ -349,6 +353,11 @@ export class Ec2AsyncJobController {
   }
 
   async refreshHistory(loadMore = false): Promise<void> {
+    let fetchGeneration = this.historyFetchGeneration;
+    if (!loadMore) {
+      this.historyFetchGeneration += 1;
+      fetchGeneration = this.historyFetchGeneration;
+    }
     this.historyLoading = !loadMore;
     this.historyError = undefined;
     this.renderHistory();
@@ -357,21 +366,70 @@ export class Ec2AsyncJobController {
         limit: HISTORY_PAGE_LIMIT,
         nextToken: loadMore ? this.historyNextToken : undefined,
       });
+      if (!loadMore && fetchGeneration !== this.historyFetchGeneration) {
+        return;
+      }
       if (loadMore) {
         this.historyItems = [...this.historyItems, ...page.items];
       } else {
-        this.historyItems = page.items;
+        this.historyItems = this.reconcileHistoryItemsFromList(page.items);
       }
       this.historyNextToken = page.nextToken;
     } catch (error) {
+      if (!loadMore && fetchGeneration !== this.historyFetchGeneration) {
+        return;
+      }
       this.historyError =
         error instanceof ApiClientError
           ? error.message
           : 'Job history is temporarily unavailable.';
     } finally {
-      this.historyLoading = false;
-      this.renderHistory();
+      if (loadMore || fetchGeneration === this.historyFetchGeneration) {
+        this.historyLoading = false;
+        this.renderHistory();
+      }
     }
+  }
+
+  /** Merge list API rows without regressing terminal state already known from polling. */
+  private reconcileHistoryItemsFromList(fetched: Ec2AsyncJob[]): Ec2AsyncJob[] {
+    const localById = new Map(this.historyItems.map((item) => [item.jobId, item]));
+    const reconciled = fetched.map((remote) => {
+      const local = localById.get(remote.jobId);
+      if (
+        local &&
+        isTerminalJobStatus(local.status, local.stage) &&
+        !isTerminalJobStatus(remote.status, remote.stage)
+      ) {
+        return local;
+      }
+      return remote;
+    });
+    const fetchedIds = new Set(fetched.map((item) => item.jobId));
+    for (const local of this.historyItems) {
+      if (fetchedIds.has(local.jobId)) {
+        continue;
+      }
+      if (
+        isTerminalJobStatus(local.status, local.stage) ||
+        local.jobId === this.activeJobId
+      ) {
+        reconciled.push(local);
+      }
+    }
+    return reconciled;
+  }
+
+  private upsertHistoryItem(job: Ec2AsyncJob): void {
+    const index = this.historyItems.findIndex((item) => item.jobId === job.jobId);
+    if (index >= 0) {
+      const next = [...this.historyItems];
+      next[index] = job;
+      this.historyItems = next;
+    } else {
+      this.historyItems = [job, ...this.historyItems];
+    }
+    this.renderHistory();
   }
 
   private reconcileStaleActiveJob(job: Ec2AsyncJob): void {
