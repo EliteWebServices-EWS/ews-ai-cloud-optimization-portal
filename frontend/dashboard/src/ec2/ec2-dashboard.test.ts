@@ -27,12 +27,23 @@ describe('PublicDemoEc2DashboardDataProvider', () => {
     fetchSpy.mockRestore();
   });
 
-  it('uses synthetic demo resource identifiers only', async () => {
-    const vm = await new PublicDemoEc2DashboardDataProvider().loadDashboard({});
+  it('uses synthetic demo resource identifiers for fleet scenario', async () => {
+    const vm = await new PublicDemoEc2DashboardDataProvider().loadDashboard({
+      demoScenarioId: 'illustrative-fleet',
+    });
     const ids = JSON.stringify(vm);
     expect(ids).toMatch(/i-demo-ec2/);
     expect(ids).not.toMatch(/572262081497/);
     expect(ids).not.toMatch(/tenant-msddsjji/);
+  });
+
+  it('loads mock candidate scenario without live identifiers', async () => {
+    const vm = await new PublicDemoEc2DashboardDataProvider().loadDashboard({
+      demoScenarioId: 'i-mock-001',
+    });
+    expect(vm.demoScenarioId).toBe('i-mock-001');
+    expect(JSON.stringify(vm)).toContain('i-mock-001');
+    expect(JSON.stringify(vm)).not.toMatch(/572262081497/);
   });
 });
 
@@ -256,11 +267,14 @@ describe('live route source guard', () => {
     expect(mainSource).not.toContain('ec2-demo-data');
   });
 
-  it('demo entry does not require authentication', () => {
+  it('demo entry does not require authentication or live EC2 APIs', () => {
     const demoSource = readFileSync(join(testDir, '../demo-main.ts'), 'utf8');
     expect(demoSource).toContain('PublicDemoEc2DashboardDataProvider');
+    expect(demoSource).toContain('Ec2DemoDashboard');
     expect(demoSource).not.toContain('requireAuthentication');
     expect(demoSource).not.toContain('LiveEc2DashboardDataProvider');
+    expect(demoSource).not.toContain('analysis/ec2/start');
+    expect(demoSource).not.toContain('Ec2AsyncJobController');
   });
 });
 

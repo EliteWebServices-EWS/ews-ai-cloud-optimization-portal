@@ -772,3 +772,32 @@ code {
 .app-notification-warning {
   border-color: #fbbf24;
 }
+
+.ec2-demo-hero .hero-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ec2-demo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.ec2-demo-actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.ec2-demo-state-message {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.9rem;
+}

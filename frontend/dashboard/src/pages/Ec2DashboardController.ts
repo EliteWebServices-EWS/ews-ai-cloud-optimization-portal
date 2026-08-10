@@ -115,6 +115,65 @@ export class Ec2DashboardController {
     await this.load();
   }
 
+  async loadDemoScenario(demoScenarioId: string): Promise<void> {
+    if (this.options.provider.mode !== 'demo') {
+      throw new Error('loadDemoScenario is only available in demo mode');
+    }
+
+    this.viewModel = {
+      mode: 'demo',
+      dataStatus: 'LOADING',
+      sourceLabel: 'DEMO DATA',
+      title: 'EC2 Demo',
+      subtitle: 'Analyzing demo scenario…',
+      region: 'us-east-1',
+      generatedAt: new Date().toISOString(),
+      inventory: {
+        totalResources: 0,
+        totalInstances: 0,
+        runningInstances: 0,
+        stoppedInstances: 0,
+        instancesByState: {},
+        instancesByType: {},
+        resourcesByType: {},
+      },
+      cost: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        pricingStatus: 'UNAVAILABLE',
+        pricingLabel: 'Loading…',
+        recommendations: [],
+      },
+      security: { status: 'NOT_ANALYZED', findings: [] },
+      optimization: {
+        totalOpportunities: 0,
+        idleCandidates: 0,
+        downsizeCandidates: 0,
+        upsizeCandidates: 0,
+        stoppedWithStorage: 0,
+        rightsizing: [],
+      },
+      executive: {
+        title: 'Analyzing',
+        headline: '',
+        savings: 0,
+        securityRisk: '',
+        priority: 'Medium',
+        confidence: 0,
+      },
+      health: { healthy: 0, warning: 0, critical: 0, unknown: 0 },
+      warnings: [],
+      errors: [],
+      reports: { format: 'json', available: false, label: 'SAMPLE REPORT' },
+      priorityRecommendations: [],
+      demoScenarioId,
+    };
+    renderEc2DashboardPanels(this.options.panels, this.viewModel);
+
+    this.viewModel = await this.options.provider.loadDashboard({ demoScenarioId });
+    renderEc2DashboardPanels(this.options.panels, this.viewModel);
+  }
+
   exportJsonReport(): string | null {
     if (!this.viewModel || this.viewModel.dataStatus === 'ERROR') {
       return null;

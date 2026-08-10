@@ -4,6 +4,8 @@ export interface Ec2DashboardLoadInput {
   accountId?: string;
   region?: string;
   accessToken?: string;
+  /** Public demo dashboard — predefined mock scenario id. */
+  demoScenarioId?: string;
 }
 
 export interface Ec2DashboardDataProvider {
