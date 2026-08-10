@@ -146,6 +146,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
         ? {
             status: 'NOT_ANALYZED' as const,
             findings: [] as Ec2SecurityFinding[],
+            instancesAnalyzed: 0,
             message:
               securitySummary === undefined
                 ? 'Security analysis not yet run. Start analysis from the EC2 security API.'
@@ -153,18 +154,25 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
           }
         : {
             status:
-              securitySummary.scoreAvailability === 'partial'
-                ? ('PARTIAL' as const)
-                : ('READY' as const),
+              securitySummary.scoreAvailability === 'unavailable'
+                ? ('NOT_ANALYZED' as const)
+                : securitySummary.scoreAvailability === 'partial'
+                  ? ('PARTIAL' as const)
+                  : ('READY' as const),
             securityScore: securitySummary.securityScore ?? undefined,
             governanceScore: securitySummary.governanceScore ?? undefined,
             complianceScore: securitySummary.complianceScore ?? undefined,
             riskLevel: securitySummary.riskLevel,
+            instancesAnalyzed: securitySummary.instancesAnalyzed,
             findings: securityFindings,
             message:
-              securitySummary.scoreAvailability === 'partial'
-                ? securitySummary.warnings?.[0]
-                : undefined,
+              securitySummary.warnings?.[0] ??
+              (securitySummary.instancesAnalyzed === 0 &&
+              securitySummary.scoreAvailability === 'complete'
+                ? 'Security analysis completed — no EC2 instances in scope.'
+                : securitySummary.scoreAvailability === 'partial'
+                  ? securitySummary.warnings?.[0]
+                  : undefined),
           };
 
     const rightsizing = (costList?.items ?? [])
@@ -231,6 +239,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
       generatedAt: new Date().toISOString(),
       lastDiscoveryAt: summary.latestSuccessfulDiscoveryAt,
       latestCostAnalysisAt: costList?.items[0]?.analyzedAt,
+      latestSecurityAnalysisAt: securitySummary?.analyzedAt ?? undefined,
       freshnessStatus: summary.staleResourceCount > 0 ? 'Discovery data may be stale' : undefined,
       inventory: {
         totalResources: summary.totalResources,
@@ -270,10 +279,15 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
         savings: validatedMonthlySavings,
         securityRisk:
           securitySection.status === 'READY' || securitySection.status === 'PARTIAL'
-            ? `${securitySection.riskLevel ?? 'unknown'} risk · ${securitySummary?.openFindingCount ?? securityFindings.length} open findings`
+            ? securitySummary?.instancesAnalyzed === 0
+              ? 'Analysis complete — no EC2 instances in scope'
+              : `${securitySection.riskLevel ?? 'unknown'} risk · ${securitySummary?.openFindingCount ?? securityFindings.length} open findings`
             : 'Security analysis not yet run',
         priority: costRecommendations.some((r) => r.severity === 'HIGH') ? 'High' : 'Medium',
-        confidence: 0,
+        confidence:
+          securitySection.status === 'READY' || securitySection.status === 'PARTIAL'
+            ? (securitySummary?.complianceScore ?? 0)
+            : 0,
       },
       health: {
         healthy: runningInstances,

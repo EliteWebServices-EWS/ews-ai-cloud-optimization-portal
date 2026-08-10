@@ -3,6 +3,7 @@
  */
 
 import type { OptimizationReport, ReportFilterCriteria } from '../../shared/types';
+import { CONFIDENCE_STATUS } from '../../shared/constants';
 
 /** Apply filter criteria to a list of optimization reports. */
 export function filterReports(
@@ -36,11 +37,22 @@ function matchesReportFilters(
 
   if (criteria.confidenceLevel) {
     const normalized = criteria.confidenceLevel.toUpperCase();
-    const hasConfidence = report.recommendations.some(
-      (entry) => entry.decision.confidenceStatus.toUpperCase() === normalized
-    );
-    if (!hasConfidence) {
-      return false;
+    if (normalized === CONFIDENCE_STATUS.NOT_APPLICABLE) {
+      const listNotApplicable =
+        report.reportSource === 'ec2_async' && report.recommendations.length === 0;
+      const recommendationNotApplicable = report.recommendations.some(
+        (entry) => entry.decision.confidenceStatus.toUpperCase() === normalized,
+      );
+      if (!listNotApplicable && !recommendationNotApplicable) {
+        return false;
+      }
+    } else {
+      const hasConfidence = report.recommendations.some(
+        (entry) => entry.decision.confidenceStatus.toUpperCase() === normalized,
+      );
+      if (!hasConfidence) {
+        return false;
+      }
     }
   }
 

@@ -117,6 +117,16 @@ export function generateAsyncJobId(): string {
   return `job-${timestamp}-${randomSuffix}`;
 }
 
+/** Deterministic report id for a tenant-scoped EC2 async intelligence job. */
+export function deriveEc2AsyncReportId(tenantId: string, jobId: string): string {
+  const digest = createHash('sha256')
+    .update(`ec2-async-report:${tenantId}:${jobId}`)
+    .digest('hex')
+    .slice(0, 32);
+
+  return `rpt-ec2-async-${digest}`;
+}
+
 /** Generate a unique optimization report identifier. */
 export function generateReportId(): string {
   const timestamp = Date.now().toString(36);

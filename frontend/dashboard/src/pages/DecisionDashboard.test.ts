@@ -42,4 +42,47 @@ describe('DecisionDashboard async path', () => {
     expect(candidateSelect.disabled).toBe(true);
     fetchSpy.mockRestore();
   });
+
+  it('renders the legacy workflow disclaimer exactly once', async () => {
+    const asyncJobs = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Ec2AsyncJobController;
+    const ec2Dashboard = {
+      load: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Ec2DashboardController;
+
+    const elements = {
+      stateMessage: document.createElement('div'),
+      overview: document.createElement('div'),
+      progress: document.createElement('div'),
+      candidate: document.createElement('div'),
+      evidence: document.createElement('div'),
+      governance: document.createElement('div'),
+      financial: document.createElement('div'),
+      confidence: document.createElement('div'),
+      recommendation: document.createElement('div'),
+      verification: document.createElement('div'),
+      analyzeButton: document.createElement('button'),
+      candidateSelect: document.createElement('select'),
+    };
+
+    const dashboard = new DecisionDashboard(elements, ec2Dashboard, asyncJobs);
+    await dashboard.initialize();
+
+    const disclaimer = DecisionDashboard.LEGACY_WORKFLOW_DISCLAIMER;
+    const html = [
+      elements.overview,
+      elements.candidate,
+      elements.evidence,
+      elements.governance,
+      elements.financial,
+      elements.confidence,
+      elements.recommendation,
+      elements.verification,
+    ]
+      .map((el) => el.innerHTML)
+      .join('\n');
+    const matches = html.split(disclaimer).length - 1;
+    expect(matches).toBe(1);
+  });
 });

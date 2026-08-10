@@ -83,6 +83,10 @@ import {
   sanitizeAwsAccountRecord,
 } from '../../services/aws-account-api-service';
 import {
+  buildSisumCustomerIntegrationRoleTrustPolicy,
+} from '../../services/aws-account-integration-trust-policy';
+import { AWS_ACCOUNT_ID_PATTERN } from '../../repositories/models/aws-account-persistence-models';
+import {
   AppError,
   buildErrorResponse,
   buildSuccessResponse,
@@ -258,7 +262,18 @@ export function createAwsAccountRoutes(deps: AwsAccountRouteDeps): Router {
         // Register is the one response that includes the full,
         // unmasked externalId — the tenant needs it to configure their
         // IAM role trust policy. Every later read returns it masked.
-        res.status(201).json(buildSuccessResponse(account, requestId));
+        const platformAccountId = process.env.SISUM_PLATFORM_AWS_ACCOUNT_ID?.trim();
+        const registrationPayload =
+          platformAccountId && AWS_ACCOUNT_ID_PATTERN.test(platformAccountId)
+            ? {
+                ...account,
+                integrationRoleTrustPolicy: buildSisumCustomerIntegrationRoleTrustPolicy({
+                  platformAccountId,
+                  externalId: account.externalId,
+                }),
+              }
+            : account;
+        res.status(201).json(buildSuccessResponse(registrationPayload, requestId));
       } catch (error) {
         const statusCode = isAppError(error) ? error.statusCode : 500;
         const errorCode = isAppError(error) ? error.code : 'ENGINE_ERROR';

@@ -5,6 +5,16 @@
 import { escapeHtml } from '../utils/format';
 import type { ReportRecommendationView } from '../types';
 
+function formatConfidence(decision: ReportRecommendationView['decision']): string {
+  if (decision.confidenceStatus === 'NOT_APPLICABLE') {
+    return 'Not applicable';
+  }
+  if (decision.confidenceScore <= 0 && !decision.confidenceStatus) {
+    return 'Not available';
+  }
+  return `${decision.confidenceScore}% (${escapeHtml(decision.confidenceStatus)})`;
+}
+
 export function renderRecommendationSummary(
   container: HTMLElement,
   recommendations: ReportRecommendationView[] = []
@@ -24,7 +34,7 @@ export function renderRecommendationSummary(
         </header>
         <p>${escapeHtml(entry.decision.summary)}</p>
         <dl class="detail-grid">
-          <div><dt>Confidence</dt><dd>${entry.decision.confidenceScore}% (${escapeHtml(entry.decision.confidenceStatus)})</dd></div>
+          <div><dt>Confidence</dt><dd>${formatConfidence(entry.decision)}</dd></div>
           <div><dt>Governance</dt><dd>${escapeHtml(entry.decision.governanceDecision)}</dd></div>
           ${
             entry.decision.fromInstanceType && entry.decision.toInstanceType

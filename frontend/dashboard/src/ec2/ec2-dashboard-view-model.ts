@@ -66,6 +66,7 @@ export interface Ec2DashboardSecurityView {
   governanceScore?: number;
   complianceScore?: number;
   riskLevel?: string;
+  instancesAnalyzed?: number;
   findings: Ec2SecurityFinding[];
   message?: string;
 }
@@ -170,7 +171,13 @@ export function mapViewModelToEc2Summary(vm: Ec2DashboardViewModel): Ec2Dashboar
     averageCpuLabel:
       vm.averageCpuUtilization === undefined ? 'Not analyzed' : undefined,
     governanceLabel:
-      vm.security.governanceScore === undefined ? 'Unavailable' : undefined,
+      vm.security.status === 'NOT_ANALYZED'
+        ? 'Not analyzed'
+        : vm.security.status === 'UNAVAILABLE'
+          ? 'Unavailable'
+          : vm.security.instancesAnalyzed === 0 && vm.security.message?.includes('completed')
+            ? 'Complete (no instances)'
+            : undefined,
     monthlyCostUnavailable: vm.cost.estimatedMonthlyCost === undefined,
   };
 }
@@ -232,7 +239,7 @@ export function mapViewModelToSecurityFindings(vm: Ec2DashboardViewModel): {
       unavailableMessage:
         vm.security.message ??
         (vm.security.status === 'NOT_ANALYZED'
-          ? 'Security analysis not yet analyzed for this account.'
+          ? 'Security analysis not yet run for this account.'
           : 'Security analysis unavailable.'),
     };
   }

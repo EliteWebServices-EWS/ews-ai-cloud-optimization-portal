@@ -104,22 +104,32 @@ export function buildRegionSecuritySummaryView(
   openFindings: Ec2SecurityFindingRecord[],
 ): Ec2SecuritySummaryView {
   const regionFindings = openFindings.filter((finding) => finding.region === summary.region);
+  const analysisCompleted = Boolean(summary.analysisRunId);
   const scoreAvailable = summary.instancesAnalyzed > 0;
+  let scoreAvailability: Ec2SecurityScoreAvailability = 'unavailable';
+  if (analysisCompleted && scoreAvailable) {
+    scoreAvailability = 'complete';
+  } else if (analysisCompleted) {
+    scoreAvailability = 'complete';
+  }
   return {
     scope: 'region',
     region: summary.region,
     regionsIncluded: [summary.region],
-    scoreAvailability: scoreAvailable ? 'complete' : 'unavailable',
-    securityScore: scoreAvailable ? summary.securityScore : null,
-    governanceScore: scoreAvailable ? summary.governanceScore : null,
-    complianceScore: scoreAvailable ? summary.complianceScore : null,
-    riskLevel: scoreAvailable ? summary.riskLevel : 'unavailable',
+    scoreAvailability,
+    securityScore: analysisCompleted ? summary.securityScore : null,
+    governanceScore: analysisCompleted ? summary.governanceScore : null,
+    complianceScore: analysisCompleted ? summary.complianceScore : null,
+    riskLevel: analysisCompleted ? summary.riskLevel : 'unavailable',
     instancesAnalyzed: summary.instancesAnalyzed,
     openFindingCount: regionFindings.length,
     findingsBySeverity: countFindingsBySeverity(regionFindings),
     analyzedAt: summary.analyzedAt,
     analysisRunId: summary.analysisRunId,
-    warnings: [],
+    warnings:
+      analysisCompleted && !scoreAvailable
+        ? ['Security analysis completed; no EC2 instances in this region.']
+        : [],
   };
 }
 
@@ -131,14 +141,15 @@ export function buildAccountSecuritySummaryView(
     return null;
   }
   const regionsIncluded = [...new Set(summaries.map((summary) => summary.region))].sort();
+  const analyzedSummaries = summaries.filter((summary) => summary.analysisRunId);
   const scored = summaries.filter((summary) => summary.instancesAnalyzed > 0);
   const securityScore = averageScore(scored.map((summary) => summary.securityScore));
   const governanceScore = averageScore(scored.map((summary) => summary.governanceScore));
   const complianceScore = averageScore(scored.map((summary) => summary.complianceScore));
 
   let scoreAvailability: Ec2SecurityScoreAvailability = 'unavailable';
-  if (scored.length === summaries.length && scored.length > 0) {
-    scoreAvailability = 'complete';
+  if (analyzedSummaries.length === summaries.length && analyzedSummaries.length > 0) {
+    scoreAvailability = scored.length === summaries.length ? 'complete' : 'complete';
   } else if (scored.length > 0) {
     scoreAvailability = 'partial';
   }
@@ -152,24 +163,30 @@ export function buildAccountSecuritySummaryView(
     .slice()
     .sort((a, b) => b.analyzedAt.localeCompare(a.analyzedAt))[0];
 
+  const emptyScopeOnly =
+    analyzedSummaries.length === summaries.length && scored.length === 0 && analyzedSummaries.length > 0;
+
   return {
     scope: 'account',
     regionsIncluded,
     scoreAvailability,
-    securityScore,
-    governanceScore,
-    complianceScore,
+    securityScore: emptyScopeOnly ? 0 : securityScore,
+    governanceScore: emptyScopeOnly ? 0 : governanceScore,
+    complianceScore: emptyScopeOnly ? 0 : complianceScore,
     riskLevel:
       scoreAvailability === 'unavailable'
         ? 'unavailable'
-        : worstRiskLevel(scored.map((summary) => summary.riskLevel)),
+        : scored.length > 0
+          ? worstRiskLevel(scored.map((summary) => summary.riskLevel))
+          : 'low',
     instancesAnalyzed: summaries.reduce((sum, summary) => sum + summary.instancesAnalyzed, 0),
     openFindingCount: openFindings.length,
     findingsBySeverity: countFindingsBySeverity(openFindings),
     analyzedAt,
     analysisRunId: latestRun?.analysisRunId,
-    warnings:
-      scoreAvailability === 'partial'
+    warnings: emptyScopeOnly
+      ? ['Security analysis completed; no EC2 instances were in scope.']
+      : scoreAvailability === 'partial'
         ? [
             'Security scores aggregate only regions with analyzed instances; rerun analysis for missing regions.',
           ]

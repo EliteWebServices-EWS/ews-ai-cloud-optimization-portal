@@ -8,6 +8,7 @@ export {
   generateWorkflowId,
   generateExecutionId,
   generateReportId,
+  deriveEc2AsyncReportId,
   generateTenantId,
   generateExternalId,
   deriveIdempotentWorkflowId,

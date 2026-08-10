@@ -115,15 +115,23 @@ On terminal success for the active job (matching generation), once per `jobId`:
 
 ## Reports freshness (`reports.html`)
 
-- **Reporting Engine** data comes from `/reports` via `listReports` / `getReport` (workflow-scoped reports). EC2 async jobs do **not** automatically create workflow report records today.
+- **Reporting Engine** data comes from `/reports` via `listReports` / `getReport`. Live EC2 async jobs project reports during consumer **FINALIZING** with `reportSource: ec2_async` (see [EC2 async reporting](../architecture/ec2-async-reporting.md)).
 - After EC2 job success on the Decision Dashboard, a **sessionStorage freshness signal** is set (`ec2-async-job-freshness.ts`).
 - When the user opens **Reports**, `ReportsPage.initialize()` consumes the signal and calls `loadReports()` (authoritative backend list). A success message notes EC2 completion; **no fabricated report payloads**.
+- Demo workflow reports (`reportSource: demo` or legacy rows) remain listed with explicit source labels; they are not substituted for live async reports.
 - User can always click **Refresh** on Reports for a manual reload.
-- For EC2-specific reporting on the Decision Dashboard, use **Export EC2 JSON report** after completion refresh.
 
 ## Workflow panels (legacy)
 
-The lower grid on `index.html` (evidence, governance, financial, confidence, recommendation, verification) is the **legacy synchronous workflow presentation**. It is **not** wired to EC2 async jobs. Panels show static copy directing users to live EC2 widgets above. **Analyze Environment does not call `/workflows/run`.**
+The lower grid on `index.html` (evidence, governance, financial, confidence, recommendation, verification) is the **legacy synchronous workflow presentation**. It is **not** wired to EC2 async jobs. A **single** disclaimer in the overview panel directs users to live EC2 widgets above; other legacy panels show a minimal placeholder. **Analyze Environment does not call `/workflows/run`.**
+
+## Stale / abandoned jobs in history
+
+Backend durable status remains authoritative. Jobs left **`RUNNING`** after queue/worker exhaustion (high `retryCount` + `errorSummary`, no longer the active polled job) are shown in history as **Failed** via `ec2-async-job-history-display.ts` (display-only; does not mutate API status). New failures at SQS `maxReceiveCount` (5) are persisted as **`FAILED`** by the consumer.
+
+## Zero-instance accounts after completion
+
+When analysis completes with no EC2 instances, live panels should show **completed empty scope** (e.g. security/governance from persisted summaries with `instancesAnalyzed: 0`), not “analysis not yet run”. Executive summary uses persisted compliance score when security summary is available (0 for completed-empty scope, not a fabricated 100% recommendation confidence).
 
 ## Mock-provider candidate control
 
@@ -140,7 +148,7 @@ Async job progress, history, and analyze flow use real EC2 async APIs only. Demo
 ## Known limitations
 
 - `/events` timeline not shown in UI.
-- Workflow report list may not include EC2 async job output until backend links those domains.
+- Workflow report list includes EC2 async projections when FINALIZING succeeds; legacy demo rows remain with `reportSource` labels.
 - Retry offered for all `FAILED` jobs without `failureRetryable`.
 - User may start a new analysis while another job is still running (replaces active poll target).
 - `GET` job polling does not cancel in-flight HTTP when `AbortController` aborts (signal checked after response).

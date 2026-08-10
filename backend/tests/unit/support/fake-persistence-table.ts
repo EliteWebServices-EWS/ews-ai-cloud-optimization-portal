@@ -35,6 +35,10 @@ function evaluateCondition(
     return item === undefined;
   }
 
+  if (conditionExpression.includes('attribute_not_exists(sk)')) {
+    return item === undefined;
+  }
+
   if (conditionExpression.includes('attribute_not_exists(pk) OR')) {
     if (!item) {
       return true;

@@ -235,6 +235,16 @@ describe('platform Lambda IAM (no direct customer EC2 reads)', () => {
 });
 
 describe('customer role documentation', () => {
+  it('documents dual platform trust principals in integration trust policy doc', () => {
+    const doc = readFileSync(
+      join(process.cwd(), '../docs/operations/aws-account-integration-trust-policy.md'),
+      'utf8',
+    );
+    assert.match(doc, /SisumLambdaExecutionRole/);
+    assert.match(doc, /SisumEc2AnalysisConsumerExecutionRole/);
+    assert.match(doc, /sts:ExternalId/);
+  });
+
   it('lists every mandatory EC2 discovery action in EC2 discovery security doc', () => {
     const doc = readFileSync(
       join(process.cwd(), '../docs/security/ec2-discovery-security.md'),

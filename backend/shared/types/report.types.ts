@@ -7,6 +7,7 @@ import type {
   ConfidenceStatus,
   PluginName,
   RecommendationStatus,
+  ReportSource,
   VerificationStatusValue,
   WorkflowState,
 } from '../constants';
@@ -144,6 +145,12 @@ export interface OptimizationReport {
   createdAt: string;
   completedAt?: string;
   region: string;
+  /** Distinguishes workflow, demo workflow, and live EC2 async intelligence reports. */
+  reportSource?: ReportSource;
+  /** Set when reportSource is ec2_async. */
+  ec2AsyncJobId?: string;
+  accountId?: string;
+  regions?: string[];
   summary: ReportSummary;
   resources: ResourceSummary[];
   financialImpact: SavingsSummary;

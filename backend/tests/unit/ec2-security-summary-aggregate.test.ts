@@ -83,11 +83,11 @@ describe('ec2-security summary aggregate', () => {
     assert.equal(view.findingsBySeverity.critical, 1);
   });
 
-  it('excludes zero-instance regions from score average and marks partial availability', () => {
+  it('excludes zero-instance regions from score average when only some regions were analyzed', () => {
     const view = buildAccountSecuritySummaryView(
       [
         summary({ region: 'us-east-1', instancesAnalyzed: 2, securityScore: 80 }),
-        summary({ region: 'eu-west-1', instancesAnalyzed: 0, securityScore: 100 }),
+        summary({ region: 'eu-west-1', instancesAnalyzed: 0, securityScore: 100, analysisRunId: '' }),
       ],
       [],
     );
@@ -97,9 +97,41 @@ describe('ec2-security summary aggregate', () => {
     assert.ok(view.warnings.length > 0);
   });
 
-  it('returns unavailable when all regions lack analyzed instances', () => {
+  it('returns complete with zero scores when analysis ran with no instances', () => {
     const view = buildAccountSecuritySummaryView(
-      [summary({ region: 'us-east-1', instancesAnalyzed: 0, securityScore: 100 })],
+      [
+        summary({
+          region: 'us-east-1',
+          instancesAnalyzed: 0,
+          securityScore: 0,
+          governanceScore: 0,
+          complianceScore: 0,
+          riskLevel: 'low',
+        }),
+      ],
+      [],
+    );
+    assert.ok(view);
+    assert.equal(view.scoreAvailability, 'complete');
+    assert.equal(view.securityScore, 0);
+    assert.equal(view.governanceScore, 0);
+    assert.equal(view.riskLevel, 'low');
+    assert.ok(view.warnings.some((w) => w.includes('no EC2 instances')));
+  });
+
+  it('returns region complete when analysisRunId exists with zero instances', () => {
+    const view = buildRegionSecuritySummaryView(
+      summary({ region: 'us-east-1', instancesAnalyzed: 0, securityScore: 0, governanceScore: 0, complianceScore: 0, riskLevel: 'low' }),
+      [],
+    );
+    assert.equal(view.scoreAvailability, 'complete');
+    assert.equal(view.securityScore, 0);
+    assert.ok(view.warnings.length > 0);
+  });
+
+  it('returns unavailable when summary has no analysisRunId and zero instances', () => {
+    const view = buildAccountSecuritySummaryView(
+      [summary({ region: 'us-east-1', instancesAnalyzed: 0, analysisRunId: '' })],
       [],
     );
     assert.ok(view);
