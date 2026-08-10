@@ -20,16 +20,35 @@
     <nav class="dashboard-nav">
       <a href="/dashboard/demo.html" aria-current="page">EC2 Demo</a>
       <a href="/dashboard/index.html">Sign in for live data</a>
+      <a href="/dashboard/reports.html">Reports</a>
     </nav>
   </header>
 
   <main class="dashboard-layout">
+    <section class="dashboard-hero ec2-demo-hero">
+      <div>
+        <h1>Try demonstration scenarios</h1>
+        <p class="hero-subtitle">
+          <span class="demo-badge">DEMO DATA</span>
+          Illustrative EC2 mock scenarios — not connected to a live AWS account. No authentication required.
+        </p>
+      </div>
+      <div class="hero-actions ec2-demo-actions">
+        <label for="demo-scenario-select">
+          Demo scenario
+          <select id="demo-scenario-select" aria-label="Demo scenario"></select>
+        </label>
+        <button id="analyze-demo-btn" type="button" class="btn-primary">Analyze Demo Environment</button>
+        <button id="ec2-export-json-btn" type="button" class="btn-secondary" disabled>
+          Download SAMPLE REPORT (JSON)
+        </button>
+      </div>
+    </section>
+
+    <p id="demo-state-message" class="ec2-demo-state-message" role="status"></p>
+
     <div id="ec2-dashboard-chrome"></div>
     <div id="ec2-status-banner" class="ec2-status-banner" hidden></div>
-
-    <div class="hero-actions ec2-demo-actions">
-      <button id="ec2-export-json-btn" type="button" class="btn-secondary">Download SAMPLE REPORT (JSON)</button>
-    </div>
 
     <div class="dashboard-grid">
       <div id="ec2-summary-panel" class="panel-slot"></div>
@@ -40,7 +59,10 @@
       <div id="ec2-rightsizing-panel" class="panel-slot panel-wide"></div>
     </div>
 
-    <p class="dashboard-footer">Demonstration data only · No AWS account connected · No authentication required</p>
+    <p class="dashboard-footer">
+      Demonstration data only · Mock provider scenarios · No AWS account · No live EC2 async jobs ·
+      <a href="/dashboard/index.html">Analyze your connected AWS account</a> on the Decision Dashboard after sign-in.
+    </p>
   </main>
 
   <script type="module" src="./src/demo-main.ts"></script>

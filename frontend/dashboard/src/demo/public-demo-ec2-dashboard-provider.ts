@@ -1,14 +1,16 @@
 import type { Ec2DashboardDataProvider, Ec2DashboardLoadInput } from '../ec2/ec2-dashboard-provider';
 import type { Ec2DashboardViewModel } from '../ec2/ec2-dashboard-view-model';
-import { buildCuratedEc2DemoViewModel } from './ec2-demo-data';
+import { buildDemoScenarioViewModel } from './ec2-demo-scenario-view-models';
+import { DEFAULT_DEMO_SCENARIO_ID } from './ec2-demo-scenarios';
 
 /**
- * Public demo provider — no network, tokens, or tenant APIs.
+ * Public demo provider — no network, tokens, tenant APIs, or live EC2 async jobs.
  */
 export class PublicDemoEc2DashboardDataProvider implements Ec2DashboardDataProvider {
   readonly mode = 'demo' as const;
 
-  async loadDashboard(_input: Ec2DashboardLoadInput): Promise<Ec2DashboardViewModel> {
-    return buildCuratedEc2DemoViewModel();
+  async loadDashboard(input: Ec2DashboardLoadInput): Promise<Ec2DashboardViewModel> {
+    const scenarioId = input.demoScenarioId ?? DEFAULT_DEMO_SCENARIO_ID;
+    return buildDemoScenarioViewModel(scenarioId);
   }
 }

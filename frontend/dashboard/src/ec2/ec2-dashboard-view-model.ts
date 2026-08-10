@@ -120,6 +120,9 @@ export interface Ec2DashboardViewModel {
   /** Optional average CPU when telemetry exists; undefined = not analyzed. */
   averageCpuUtilization?: number;
   priorityRecommendations: Ec2RecommendationItem[];
+  /** Public demo page — active scenario identifier (no live AWS). */
+  demoScenarioId?: string;
+  demoScenarioLabel?: string;
 }
 
 export function maskAccountId(accountId: string): string {
