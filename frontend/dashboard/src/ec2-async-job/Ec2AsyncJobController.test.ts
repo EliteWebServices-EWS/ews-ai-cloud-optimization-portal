@@ -556,4 +556,206 @@ describe('Ec2AsyncJobController integration', () => {
     await controller.viewJobProgress('job-stale');
     expect(progress.textContent).toContain('Execution: No longer active');
   });
+
+  it('updates latest history row when active job poll reaches SUCCEEDED', async () => {
+    vi.useFakeTimers();
+    const jobId = 'job-idem-terminal';
+    const queued = sampleJob({ jobId, status: 'QUEUED', stage: 'ENQUEUE' });
+    const succeeded = sampleJob({
+      jobId,
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      completedAt: '2026-08-10T18:28:01.000Z',
+    });
+    const getJob = vi
+      .fn()
+      .mockResolvedValueOnce(queued)
+      .mockResolvedValue(succeeded);
+    let listCall = 0;
+    let listResolve: (value: { items: Ec2AsyncJob[] }) => void = () => {};
+    const listJobs = vi.fn(async () => {
+      listCall += 1;
+      if (listCall === 1) {
+        return { items: [] };
+      }
+      return new Promise<{ items: Ec2AsyncJob[] }>((resolve) => {
+        listResolve = resolve;
+      });
+    });
+    const startJob = vi.fn().mockResolvedValue({
+      jobId,
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c1',
+    });
+    const controller = createController({ startJob, getJob, listJobs });
+    await controller.initialize();
+    void controller.startAnalysisFromUi();
+    await vi.advanceTimersByTimeAsync(0);
+    listResolve({ items: [queued] });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(progress.textContent).toContain('Completed');
+    expect(history.textContent).toContain('Completed');
+    expect(controller.getHistoryItems().find((j) => j.jobId === jobId)?.status).toBe(
+      'SUCCEEDED',
+    );
+    expect(controller.getHistoryItems().filter((j) => j.jobId === jobId)).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('ignores stale post-start list refresh that would regress terminal row', async () => {
+    vi.useFakeTimers();
+    const jobId = 'job-race';
+    const queued = sampleJob({ jobId, status: 'QUEUED', stage: 'ENQUEUE' });
+    const succeeded = sampleJob({
+      jobId,
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      completedAt: '2026-08-10T18:28:01.000Z',
+    });
+    const getJob = vi
+      .fn()
+      .mockResolvedValueOnce(queued)
+      .mockResolvedValue(succeeded);
+    let listCall = 0;
+    const listResolvers: Array<(value: { items: Ec2AsyncJob[] }) => void> = [];
+    const listJobs = vi.fn(async () => {
+      listCall += 1;
+      if (listCall === 1) {
+        return { items: [] };
+      }
+      return new Promise<{ items: Ec2AsyncJob[] }>((resolve) => {
+        listResolvers.push(resolve);
+      });
+    });
+    const startJob = vi.fn().mockResolvedValue({
+      jobId,
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c1',
+    });
+    const controller = createController({ startJob, getJob, listJobs });
+    await controller.initialize();
+    void controller.startAnalysisFromUi();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listJobs.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const terminalListIndex = listResolvers.length - 1;
+    const startListIndex = 0;
+    listResolvers[terminalListIndex]?.({ items: [succeeded] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(history.textContent).toContain('Completed');
+    listResolvers[startListIndex]?.({ items: [queued] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.getHistoryItems().find((j) => j.jobId === jobId)?.status).toBe(
+      'SUCCEEDED',
+    );
+    vi.useRealTimers();
+  });
+
+  it('calls refreshHistory again at terminal transition', async () => {
+    vi.useFakeTimers();
+    const jobId = 'job-refresh-count';
+    const getJob = vi
+      .fn()
+      .mockResolvedValueOnce(sampleJob({ jobId, status: 'QUEUED', stage: 'ENQUEUE' }))
+      .mockResolvedValue(
+        sampleJob({
+          jobId,
+          status: 'SUCCEEDED',
+          stage: 'COMPLETE',
+          completedAt: '2026-08-10T18:28:01.000Z',
+        }),
+      );
+    const listJobs = vi.fn().mockResolvedValue({ items: [] });
+    const startJob = vi.fn().mockResolvedValue({
+      jobId,
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c1',
+    });
+    const controller = createController({ startJob, getJob, listJobs });
+    await controller.initialize();
+    await controller.startAnalysisFromUi();
+    const callsAfterStart = listJobs.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listJobs.mock.calls.length).toBeGreaterThan(callsAfterStart);
+    vi.useRealTimers();
+  });
+
+  it('updates history to Failed when active job poll fails', async () => {
+    vi.useFakeTimers();
+    const jobId = 'job-fail-active';
+    const failed = sampleJob({
+      jobId,
+      status: 'FAILED',
+      stage: 'DISCOVERY',
+      errorSummary: 'Discovery failed safely',
+    });
+    const getJob = vi
+      .fn()
+      .mockResolvedValueOnce(sampleJob({ jobId, status: 'QUEUED', stage: 'ENQUEUE' }))
+      .mockResolvedValue(failed);
+    const listJobs = vi.fn().mockResolvedValue({ items: [] });
+    const startJob = vi.fn().mockResolvedValue({
+      jobId,
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c1',
+    });
+    const controller = createController({ startJob, getJob, listJobs });
+    await controller.initialize();
+    await controller.startAnalysisFromUi();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(history.textContent).toContain('Failed');
+    expect(startJob).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('keeps selected historical progress when background active job completes', async () => {
+    vi.useFakeTimers();
+    const oldJob = sampleJob({
+      jobId: 'job-old',
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      completedAt: '2026-08-09T12:00:00.000Z',
+    });
+    const newJobId = 'job-new-active';
+    const succeededNew = sampleJob({
+      jobId: newJobId,
+      status: 'SUCCEEDED',
+      stage: 'COMPLETE',
+      completedAt: '2026-08-10T18:28:01.000Z',
+    });
+    const queuedNew = sampleJob({ jobId: newJobId, status: 'QUEUED', stage: 'ENQUEUE' });
+    let newJobPolls = 0;
+    const getJob = vi.fn(async (id: string) => {
+      if (id === 'job-old') {
+        return oldJob;
+      }
+      if (id === newJobId) {
+        newJobPolls += 1;
+        return newJobPolls === 1 ? queuedNew : succeededNew;
+      }
+      return sampleJob({ jobId: id, status: 'QUEUED', stage: 'ENQUEUE' });
+    });
+    const listJobs = vi.fn().mockResolvedValue({ items: [oldJob] });
+    const startJob = vi.fn().mockResolvedValue({
+      jobId: newJobId,
+      status: 'QUEUED',
+      queueStatus: 'ENQUEUED',
+      correlationId: 'c-new',
+    });
+    const controller = createController({ startJob, getJob, listJobs });
+    await controller.initialize();
+    await controller.startAnalysisFromUi();
+    await controller.viewJobProgress('job-old');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.getSelectedJobId()).toBe('job-old');
+    expect(controller.getDisplayJob()?.jobId).toBe('job-old');
+    expect(controller.getHistoryItems().find((j) => j.jobId === newJobId)?.status).toBe(
+      'SUCCEEDED',
+    );
+    vi.useRealTimers();
+  });
 });
