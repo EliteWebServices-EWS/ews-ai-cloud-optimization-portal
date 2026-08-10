@@ -4,7 +4,7 @@
  */
 
 import { generateReport, getReport, listReports } from '../api/reportApi';
-import { runWorkflow } from '../api/workflowApi';
+import { checkHealth, runWorkflow } from '../api/workflowApi';
 import { renderRecommendationSummary } from '../components/RecommendationSummary';
 import { renderReportSummaryCard } from '../components/ReportSummaryCard';
 import { renderSavingsSummaryCard } from '../components/SavingsSummaryCard';
@@ -13,6 +13,10 @@ import { renderVerificationSummary } from '../components/VerificationSummary';
 import type { DashboardState, OptimizationReport, ReportFilterParams, ReportListItem } from '../types';
 import { ApiClientError } from '../api/client';
 import { consumeEc2AsyncJobCompletedSignal } from '../ec2-async-job/ec2-async-job-freshness';
+import {
+  buildReportJsonFilename,
+  downloadOptimizationReportJson,
+} from '../utils/report-json-export';
 
 export interface ReportsPageElements {
   stateMessage: HTMLElement;
@@ -32,6 +36,7 @@ export class ReportsPage {
   private reports: ReportListItem[] = [];
   private selectedReport: OptimizationReport | null = null;
   private filters: ReportFilterParams = {};
+  private workflowDemoReportsEnabled = false;
 
   constructor(private readonly elements: ReportsPageElements) {
     this.elements.filtersForm.addEventListener('submit', (event) => {
@@ -51,6 +56,7 @@ export class ReportsPage {
   }
 
   async initialize(): Promise<void> {
+    await this.loadDemoGenerationFeature();
     const ec2Completed = consumeEc2AsyncJobCompletedSignal();
     await this.loadReports(ec2Completed?.jobId);
     if (ec2Completed && this.state !== 'error') {
@@ -83,6 +89,17 @@ export class ReportsPage {
     }
   }
 
+  private async loadDemoGenerationFeature(): Promise<void> {
+    try {
+      const health = await checkHealth();
+      this.workflowDemoReportsEnabled = health.features?.workflowDemoReports === true;
+    } catch {
+      this.workflowDemoReportsEnabled = false;
+    }
+    this.elements.generateButton.hidden = !this.workflowDemoReportsEnabled;
+    this.elements.generateButton.disabled = !this.workflowDemoReportsEnabled;
+  }
+
   private async applyFilters(): Promise<void> {
     const formData = new FormData(this.elements.filtersForm);
     this.filters = {
@@ -95,6 +112,10 @@ export class ReportsPage {
   }
 
   private async generateDemoReport(): Promise<void> {
+    if (!this.workflowDemoReportsEnabled) {
+      this.setState('error', 'Demo report generation is not enabled in this environment.');
+      return;
+    }
     this.setState('loading', 'Running workflow and generating report…');
     this.elements.generateButton.disabled = true;
 
@@ -185,20 +206,51 @@ export class ReportsPage {
         <p class="technical-summary"><strong>Technical:</strong> ${report.summary.technicalSummary ?? 'N/A'}</p>
         <div class="export-options">
           <h4>Export Options</h4>
-          <ul>${report.exportOptions.map((opt) => `<li>${opt.format.toUpperCase()} — ${opt.available ? 'Available' : 'Future'}: ${opt.description}</li>`).join('')}</ul>
+          <ul>${this.renderExportOptionsList(report)}</ul>
+          ${this.renderJsonExportAction(report)}
         </div>
       </section>
     `;
+
+    const exportButton = this.elements.reportDetail.querySelector<HTMLButtonElement>(
+      '[data-export-json]',
+    );
+    exportButton?.addEventListener('click', () => {
+      if (this.selectedReport?.reportId === report.reportId) {
+        downloadOptimizationReportJson(this.selectedReport);
+      }
+    });
+  }
+
+  private renderExportOptionsList(report: OptimizationReport): string {
+    return report.exportOptions
+      .map((opt) => {
+        const status = opt.available ? 'Available' : 'Planned / Future';
+        return `<li>${opt.format.toUpperCase()} — ${status}: ${opt.description}</li>`;
+      })
+      .join('');
+  }
+
+  private renderJsonExportAction(report: OptimizationReport): string {
+    const jsonOption = report.exportOptions.find((opt) => opt.format === 'json');
+    if (!jsonOption?.available) {
+      return '';
+    }
+    return `<button type="button" class="btn-secondary" data-export-json>Download JSON (${buildReportJsonFilename(report.reportId)})</button>`;
   }
 
   private clearDetail(): void {
     this.selectedReport = null;
-    const empty = '<p class="empty-note">Select or generate a report.</p>';
-    this.elements.reportDetail.innerHTML = empty;
-    this.elements.summaryPanel.innerHTML = empty;
-    this.elements.savingsPanel.innerHTML = empty;
-    this.elements.recommendationPanel.innerHTML = empty;
-    this.elements.verificationPanel.innerHTML = empty;
+    const emptyMessage = '<p class="empty-note">Select a report from the list to view details.</p>';
+    this.elements.reportDetail.innerHTML = emptyMessage;
+    for (const panel of [
+      this.elements.summaryPanel,
+      this.elements.savingsPanel,
+      this.elements.recommendationPanel,
+      this.elements.verificationPanel,
+    ]) {
+      panel.replaceChildren();
+    }
   }
 
   private resolveDefaultReportId(preferEc2AsyncJobId?: string): string {
@@ -253,5 +305,9 @@ export class ReportsPage {
 
   getSelectedReport(): OptimizationReport | null {
     return this.selectedReport;
+  }
+
+  isWorkflowDemoReportsEnabled(): boolean {
+    return this.workflowDemoReportsEnabled;
   }
 }

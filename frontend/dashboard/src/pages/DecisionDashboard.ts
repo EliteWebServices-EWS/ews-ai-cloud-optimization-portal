@@ -20,7 +20,6 @@ export interface DecisionDashboardElements {
   recommendation: HTMLElement;
   verification: HTMLElement;
   analyzeButton: HTMLButtonElement;
-  candidateSelect: HTMLSelectElement;
 }
 
 export class DecisionDashboard {
@@ -43,7 +42,6 @@ export class DecisionDashboard {
     try {
       await this.ec2Dashboard.load();
       await this.asyncJobs.initialize();
-      this.configureLegacyCandidateSelect();
       this.setState(
         'idle',
         'Live EC2 data loads above. Click Analyze Environment to run asynchronous EC2 analysis for the selected account and region.',
@@ -53,17 +51,6 @@ export class DecisionDashboard {
       const message = error instanceof ApiClientError ? error.message : 'Unable to connect to backend API.';
       this.setState('error', message);
     }
-  }
-
-  private configureLegacyCandidateSelect(): void {
-    const select = this.elements.candidateSelect;
-    select.innerHTML = '';
-    const option = document.createElement('option');
-    option.value = '';
-    option.textContent = 'Legacy workflow candidate (not used for EC2 async analysis)';
-    select.appendChild(option);
-    select.disabled = true;
-    select.setAttribute('aria-disabled', 'true');
   }
 
   async analyzeEnvironment(): Promise<void> {
@@ -96,7 +83,7 @@ export class DecisionDashboard {
 
   private clearWorkflowPanels(): void {
     this.elements.overview.innerHTML = `<p class="empty-note legacy-workflow-disclaimer">${DecisionDashboard.LEGACY_WORKFLOW_DISCLAIMER}</p>`;
-    const placeholder = '<p class="empty-note legacy-workflow-placeholder">—</p>';
+    const emptyPanel = '<div class="legacy-workflow-panel-empty" aria-hidden="true"></div>';
     for (const el of [
       this.elements.candidate,
       this.elements.evidence,
@@ -106,7 +93,7 @@ export class DecisionDashboard {
       this.elements.recommendation,
       this.elements.verification,
     ]) {
-      el.innerHTML = placeholder;
+      el.innerHTML = emptyPanel;
     }
   }
 

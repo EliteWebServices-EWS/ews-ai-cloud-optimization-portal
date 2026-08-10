@@ -46,6 +46,12 @@ export async function getPlugins(): Promise<Array<{ name: string; version: strin
   return data.plugins;
 }
 
-export async function checkHealth(): Promise<{ status: string; service: string }> {
-  return apiRequest<{ status: string; service: string }>('/health');
+export async function checkHealth(): Promise<{
+  status: string;
+  service: string;
+  features?: { workflowDemoReports?: boolean };
+}> {
+  return apiRequest<{ status: string; service: string; features?: { workflowDemoReports?: boolean } }>(
+    '/health',
+  );
 }

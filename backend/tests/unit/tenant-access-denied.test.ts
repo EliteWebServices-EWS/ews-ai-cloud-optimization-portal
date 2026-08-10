@@ -246,6 +246,7 @@ function createReportRouteApp(
   orchestrator: ReturnType<typeof buildOrchestrator>,
   reportingEngine: ReturnType<typeof createReportingEngine>
 ) {
+  process.env.WORKFLOW_DEMO_REPORTS_ENABLED = 'true';
   const app = express();
   app.use(express.json());
   app.use(requireTenantContext());

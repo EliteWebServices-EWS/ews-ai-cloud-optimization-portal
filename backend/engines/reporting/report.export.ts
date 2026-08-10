@@ -25,12 +25,12 @@ export function buildExportOptions(): ReportExportOption[] {
     {
       format: 'csv',
       available: false,
-      description: 'Tabular CSV export — planned for a future sprint',
+      description: 'Tabular CSV export — planned for a future release',
     },
     {
       format: 'pdf',
       available: false,
-      description: 'Executive PDF export — planned for a future sprint',
+      description: 'Executive PDF export — planned for a future release',
     },
   ];
 }
