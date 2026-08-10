@@ -24,6 +24,16 @@ Parameters:
     Description: >
       Provider selection for the backend. MVP deployments must use mock.
 
+  WorkflowDemoReportsEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >
+      When true, allows mock-provider workflow runs and demo report generation via the API.
+      Leave false in production unless demo reports are intentionally required.
+
   CorsOrigin:
     Type: String
     Default: https://elitewebservices.org
@@ -981,6 +991,7 @@ Resources:
           EC2_INTELLIGENCE_QUEUE_URL: !Ref SisumEc2IntelligenceQueue
           EC2_COST_SAMPLE_PRICING_ENABLED: 'false'
           SISUM_PLATFORM_AWS_ACCOUNT_ID: !Ref AWS::AccountId
+          WORKFLOW_DEMO_REPORTS_ENABLED: !Ref WorkflowDemoReportsEnabled
 
       Events:
         PublicHealthRoute:

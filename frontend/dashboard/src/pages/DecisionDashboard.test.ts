@@ -13,7 +13,6 @@ describe('DecisionDashboard async path', () => {
       load: vi.fn().mockResolvedValue(undefined),
     } as unknown as Ec2DashboardController;
 
-    const candidateSelect = document.createElement('select');
     const dashboard = new DecisionDashboard(
       {
         stateMessage: document.createElement('div'),
@@ -27,7 +26,6 @@ describe('DecisionDashboard async path', () => {
         recommendation: document.createElement('div'),
         verification: document.createElement('div'),
         analyzeButton: document.createElement('button'),
-        candidateSelect,
       },
       ec2Dashboard,
       asyncJobs,
@@ -39,11 +37,46 @@ describe('DecisionDashboard async path', () => {
       String(url).includes('/providers/mock/instances'),
     );
     expect(mockInstanceCalls).toHaveLength(0);
-    expect(candidateSelect.disabled).toBe(true);
     fetchSpy.mockRestore();
   });
 
-  it('renders the legacy workflow disclaimer exactly once', async () => {
+  it('starts EC2 async analysis without a legacy workflow candidate', async () => {
+    const startAnalysisFromUi = vi.fn().mockResolvedValue(undefined);
+    const asyncJobs = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+      startAnalysisFromUi,
+    } as unknown as Ec2AsyncJobController;
+    const ec2Dashboard = {
+      load: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Ec2DashboardController;
+
+    const analyzeButton = document.createElement('button');
+    const dashboard = new DecisionDashboard(
+      {
+        stateMessage: document.createElement('div'),
+        overview: document.createElement('div'),
+        progress: document.createElement('div'),
+        candidate: document.createElement('div'),
+        evidence: document.createElement('div'),
+        governance: document.createElement('div'),
+        financial: document.createElement('div'),
+        confidence: document.createElement('div'),
+        recommendation: document.createElement('div'),
+        verification: document.createElement('div'),
+        analyzeButton,
+      },
+      ec2Dashboard,
+      asyncJobs,
+    );
+
+    await dashboard.initialize();
+    analyzeButton.click();
+    await vi.waitFor(() => {
+      expect(startAnalysisFromUi).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('does not repeat em dash placeholders across legacy panels', async () => {
     const asyncJobs = {
       initialize: vi.fn().mockResolvedValue(undefined),
     } as unknown as Ec2AsyncJobController;
@@ -63,7 +96,6 @@ describe('DecisionDashboard async path', () => {
       recommendation: document.createElement('div'),
       verification: document.createElement('div'),
       analyzeButton: document.createElement('button'),
-      candidateSelect: document.createElement('select'),
     };
 
     const dashboard = new DecisionDashboard(elements, ec2Dashboard, asyncJobs);
@@ -84,5 +116,6 @@ describe('DecisionDashboard async path', () => {
       .join('\n');
     const matches = html.split(disclaimer).length - 1;
     expect(matches).toBe(1);
+    expect(html).not.toContain('legacy-workflow-placeholder');
   });
 });

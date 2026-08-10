@@ -67,6 +67,11 @@ async function initializeReports(): Promise<void> {
   });
 
   await page.initialize();
+
+  const demoBadge = document.getElementById('reports-workflow-demo-badge');
+  if (demoBadge) {
+    demoBadge.hidden = !page.isWorkflowDemoReportsEnabled();
+  }
 }
 
 void initializeReports().catch((error: unknown) => {

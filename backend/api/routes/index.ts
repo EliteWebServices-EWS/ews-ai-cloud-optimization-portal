@@ -47,6 +47,10 @@ import {
 } from '../../shared/utils';
 import { listProviders } from '../../providers';
 import {
+  assertWorkflowDemoReportsAllowed,
+  isWorkflowDemoReportsEnabled,
+} from '../../shared/platform-features';
+import {
   ALL_AUTHENTICATED_ROLES,
   ANALYSIS_ROLES,
   ADMIN_ROLES,
@@ -383,6 +387,9 @@ export function createHealthRoutes(): Router {
         {
           status: 'healthy',
           service: 'sisum-backend',
+          features: {
+            workflowDemoReports: isWorkflowDemoReportsEnabled(),
+          },
         },
         requestId
       )
@@ -1722,6 +1729,8 @@ export function createReportRoutes(
       let workflowId: string | undefined;
 
       try {
+        assertWorkflowDemoReportsAllowed();
+
         workflowId = validateReportGenerateBody(
           req.body
         ).workflowId;

@@ -141,7 +141,6 @@ async function initializeDashboard(): Promise<void> {
       recommendation: getRequiredElement('recommendation-panel'),
       verification: getRequiredElement('verification-panel'),
       analyzeButton: getRequiredElement<HTMLButtonElement>('analyze-btn'),
-      candidateSelect: getRequiredElement<HTMLSelectElement>('candidate-select'),
     },
     ec2Controller,
     asyncJobController,

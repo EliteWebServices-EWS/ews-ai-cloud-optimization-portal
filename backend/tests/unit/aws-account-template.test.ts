@@ -40,6 +40,10 @@ describe('AWS accounts SAM template', () => {
       /SISUM_PLATFORM_AWS_ACCOUNT_ID:\s*!Ref AWS::AccountId/,
     );
     assert.doesNotMatch(backendSection, /739275446782/);
+    assert.match(
+      backendSection,
+      /WORKFLOW_DEMO_REPORTS_ENABLED:\s*!Ref WorkflowDemoReportsEnabled/,
+    );
   });
 
   it('does not inject SISUM_PLATFORM_AWS_ACCOUNT_ID on EC2 analysis consumer Lambda', () => {

@@ -27,9 +27,13 @@ function matchesReportFilters(
 
   if (criteria.resourceType) {
     const normalized = criteria.resourceType.toLowerCase();
-    const hasType = report.resources.some(
-      (resource) => resource.resourceType.toLowerCase() === normalized
-    );
+    const pluginMatchesEc2Filter =
+      normalized === 'ec2' && report.plugin.toLowerCase() === 'ec2';
+    const hasType =
+      pluginMatchesEc2Filter ||
+      report.resources.some(
+        (resource) => resource.resourceType.toLowerCase() === normalized,
+      );
     if (!hasType) {
       return false;
     }

@@ -79,6 +79,7 @@ async function seedCompletedZeroInstanceJob(jobId: string) {
 
 describe('Ec2AsyncReportProjectionService', () => {
   it('projects a truthful zero-instance report exactly once', async () => {
+    process.env.WORKFLOW_DEMO_REPORTS_ENABLED = 'false';
     const jobId = 'job-zero-report';
     const { projection, reportingEngine, cloud, cost, security } = createProjection();
     const job = await seedCompletedZeroInstanceJob(jobId);
