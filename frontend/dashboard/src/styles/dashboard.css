@@ -767,6 +767,26 @@ code {
   margin: 0 0 0.75rem;
 }
 
+.job-history-summary {
+  font-size: 0.85rem;
+  color: var(--ews-gray-400, #888);
+  margin: 0 0 0.5rem;
+}
+
+#job-history-toggle {
+  margin-bottom: 0.75rem;
+}
+
+.report-history-summary {
+  font-size: 0.85rem;
+  color: var(--ews-gray-400, #888);
+  margin: 0 0 0.5rem;
+}
+
+#report-history-toggle {
+  margin-bottom: 0.75rem;
+}
+
 .app-notification-toasts {
   position: fixed;
   right: 1rem;

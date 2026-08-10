@@ -61,6 +61,11 @@ export interface Ec2AsyncJobRepository {
     page?: PageRequest,
   ): Promise<PageResult<Ec2AsyncJobEventRecord>>;
 
+  findNewestActiveJobByRequestFingerprint(
+    tenantId: string,
+    requestFingerprint: string,
+  ): Promise<Ec2AsyncJobRecord | undefined>;
+
   getIdempotencyJobId(
     tenantId: string,
     idempotencyKey: string,

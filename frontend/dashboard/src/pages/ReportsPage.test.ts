@@ -199,7 +199,7 @@ describe('ReportsPage', () => {
     await page.initialize();
 
     expect(listSpy).toHaveBeenCalledWith(expect.objectContaining({ reportSource: 'ec2_async' }));
-    expect(elements.stateMessage.textContent).toContain('1 live EC2 report(s) loaded');
+    expect(elements.stateMessage.textContent).toContain('1 live EC2 report loaded');
     expect(elements.reportList.textContent).not.toContain('Demo workflow');
     expect(elements.reportList.textContent).not.toContain('i-mock-001');
   });
@@ -467,5 +467,112 @@ describe('ReportsPage', () => {
     const emptyNotes = elements.reportDetail.querySelectorAll('.empty-note');
     expect(emptyNotes.length).toBe(1);
     expect(elements.summaryPanel.textContent?.trim()).toBe('');
+  });
+
+  it('shows newest ec2_async report per scope by default with history toggle', async () => {
+    vi.spyOn(freshness, 'consumeEc2AsyncJobCompletedSignal').mockReturnValue(null);
+    vi.spyOn(reportApi, 'listReports').mockResolvedValue({
+      total: 2,
+      reports: [
+        {
+          reportId: 'rep-new',
+          workflowId: 'ec2-async:j2',
+          plugin: 'ec2',
+          status: 'complete',
+          workflowStatus: 'completed',
+          createdAt: '2026-08-10T06:56:00.000Z',
+          region: 'us-east-1',
+          reportSource: 'ec2_async',
+          accountId: '572262081497',
+          regions: ['us-east-1'],
+          summary: {
+            headline: 'Newest report',
+            opportunityCount: 0,
+            estimatedMonthlySavings: 0,
+            verifiedMonthlySavings: 0,
+            verifiedCount: 0,
+            currency: 'USD',
+            optimizationStatus: 'complete',
+            executiveSummary: 'New',
+          },
+          resourceCount: 0,
+        },
+        {
+          reportId: 'rep-old',
+          workflowId: 'ec2-async:j1',
+          plugin: 'ec2',
+          status: 'complete',
+          workflowStatus: 'completed',
+          createdAt: '2026-08-09T12:00:00.000Z',
+          region: 'us-east-1',
+          reportSource: 'ec2_async',
+          accountId: '572262081497',
+          regions: ['us-east-1'],
+          summary: {
+            headline: 'Older report',
+            opportunityCount: 0,
+            estimatedMonthlySavings: 0,
+            verifiedMonthlySavings: 0,
+            verifiedCount: 0,
+            currency: 'USD',
+            optimizationStatus: 'complete',
+            executiveSummary: 'Old',
+          },
+          resourceCount: 0,
+        },
+      ],
+    });
+    vi.spyOn(reportApi, 'getReport').mockResolvedValue({
+      reportId: 'rep-new',
+      workflowId: 'ec2-async:j2',
+      plugin: 'ec2',
+      status: 'complete',
+      workflowStatus: 'completed',
+      createdAt: '2026-08-10T06:56:00.000Z',
+      region: 'us-east-1',
+      reportSource: 'ec2_async',
+      accountId: '572262081497',
+      regions: ['us-east-1'],
+      summary: {
+        headline: 'Newest report',
+        opportunityCount: 0,
+        estimatedMonthlySavings: 0,
+        verifiedMonthlySavings: 0,
+        verifiedCount: 0,
+        currency: 'USD',
+        optimizationStatus: 'complete',
+        executiveSummary: 'New',
+        technicalSummary: 'New',
+      },
+      resources: [],
+      financialImpact: {
+        currentMonthlyCost: 0,
+        projectedMonthlyCost: 0,
+        estimatedMonthlySavings: 0,
+        estimatedAnnualSavings: 0,
+        verifiedMonthlySavings: 0,
+        percentageReduction: 0,
+        currency: 'USD',
+        status: 'UNAVAILABLE',
+      },
+      recommendations: [],
+      exportOptions: jsonExportOptions,
+    });
+
+    const elements = createElements();
+    const page = new ReportsPage(elements);
+    await page.initialize();
+
+    expect(page.getVisibleReportCount()).toBe(1);
+    expect(page.getTotalReportCount()).toBe(2);
+    expect(elements.reportList.textContent).toContain('Show report history (1)');
+    expect(elements.reportList.textContent).toContain('Newest report');
+    expect(elements.reportList.textContent).not.toContain('Older report');
+
+    const toggle = elements.reportList.querySelector('#report-history-toggle') as HTMLButtonElement;
+    toggle.click();
+    expect(page.isReportHistoryExpanded()).toBe(true);
+    expect(elements.reportList.textContent).toContain('Older report');
+    expect(page.getVisibleReportCount()).toBe(2);
   });
 });

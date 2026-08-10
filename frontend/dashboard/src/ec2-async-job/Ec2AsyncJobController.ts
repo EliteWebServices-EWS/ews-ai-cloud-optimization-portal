@@ -23,6 +23,12 @@ import {
   renderEc2AsyncJobProgressPlaceholder,
 } from './render-ec2-async-job-progress';
 import { markEc2AsyncJobCompleted } from './ec2-async-job-freshness';
+import {
+  compareEc2JobsNewestFirst,
+  findActiveEc2AnalysisJobForScope,
+  formatLatestHistorySummary,
+  pickLatestEc2AnalysisJobsByScope,
+} from './ec2-analysis-scope';
 
 export type JobTransition =
   | 'queued'
@@ -57,6 +63,7 @@ export class Ec2AsyncJobController {
   private pollWarning: string | undefined;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private historyItems: Ec2AsyncJob[] = [];
+  private historyExpanded = false;
   private historyNextToken: string | undefined;
   private historyLoading = false;
   private historyError: string | undefined;
@@ -131,6 +138,18 @@ export class Ec2AsyncJobController {
       throw new ApiClientError('INVALID_REQUEST', 'Select a connected AWS account before analyzing.');
     }
     const regions = this.options.getRegions();
+    const existingActive = findActiveEc2AnalysisJobForScope(this.historyItems, {
+      accountId,
+      regions,
+    });
+    if (existingActive) {
+      showAppNotification(
+        'Analysis already in progress for this AWS account and region.',
+        'info',
+      );
+      await this.resumeExistingActiveJob(existingActive);
+      return;
+    }
     const idempotencyKey = this.createKeyFn();
     this.startInFlight = true;
     try {
@@ -199,6 +218,35 @@ export class Ec2AsyncJobController {
     void this.refreshHistory();
 
     this.beginPolling(startResult.jobId, generation);
+  }
+
+  private async resumeExistingActiveJob(job: Ec2AsyncJob): Promise<void> {
+    if (this.activeJobId === job.jobId && this.poller) {
+      this.selectedJobId = job.jobId;
+      this.displayJob = this.activeJob ?? job;
+      this.renderProgress();
+      this.renderHistory();
+      return;
+    }
+
+    this.stopPolling();
+    this.generation += 1;
+    const generation = this.generation;
+    this.activeJobId = job.jobId;
+    this.selectedJobId = job.jobId;
+    this.localStarting = false;
+    this.pollWarning = undefined;
+    try {
+      this.activeJob = await this.getJobFn(job.jobId);
+    } catch {
+      this.activeJob = job;
+    }
+    this.displayJob = this.activeJob;
+    this.renderProgress();
+    this.renderHistory();
+    if (!isTerminalJobStatus(this.activeJob.status, this.activeJob.stage)) {
+      this.beginPolling(job.jobId, generation);
+    }
   }
 
   private beginPolling(jobId: string, generation: number): void {
@@ -367,9 +415,27 @@ export class Ec2AsyncJobController {
     });
   }
 
+  private getVisibleHistoryJobs(): Ec2AsyncJob[] {
+    if (this.historyExpanded) {
+      return [...this.historyItems].sort(compareEc2JobsNewestFirst);
+    }
+    return pickLatestEc2AnalysisJobsByScope(this.historyItems);
+  }
+
   private renderHistory(): void {
+    const latestPerScope = pickLatestEc2AnalysisJobsByScope(this.historyItems);
+    const visibleItems = this.getVisibleHistoryJobs();
+    const summary =
+      this.historyItems.length > 0
+        ? formatLatestHistorySummary({
+            visibleLatestCount: latestPerScope.length,
+            totalCount: this.historyItems.length,
+            noun: 'analysis',
+          })
+        : undefined;
     const model: Ec2AsyncJobHistoryViewModel = {
-      items: this.historyItems,
+      items: visibleItems,
+      allItems: this.historyItems,
       loading: this.historyLoading,
       error: this.historyError,
       activeJobId: this.activeJobId ?? undefined,
@@ -377,8 +443,16 @@ export class Ec2AsyncJobController {
       nextToken: this.historyNextToken,
       loadMoreEnabled: Boolean(this.historyNextToken),
       retryInFlight: this.retryInFlight,
+      totalJobCount: this.historyItems.length,
+      latestVisibleCount: latestPerScope.length,
+      historyExpanded: this.historyExpanded,
+      historySummary: summary,
     };
     renderEc2AsyncJobHistory(this.options.historyPanel, model, {
+      onToggleHistory: () => {
+        this.historyExpanded = !this.historyExpanded;
+        this.renderHistory();
+      },
       onViewProgress: (job) => {
         void this.viewJobProgress(job.jobId);
       },
@@ -443,6 +517,14 @@ export class Ec2AsyncJobController {
 
   getDisplayJob(): Ec2AsyncJob | null {
     return this.displayJob;
+  }
+
+  isHistoryExpanded(): boolean {
+    return this.historyExpanded;
+  }
+
+  getHistoryItems(): Ec2AsyncJob[] {
+    return this.historyItems;
   }
 
   wasCompletionRefreshDone(jobId: string): boolean {

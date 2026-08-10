@@ -346,6 +346,7 @@ export interface ReportListItem {
   reportSource?: string;
   ec2AsyncJobId?: string;
   accountId?: string;
+  regions?: string[];
   summary: ReportSummaryView;
   resourceCount: number;
   confidenceStatus?: string;

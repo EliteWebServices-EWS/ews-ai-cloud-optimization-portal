@@ -17,6 +17,11 @@ import {
   buildReportJsonFilename,
   downloadOptimizationReportJson,
 } from '../utils/report-json-export';
+import {
+  compareReportsNewestFirst,
+  formatLatestHistorySummary,
+  pickLatestEc2ReportsByScope,
+} from '../ec2-async-job/ec2-analysis-scope';
 
 export interface ReportsPageElements {
   stateMessage: HTMLElement;
@@ -37,6 +42,7 @@ const LIVE_REPORTS_SOURCE = 'ec2_async';
 export class ReportsPage {
   private state: DashboardState = 'idle';
   private reports: ReportListItem[] = [];
+  private reportHistoryExpanded = false;
   private selectedReport: OptimizationReport | null = null;
   private filters: ReportFilterParams = { reportSource: LIVE_REPORTS_SOURCE };
   private workflowDemoReportsEnabled = false;
@@ -75,7 +81,7 @@ export class ReportsPage {
 
     try {
       const result = await listReports(this.filters);
-      this.reports = result.reports;
+      this.reports = [...result.reports].sort(compareReportsNewestFirst);
       this.renderReportList();
 
       if (this.reports.length === 0) {
@@ -88,7 +94,7 @@ export class ReportsPage {
       }
 
       await this.selectReport(this.resolveDefaultReportId(preferEc2AsyncJobId));
-      this.setState('success', `${result.total} live EC2 report(s) loaded.`);
+      this.setState('success', this.buildReportCountMessage(result.total));
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : 'Failed to load reports.';
       this.setState('error', message);
@@ -153,28 +159,81 @@ export class ReportsPage {
     }
   }
 
+  private getVisibleReports(): ReportListItem[] {
+    if (this.reportHistoryExpanded) {
+      return this.reports;
+    }
+    return pickLatestEc2ReportsByScope(this.reports);
+  }
+
+  private buildReportCountMessage(totalFromApi: number): string {
+    const total = this.reports.length;
+    const visible = this.getVisibleReports().length;
+    if (total === 0) {
+      return '';
+    }
+    if (total === visible) {
+      return `${totalFromApi} live EC2 report${totalFromApi === 1 ? '' : 's'} loaded.`;
+    }
+    return formatLatestHistorySummary({
+      visibleLatestCount: visible,
+      totalCount: total,
+      noun: 'report',
+    });
+  }
+
   private renderReportList(): void {
-    if (this.reports.length === 0) {
+    const visibleReports = this.getVisibleReports();
+    if (visibleReports.length === 0) {
       this.elements.reportList.innerHTML = '<p class="empty-note">No reports match the current filters.</p>';
       return;
     }
 
+    const latestCount = pickLatestEc2ReportsByScope(this.reports).length;
+    const hiddenOlder = Math.max(0, this.reports.length - latestCount);
+    const historyToggle =
+      hiddenOlder > 0
+        ? `<button type="button" class="btn-secondary" id="report-history-toggle" aria-expanded="${this.reportHistoryExpanded ? 'true' : 'false'}" aria-controls="report-list-items">${
+            this.reportHistoryExpanded
+              ? 'Hide report history'
+              : `Show report history (${hiddenOlder})`
+          }</button>`
+        : '';
+    const summary =
+      this.reports.length > latestCount
+        ? `<p class="report-history-summary">${formatLatestHistorySummary({
+            visibleLatestCount: latestCount,
+            totalCount: this.reports.length,
+            noun: 'report',
+          })}</p>`
+        : '';
+
     this.elements.reportList.innerHTML = `
-      <ul class="report-list" role="list">
-        ${this.reports
+      ${summary}
+      ${historyToggle}
+      <ul class="report-list" id="report-list-items" role="list">
+        ${visibleReports
           .map(
             (report) => `
           <li>
             <button type="button" class="report-list-item" data-report-id="${report.reportId}">
               <span class="report-list-title">${report.summary.headline}</span>
-              <span class="report-list-meta">${report.reportId} · ${this.formatReportSource(report)} · ${report.status} · ${report.summary.opportunityCount} opp.</span>
+              <span class="report-list-meta">${report.reportId} · ${this.formatReportSource(report)} · ${report.status} · ${new Date(report.createdAt).toLocaleString()} · ${report.summary.opportunityCount} opp.</span>
             </button>
           </li>
-        `
+        `,
           )
           .join('')}
       </ul>
     `;
+
+    const toggleBtn = this.elements.reportList.querySelector('#report-history-toggle');
+    toggleBtn?.addEventListener('click', () => {
+      this.reportHistoryExpanded = !this.reportHistoryExpanded;
+      this.renderReportList();
+      this.highlightSelected(this.selectedReport?.reportId ?? '');
+      this.setState('success', this.buildReportCountMessage(this.reports.length));
+    });
 
     for (const button of this.elements.reportList.querySelectorAll<HTMLButtonElement>('.report-list-item')) {
       button.addEventListener('click', () => {
@@ -272,7 +331,8 @@ export class ReportsPage {
       }
     }
 
-    return this.reports[0]!.reportId;
+    const visible = this.getVisibleReports();
+    return visible[0]?.reportId ?? this.reports[0]!.reportId;
   }
 
   private formatReportSource(report: ReportListItem): string {
@@ -316,5 +376,17 @@ export class ReportsPage {
 
   isWorkflowDemoReportsEnabled(): boolean {
     return this.workflowDemoReportsEnabled;
+  }
+
+  isReportHistoryExpanded(): boolean {
+    return this.reportHistoryExpanded;
+  }
+
+  getVisibleReportCount(): number {
+    return this.getVisibleReports().length;
+  }
+
+  getTotalReportCount(): number {
+    return this.reports.length;
   }
 }

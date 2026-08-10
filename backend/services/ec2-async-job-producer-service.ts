@@ -89,6 +89,19 @@ export class Ec2AsyncJobProducerService {
       regions,
       jobType: EC2_ASYNC_JOB_TYPE,
     });
+
+    const activeJob = await this.jobs.findNewestActiveJobByRequestFingerprint(
+      tenantId,
+      requestFingerprint,
+    );
+    if (activeJob) {
+      return {
+        job: activeJob,
+        reused: true,
+        enqueued: activeJob.queueStatus === 'ENQUEUED',
+      };
+    }
+
     const jobId = deriveIdempotentAsyncJobId(tenantId, context.idempotencyKey);
 
     let job: Ec2AsyncJobRecord;

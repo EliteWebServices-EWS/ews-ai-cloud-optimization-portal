@@ -169,4 +169,33 @@ describe('MockEc2AsyncJobRepository', () => {
     assert.equal(events.items[0]?.eventType, 'ec2.async_job.created');
     assert.equal(events.items[1]?.eventType, 'ec2.async_job.enqueued');
   });
+
+  it('findNewestActiveJobByRequestFingerprint returns active job for matching scope', async () => {
+    const repo = new MockEc2AsyncJobRepository();
+    const fingerprint = buildEc2AsyncJobRequestFingerprint({
+      accountId: ACCOUNT,
+      regions: ['us-east-1'],
+      jobType: EC2_ASYNC_JOB_TYPE,
+    });
+    const completed = await repo.createIdempotentJob(
+      createInput({ idempotencyKey: 'done-key', jobId: 'job-done' }),
+    );
+    await repo.updateJob(
+      TENANT_A,
+      completed.jobId,
+      { status: 'SUCCEEDED', stage: 'COMPLETE', completedAt: new Date().toISOString() },
+      { expectedVersion: completed.version },
+    );
+    const active = await repo.createIdempotentJob(
+      createInput({ idempotencyKey: 'active-key', jobId: 'job-active' }),
+    );
+    await repo.updateJob(
+      TENANT_A,
+      active.jobId,
+      { status: 'RUNNING', stage: 'DISCOVERY' },
+      { expectedVersion: active.version },
+    );
+    const found = await repo.findNewestActiveJobByRequestFingerprint(TENANT_A, fingerprint);
+    assert.equal(found?.jobId, 'job-active');
+  });
 });
