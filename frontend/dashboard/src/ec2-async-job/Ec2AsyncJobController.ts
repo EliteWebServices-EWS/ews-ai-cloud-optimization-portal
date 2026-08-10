@@ -50,6 +50,9 @@ export class Ec2AsyncJobController {
   private generation = 0;
   private activeJobId: string | null = null;
   private activeJob: Ec2AsyncJob | null = null;
+  /** Job shown in EC2 Analysis Progress (may differ from active while user inspects history). */
+  private selectedJobId: string | null = null;
+  private displayJob: Ec2AsyncJob | null = null;
   private localStarting = false;
   private pollWarning: string | undefined;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -76,8 +79,42 @@ export class Ec2AsyncJobController {
   }
 
   async initialize(): Promise<void> {
-    renderEc2AsyncJobProgressPlaceholder(this.options.progressPanel);
     await this.refreshHistory();
+    this.renderProgressEmptyState();
+  }
+
+  /** Load persisted job into the progress panel without starting or retrying analysis. */
+  async viewJobProgress(jobId: string): Promise<void> {
+    this.selectedJobId = jobId;
+    this.pollWarning = undefined;
+    try {
+      if (jobId === this.activeJobId && this.activeJob) {
+        this.displayJob = this.activeJob;
+      } else {
+        this.displayJob = await this.getJobFn(jobId);
+      }
+      this.renderProgress();
+      this.renderHistory();
+    } catch (error) {
+      const message =
+        error instanceof ApiClientError
+          ? error.message
+          : 'Unable to load job progress.';
+      showAppNotification(message, 'error');
+      if (this.selectedJobId === jobId) {
+        this.selectedJobId = null;
+        this.displayJob = null;
+        this.renderProgressEmptyState();
+        this.renderHistory();
+      }
+    }
+  }
+
+  viewActiveAnalysisProgress(): void {
+    if (!this.activeJobId) {
+      return;
+    }
+    void this.viewJobProgress(this.activeJobId);
   }
 
   destroy(): void {
@@ -137,6 +174,7 @@ export class Ec2AsyncJobController {
     }
 
     this.activeJobId = startResult.jobId;
+    this.selectedJobId = startResult.jobId;
     try {
       this.activeJob = await this.getJobFn(startResult.jobId);
     } catch {
@@ -155,6 +193,7 @@ export class Ec2AsyncJobController {
       };
     }
 
+    this.displayJob = this.activeJob;
     this.notifyOnce(startResult.jobId, 'queued', 'Analysis queued.');
     this.renderProgress();
     void this.refreshHistory();
@@ -183,7 +222,7 @@ export class Ec2AsyncJobController {
         this.localStarting = false;
         this.activeJob = job;
         this.handleStageNotification(job);
-        this.renderProgress();
+        this.syncDisplayJobFromActivePoll();
       },
       onTerminal: (job, gen) => {
         if (gen !== this.generation || jobId !== this.activeJobId) {
@@ -191,7 +230,7 @@ export class Ec2AsyncJobController {
         }
         this.localStarting = false;
         this.activeJob = job;
-        this.renderProgress();
+        this.syncDisplayJobFromActivePoll();
         void this.refreshHistory();
         if (job.status === 'FAILED') {
           this.notifyOnce(job.jobId, 'failed', 'Analysis failed.');
@@ -207,7 +246,9 @@ export class Ec2AsyncJobController {
           return;
         }
         this.pollWarning = 'Connection issue — showing last known job status.';
-        this.renderProgress();
+        if (this.selectedJobId === this.activeJobId) {
+          this.renderProgress();
+        }
       },
       isHidden: () => document.hidden,
     });
@@ -282,15 +323,47 @@ export class Ec2AsyncJobController {
     }
   }
 
-  private renderProgress(): void {
-    if (!this.activeJob) {
-      renderEc2AsyncJobProgressPlaceholder(this.options.progressPanel);
+  private syncDisplayJobFromActivePoll(): void {
+    if (this.activeJobId && this.selectedJobId === this.activeJobId && this.activeJob) {
+      this.displayJob = this.activeJob;
+      this.renderProgress();
+    }
+  }
+
+  private renderProgressEmptyState(): void {
+    if (this.displayJob) {
+      this.renderProgress();
       return;
     }
+    const message =
+      this.historyItems.length > 0
+        ? 'Select an analysis job below to view its progress.'
+        : 'Start an analysis to track EC2 job progress.';
+    renderEc2AsyncJobProgressPlaceholder(this.options.progressPanel, message);
+  }
+
+  private renderProgress(): void {
+    if (!this.displayJob) {
+      this.renderProgressEmptyState();
+      return;
+    }
+    const viewingActive = this.selectedJobId === this.activeJobId;
+    const showReturnToActive = Boolean(
+      this.activeJobId &&
+        this.selectedJobId !== this.activeJobId &&
+        this.activeJob &&
+        !isTerminalJobStatus(this.activeJob.status, this.activeJob.stage),
+    );
     renderEc2AsyncJobProgress(this.options.progressPanel, {
-      job: this.activeJob,
-      localStarting: this.localStarting,
-      pollWarning: this.pollWarning,
+      job: this.displayJob,
+      localStarting: viewingActive ? this.localStarting : false,
+      pollWarning: viewingActive ? this.pollWarning : undefined,
+      showReturnToActive,
+      onReturnToActive: showReturnToActive
+        ? () => {
+            this.viewActiveAnalysisProgress();
+          }
+        : undefined,
     });
   }
 
@@ -300,11 +373,15 @@ export class Ec2AsyncJobController {
       loading: this.historyLoading,
       error: this.historyError,
       activeJobId: this.activeJobId ?? undefined,
+      selectedJobId: this.selectedJobId ?? undefined,
       nextToken: this.historyNextToken,
       loadMoreEnabled: Boolean(this.historyNextToken),
       retryInFlight: this.retryInFlight,
     };
     renderEc2AsyncJobHistory(this.options.historyPanel, model, {
+      onViewProgress: (job) => {
+        void this.viewJobProgress(job.jobId);
+      },
       onRetry: (job) => {
         void this.retryJob(job);
       },
@@ -322,8 +399,18 @@ export class Ec2AsyncJobController {
   private startElapsedTicker(): void {
     this.stopElapsedTicker();
     this.elapsedTimer = setInterval(() => {
-      if (!this.activeJob || isTerminalJobStatus(this.activeJob.status, this.activeJob.stage)) {
-        this.stopElapsedTicker();
+      if (
+        !this.displayJob ||
+        !this.activeJob ||
+        this.selectedJobId !== this.activeJobId ||
+        isTerminalJobStatus(this.activeJob.status, this.activeJob.stage)
+      ) {
+        if (
+          !this.activeJob ||
+          isTerminalJobStatus(this.activeJob.status, this.activeJob.stage)
+        ) {
+          this.stopElapsedTicker();
+        }
         return;
       }
       this.renderProgress();
@@ -348,6 +435,14 @@ export class Ec2AsyncJobController {
 
   getActiveJob(): Ec2AsyncJob | null {
     return this.activeJob;
+  }
+
+  getSelectedJobId(): string | null {
+    return this.selectedJobId;
+  }
+
+  getDisplayJob(): Ec2AsyncJob | null {
+    return this.displayJob;
   }
 
   wasCompletionRefreshDone(jobId: string): boolean {

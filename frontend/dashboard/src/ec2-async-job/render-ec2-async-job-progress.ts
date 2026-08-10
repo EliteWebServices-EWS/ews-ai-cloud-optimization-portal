@@ -16,6 +16,21 @@ export interface Ec2AsyncJobProgressViewModel {
   localStarting?: boolean;
   pollWarning?: string;
   nowMs?: number;
+  showReturnToActive?: boolean;
+  onReturnToActive?: () => void;
+}
+
+function stepStateLabel(state: 'pending' | 'active' | 'completed' | 'failed'): string {
+  switch (state) {
+    case 'completed':
+      return 'Complete';
+    case 'active':
+      return 'In progress';
+    case 'failed':
+      return 'Failed';
+    default:
+      return 'Not reached';
+  }
 }
 
 function stepState(
@@ -70,7 +85,8 @@ export function renderEc2AsyncJobProgress(
   const currentLabel = display.failed ? failedStageLabel ?? 'Discovering Resources' : display.label;
   const steps = EC2_ASYNC_PROGRESS_STEPS.map((step) => {
     const state = stepState(step, currentLabel, display);
-    return `<li class="progress-step step-${state}"><span class="step-dot" aria-hidden="true"></span><span>${escapeHtml(step)}</span></li>`;
+    const stateLabel = stepStateLabel(state);
+    return `<li class="progress-step step-${state}" aria-label="${escapeHtml(step)}: ${escapeHtml(stateLabel)}"><span class="step-dot" aria-hidden="true"></span><span>${escapeHtml(step)}</span> <span class="step-state-text">(${escapeHtml(stateLabel)})</span></li>`;
   }).join('');
 
   const elapsed = formatElapsedDuration(computeElapsedMs(job, nowMs));
@@ -79,16 +95,24 @@ export function renderEc2AsyncJobProgress(
 
   const errorBlock =
     job.errorSummary && display.failed
-      ? `<p class="job-error-summary" role="alert">${escapeHtml(job.errorSummary)}</p>`
+      ? `<div class="job-error-summary-wrap" role="alert"><p class="job-error-label">Error:</p><p class="job-error-summary">${escapeHtml(job.errorSummary)}</p></div>`
       : '';
 
   const warningBlock = pollWarning
     ? `<p class="job-poll-warning" role="status">${escapeHtml(pollWarning)}</p>`
     : '';
 
+  const returnActiveBlock =
+    model.showReturnToActive && model.onReturnToActive
+      ? `<p class="job-view-active-wrap"><button type="button" class="btn-secondary" id="job-view-active-analysis">View active analysis</button></p>`
+      : '';
+
+  const regions = job.regions?.length ? job.regions.join(', ') : '—';
+
   container.innerHTML = `
     <section class="dashboard-card" aria-labelledby="progress-heading">
       <h3 id="progress-heading" class="card-title">EC2 Analysis Progress</h3>
+      ${returnActiveBlock}
       <p class="job-progress-status" aria-live="polite">
         <span class="status-badge">${escapeHtml(display.failed ? 'Failed' : statusText)}</span>
         <span class="job-elapsed">Elapsed: ${escapeHtml(elapsed)}</span>
@@ -105,14 +129,30 @@ export function renderEc2AsyncJobProgress(
       </div>
       <ol class="progress-list">${steps}</ol>
       <dl class="job-timestamp-grid">
+        <div><dt>Job ID</dt><dd><code>${escapeHtml(job.jobId)}</code></dd></div>
+        <div><dt>Account</dt><dd>••••${escapeHtml(job.accountId.slice(-4))}</dd></div>
+        <div><dt>Region(s)</dt><dd>${escapeHtml(regions)}</dd></div>
+        <div><dt>Status</dt><dd>${escapeHtml(job.status)}</dd></div>
         <div><dt>Created</dt><dd>${escapeHtml(formatJobTimestamp(job.createdAt))}</dd></div>
         <div><dt>Started</dt><dd>${escapeHtml(formatJobTimestamp(job.startedAt))}</dd></div>
         <div><dt>Completed</dt><dd>${escapeHtml(formatJobTimestamp(job.completedAt))}</dd></div>
+        ${
+          job.retryCount > 0
+            ? `<div><dt>Retry count</dt><dd>${escapeHtml(String(job.retryCount))}</dd></div>`
+            : ''
+        }
       </dl>
       ${warningBlock}
       ${errorBlock}
     </section>
   `;
+
+  const returnBtn = container.querySelector('#job-view-active-analysis');
+  if (returnBtn && model.onReturnToActive) {
+    returnBtn.addEventListener('click', () => {
+      model.onReturnToActive?.();
+    });
+  }
 }
 
 export function renderEc2AsyncJobProgressPlaceholder(

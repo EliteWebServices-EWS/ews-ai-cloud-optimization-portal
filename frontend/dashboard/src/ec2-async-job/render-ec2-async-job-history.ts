@@ -12,6 +12,7 @@ export interface Ec2AsyncJobHistoryViewModel {
   loading: boolean;
   error?: string;
   activeJobId?: string;
+  selectedJobId?: string;
   nextToken?: string;
   loadMoreEnabled?: boolean;
   retryInFlight?: boolean;
@@ -21,6 +22,7 @@ export function renderEc2AsyncJobHistory(
   container: HTMLElement,
   model: Ec2AsyncJobHistoryViewModel,
   handlers?: {
+    onViewProgress?: (job: Ec2AsyncJob) => void;
     onRetry?: (job: Ec2AsyncJob) => void;
     onLoadMore?: () => void;
   },
@@ -61,7 +63,17 @@ export function renderEc2AsyncJobHistory(
         activeJobId: model.activeJobId,
       });
       const isActive = model.activeJobId === job.jobId;
+      const isSelected = model.selectedJobId === job.jobId;
+      const rowClasses = [
+        isSelected ? 'job-row-selected' : '',
+        isActive ? 'job-row-active' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
       const regions = job.regions?.length ? job.regions.join(', ') : '—';
+      const viewProgressButton = handlers?.onViewProgress
+        ? `<button type="button" class="btn-secondary job-view-progress-btn" data-job-id="${escapeHtml(job.jobId)}" aria-label="View progress for job ${escapeHtml(job.jobId)}">View progress</button>`
+        : '';
       const showRetry =
         (job.status === 'FAILED' || display.failed) && handlers?.onRetry;
       const retryButton =
@@ -70,14 +82,17 @@ export function renderEc2AsyncJobHistory(
               model.retryInFlight ? 'disabled aria-busy="true"' : ''
             }>${model.retryInFlight ? 'Retrying…' : 'Retry analysis'}</button>`
           : '';
+      const actions = [viewProgressButton, retryButton].filter(Boolean).join(' ');
       return `
-        <tr class="${isActive ? 'job-row-active' : ''}" data-job-id="${escapeHtml(job.jobId)}">
+        <tr class="${rowClasses}" data-job-id="${escapeHtml(job.jobId)}"${
+          isSelected ? ' aria-current="true"' : ''
+        }>
           <td><code>${escapeHtml(job.jobId.slice(0, 8))}…</code></td>
           <td>${escapeHtml(display.label)}</td>
           <td>••••${escapeHtml(job.accountId.slice(-4))}</td>
           <td>${escapeHtml(regions)}</td>
           <td>${escapeHtml(formatJobTimestamp(job.createdAt))}</td>
-          <td>${retryButton}</td>
+          <td class="job-history-actions">${actions}</td>
         </tr>
       `;
     })
@@ -110,6 +125,17 @@ export function renderEc2AsyncJobHistory(
       ${loadMore}
     </section>
   `;
+
+  container.querySelectorAll('.job-view-progress-btn').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      const target = event.currentTarget as HTMLButtonElement;
+      const jobId = target.getAttribute('data-job-id');
+      const job = model.items.find((item) => item.jobId === jobId);
+      if (job && handlers?.onViewProgress) {
+        handlers.onViewProgress(job);
+      }
+    });
+  });
 
   container.querySelectorAll('.job-retry-btn').forEach((button) => {
     button.addEventListener('click', (event) => {
