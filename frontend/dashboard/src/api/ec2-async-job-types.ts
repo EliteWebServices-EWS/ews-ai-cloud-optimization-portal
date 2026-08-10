@@ -26,6 +26,11 @@ export interface Ec2AsyncJob {
   correlationId: string;
   retryCount: number;
   errorSummary?: string;
+  /**
+   * Backend: this job blocks starting another same-scope analysis. Not persisted status;
+   * false does not mean SUCCEEDED/FAILED.
+   */
+  isScopeBlocking?: boolean;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;

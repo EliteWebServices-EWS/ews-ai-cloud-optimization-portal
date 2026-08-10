@@ -91,12 +91,16 @@ export function renderEc2AsyncJobHistory(
             }>${model.retryInFlight ? 'Retrying…' : 'Retry analysis'}</button>`
           : '';
       const actions = [viewProgressButton, retryButton].filter(Boolean).join(' ');
+      const statusCell = display.historyStatusDetail
+        ? `<span class="job-history-status-main">${escapeHtml(display.label)}</span>
+           <span class="job-history-status-detail">${escapeHtml(display.historyStatusDetail)}</span>`
+        : escapeHtml(display.label);
       return `
         <tr class="${rowClasses}" data-job-id="${escapeHtml(job.jobId)}"${
           isSelected ? ' aria-current="true"' : ''
         }>
           <td><code>${escapeHtml(job.jobId.slice(0, 8))}…</code></td>
-          <td>${escapeHtml(display.label)}</td>
+          <td class="job-history-status">${statusCell}</td>
           <td>••••${escapeHtml(job.accountId.slice(-4))}</td>
           <td>${escapeHtml(regions)}</td>
           <td>${escapeHtml(formatJobTimestamp(job.createdAt))}</td>

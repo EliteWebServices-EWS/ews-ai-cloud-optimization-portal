@@ -27,6 +27,7 @@ import {
   compareEc2JobsNewestFirst,
   findActiveEc2AnalysisJobForScope,
   formatLatestHistorySummary,
+  isEc2AsyncJobScopeBlocking,
   pickLatestEc2AnalysisJobsByScope,
 } from './ec2-analysis-scope';
 
@@ -269,6 +270,7 @@ export class Ec2AsyncJobController {
         }
         this.localStarting = false;
         this.activeJob = job;
+        this.reconcileStaleActiveJob(job);
         this.handleStageNotification(job);
         this.syncDisplayJobFromActivePoll();
       },
@@ -278,6 +280,7 @@ export class Ec2AsyncJobController {
         }
         this.localStarting = false;
         this.activeJob = job;
+        this.reconcileStaleActiveJob(job);
         this.syncDisplayJobFromActivePoll();
         void this.refreshHistory();
         if (job.status === 'FAILED') {
@@ -371,6 +374,22 @@ export class Ec2AsyncJobController {
     }
   }
 
+  private reconcileStaleActiveJob(job: Ec2AsyncJob): void {
+    if (job.jobId !== this.activeJobId) {
+      return;
+    }
+    if (job.isScopeBlocking === false) {
+      this.stopPolling();
+      this.stopElapsedTicker();
+      this.activeJobId = null;
+      this.activeJob = null;
+      if (this.selectedJobId === job.jobId) {
+        // Keep historical inspection of the stale row; only drop active tracking.
+      }
+      this.renderHistory();
+    }
+  }
+
   private syncDisplayJobFromActivePoll(): void {
     if (this.activeJobId && this.selectedJobId === this.activeJobId && this.activeJob) {
       this.displayJob = this.activeJob;
@@ -400,7 +419,7 @@ export class Ec2AsyncJobController {
       this.activeJobId &&
         this.selectedJobId !== this.activeJobId &&
         this.activeJob &&
-        !isTerminalJobStatus(this.activeJob.status, this.activeJob.stage),
+        isEc2AsyncJobScopeBlocking(this.activeJob),
     );
     renderEc2AsyncJobProgress(this.options.progressPanel, {
       job: this.displayJob,
