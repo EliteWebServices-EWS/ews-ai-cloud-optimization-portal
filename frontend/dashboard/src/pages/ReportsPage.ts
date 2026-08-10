@@ -31,11 +31,14 @@ export interface ReportsPageElements {
   refreshButton: HTMLButtonElement;
 }
 
+/** Live customer Reports page — only completed live EC2 async intelligence reports. */
+const LIVE_REPORTS_SOURCE = 'ec2_async';
+
 export class ReportsPage {
   private state: DashboardState = 'idle';
   private reports: ReportListItem[] = [];
   private selectedReport: OptimizationReport | null = null;
-  private filters: ReportFilterParams = {};
+  private filters: ReportFilterParams = { reportSource: LIVE_REPORTS_SOURCE };
   private workflowDemoReportsEnabled = false;
 
   constructor(private readonly elements: ReportsPageElements) {
@@ -44,7 +47,7 @@ export class ReportsPage {
       void this.applyFilters();
     });
     this.elements.filtersForm.addEventListener('reset', () => {
-      this.filters = {};
+      this.filters = { reportSource: LIVE_REPORTS_SOURCE };
       void this.loadReports();
     });
     this.elements.generateButton.addEventListener('click', () => {
@@ -76,13 +79,16 @@ export class ReportsPage {
       this.renderReportList();
 
       if (this.reports.length === 0) {
-        this.setState('empty', 'No reports yet. Run a workflow and generate a report.');
+        this.setState(
+          'empty',
+          'No live EC2 async reports yet. Run EC2 analysis from the Decision Dashboard for a connected AWS account.',
+        );
         this.clearDetail();
         return;
       }
 
       await this.selectReport(this.resolveDefaultReportId(preferEc2AsyncJobId));
-      this.setState('success', `${result.total} report(s) loaded.`);
+      this.setState('success', `${result.total} live EC2 report(s) loaded.`);
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : 'Failed to load reports.';
       this.setState('error', message);
@@ -103,6 +109,7 @@ export class ReportsPage {
   private async applyFilters(): Promise<void> {
     const formData = new FormData(this.elements.filtersForm);
     this.filters = {
+      reportSource: LIVE_REPORTS_SOURCE,
       status: String(formData.get('status') || '') || undefined,
       resourceType: String(formData.get('resourceType') || '') || undefined,
       confidenceLevel: String(formData.get('confidenceLevel') || '') || undefined,

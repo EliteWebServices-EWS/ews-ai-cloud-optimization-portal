@@ -43,12 +43,16 @@ const decision = {
 
 const ec2Controller = new Ec2DashboardController({ provider, panels });
 
+const viewDemoReportLinkEl = document.getElementById('view-demo-report-link');
+
 const demoDashboard = new Ec2DemoDashboard(
   {
     scenarioSelect: getRequiredElement<HTMLSelectElement>('demo-scenario-select'),
     analyzeButton: getRequiredElement<HTMLButtonElement>('analyze-demo-btn'),
     stateMessage: getRequiredElement('demo-state-message'),
     exportButton: getRequiredElement<HTMLButtonElement>('ec2-export-json-btn'),
+    viewDemoReportLink:
+      viewDemoReportLinkEl instanceof HTMLAnchorElement ? viewDemoReportLinkEl : undefined,
     panels,
     decision,
   },

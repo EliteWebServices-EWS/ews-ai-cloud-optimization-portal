@@ -320,6 +320,7 @@ export interface ReportFilterParams {
   confidenceLevel?: string;
   verificationStatus?: string;
   plugin?: string;
+  reportSource?: string;
 }
 
 export interface ReportSummaryView {

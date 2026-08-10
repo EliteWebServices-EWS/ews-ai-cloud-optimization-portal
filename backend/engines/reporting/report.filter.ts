@@ -68,6 +68,12 @@ function matchesReportFilters(
     }
   }
 
+  if (criteria.reportSource) {
+    if (report.reportSource !== criteria.reportSource) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -89,6 +95,9 @@ export function parseReportFilters(query: Record<string, unknown>): ReportFilter
   }
   if (typeof query.plugin === 'string' && query.plugin.length > 0) {
     criteria.plugin = query.plugin as ReportFilterCriteria['plugin'];
+  }
+  if (typeof query.reportSource === 'string' && query.reportSource.length > 0) {
+    criteria.reportSource = query.reportSource as ReportFilterCriteria['reportSource'];
   }
 
   return criteria;

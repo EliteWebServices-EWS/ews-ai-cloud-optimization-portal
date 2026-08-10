@@ -205,6 +205,28 @@ export function buildEc2JsonReport(vm: Ec2DashboardViewModel): string {
       confidenceScore: di.confidence?.score ?? null,
       governanceDecision: di.governance?.decision ?? null,
       governanceReadinessScore: di.governance?.readinessScore ?? null,
+      verification:
+        di.verification.status === 'NOT_EXECUTED'
+          ? {
+              status: di.verification.status,
+              expectedSavings: di.verification.expectedSavings,
+              verifiedSavings: null,
+              actualSavings: null,
+              variance: null,
+              variancePercentage: null,
+              stateMatched: null,
+              message: di.verification.message ?? null,
+            }
+          : {
+              status: di.verification.status,
+              expectedSavings: di.verification.expectedSavings,
+              verifiedSavings: di.verification.verifiedSavings,
+              actualSavings: di.verification.actualSavings,
+              variance: di.verification.variance,
+              variancePercentage: di.verification.variancePercentage,
+              stateMatched: di.verification.stateMatched,
+              message: di.verification.message ?? null,
+            },
     };
   }
   return JSON.stringify(payload, null, 2);

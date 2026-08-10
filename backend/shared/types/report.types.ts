@@ -191,6 +191,8 @@ export interface ReportFilterCriteria {
   confidenceLevel?: ConfidenceStatus | string;
   verificationStatus?: VerificationStatusValue | string;
   plugin?: PluginName;
+  /** When set, only reports with this exact reportSource match (missing source does not match). */
+  reportSource?: ReportSource;
 }
 
 /** Request to generate a report from a completed workflow. */

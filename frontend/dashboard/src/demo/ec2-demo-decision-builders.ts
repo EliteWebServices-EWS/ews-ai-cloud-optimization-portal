@@ -138,7 +138,6 @@ function buildEvidence(instanceId: string, meta: (typeof MOCK_INSTANCE_META)[str
     telemetry: {
       cpuUtilization: meta.avgCpu,
       memoryUtilization: meta.avgMemory,
-      networkUtilization: 5,
       observationWindowDays: 14,
     },
     instance: {
@@ -293,13 +292,46 @@ function buildWorkflowDetail(
   };
 }
 
+function buildDecisionBasis(params: {
+  evidence?: EvidenceView;
+  governance?: GovernanceResult;
+  confidenceUnavailable?: boolean;
+  confidence?: ConfidenceResult;
+  execution: ExecutionResult;
+  verification: VerificationResult;
+}): DemoReportPreviewSnapshot['decisionBasis'] {
+  const evidenceStatus = params.evidence?.status ?? 'UNKNOWN';
+  const evidenceNote =
+    params.evidence?.validation?.warnings?.[0]?.replace(/\.$/, '') ?? 'demonstration/mock evidence';
+
+  let confidenceLine: string;
+  if (params.confidenceUnavailable || !params.confidence) {
+    confidenceLine = 'Not available for this demo scenario';
+  } else if (params.confidence.score != null) {
+    confidenceLine = `${params.confidence.status} (${params.confidence.score}%) — ${params.confidence.reason}`;
+  } else {
+    confidenceLine = `${params.confidence.status} — fixture-provided recommendation confidence level; numeric score unavailable`;
+  }
+
+  return {
+    evidence: `${evidenceStatus} — ${evidenceNote}`,
+    governance: `${params.governance?.decision ?? 'NOT APPLICABLE'} — illustrative demo policy outcome`,
+    confidence: confidenceLine,
+    execution: params.execution.status,
+    verification: params.verification.status,
+  };
+}
+
 function buildReportPreview(
   vm: Ec2DashboardViewModel,
   financial: FinancialImpact | undefined,
-  recommendation?: RecommendationDecision,
-  governance?: GovernanceResult,
-  confidence?: ConfidenceResult,
-  confidenceUnavailable?: boolean,
+  recommendation: RecommendationDecision | undefined,
+  governance: GovernanceResult | undefined,
+  confidence: ConfidenceResult | undefined,
+  confidenceUnavailable: boolean | undefined,
+  evidence: EvidenceView | undefined,
+  execution: ExecutionResult,
+  verification: VerificationResult,
 ): DemoReportPreviewSnapshot {
   return {
     executiveHeadline: vm.executive.title,
@@ -312,6 +344,14 @@ function buildReportPreview(
     confidenceSummary: formatDemoConfidenceSummary(confidenceUnavailable, confidence),
     governanceDecision: governance?.decision ?? 'NOT APPLICABLE',
     verificationSummary: 'Simulated / not executed — no AWS change performed',
+    decisionBasis: buildDecisionBasis({
+      evidence,
+      governance,
+      confidenceUnavailable,
+      confidence,
+      execution,
+      verification,
+    }),
   };
 }
 
@@ -388,7 +428,17 @@ function buildCandidateScenarioDecision(vm: Ec2DashboardViewModel): DemoDecision
     recommendation,
     execution,
     verification,
-    reportPreview: buildReportPreview(vm, financial, recommendation, governance, confidence, confidenceUnavailable),
+    reportPreview: buildReportPreview(
+      vm,
+      financial,
+      recommendation,
+      governance,
+      confidence,
+      confidenceUnavailable,
+      evidence,
+      execution,
+      verification,
+    ),
   };
 }
 
@@ -490,6 +540,9 @@ function buildFleetScenarioDecision(vm: Ec2DashboardViewModel): DemoDecisionInte
       governance,
       confidence,
       confidenceUnavailable,
+      evidence,
+      execution,
+      verification,
     ),
   };
 }

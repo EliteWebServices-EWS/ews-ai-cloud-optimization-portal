@@ -15,6 +15,7 @@ export async function listReports(filters: ReportFilterParams = {}): Promise<{
   if (filters.confidenceLevel) params.set('confidenceLevel', filters.confidenceLevel);
   if (filters.verificationStatus) params.set('verificationStatus', filters.verificationStatus);
   if (filters.plugin) params.set('plugin', filters.plugin);
+  if (filters.reportSource) params.set('reportSource', filters.reportSource);
 
   const query = params.toString();
   const path = query ? `/reports?${query}` : '/reports';
