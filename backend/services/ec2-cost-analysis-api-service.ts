@@ -28,6 +28,7 @@ import { Ec2CostAnalysisOrchestrator } from '../cloud-intelligence/ec2-cost/ec2-
 import { createEc2CostCloudWatchClientFactory } from '../cloud-intelligence/ec2-cost/ec2-cost-cloudwatch-factory';
 import type { Ec2PerformanceMetricsClientFactory } from '../cloud-intelligence/ec2-cost/ec2-performance-metrics-client.port';
 import type { AuditActor } from '../audit';
+import type { EvidencePersistenceService } from './evidence-persistence-service';
 
 export class Ec2CostValidationError extends Error {
   constructor(message: string) {
@@ -49,6 +50,8 @@ export interface StartEc2CostAnalysisInput {
   /** When set (async worker), reuses a stable run id for idempotent stage recovery. */
   runId?: string;
   resumeRunExpectedVersion?: number;
+  /** Async intelligence job identifier when invoked from the EC2 job consumer. */
+  jobId?: string;
 }
 
 function dedupeRegions(regions: string[]): string[] {
@@ -99,6 +102,7 @@ export class Ec2CostAnalysisApiService {
     private readonly runs: Ec2CostAnalysisRunRepository,
     private readonly credentialProvider: StsCredentialProvider = new StsCredentialProvider(),
     private readonly metricsClientFactoryOverride?: Ec2PerformanceMetricsClientFactory,
+    private readonly evidencePersistence?: EvidencePersistenceService,
   ) {}
 
   private async requireVerifiedAccount(tenantId: string, accountId: string) {
@@ -118,7 +122,12 @@ export class Ec2CostAnalysisApiService {
   }
 
   private buildOrchestrator(): Ec2CostAnalysisOrchestrator {
-    return new Ec2CostAnalysisOrchestrator(this.resources, this.recommendations, this.runs);
+    return new Ec2CostAnalysisOrchestrator(
+      this.resources,
+      this.recommendations,
+      this.runs,
+      this.evidencePersistence,
+    );
   }
 
   async startCostAnalysis(
@@ -167,6 +176,8 @@ export class Ec2CostAnalysisApiService {
         startedAt: now,
         metricsClientFactory,
         resumeRunExpectedVersion: input.resumeRunExpectedVersion,
+        correlationId: context.correlationId,
+        jobId: input.jobId,
       });
       return {
         runId: result.runId,

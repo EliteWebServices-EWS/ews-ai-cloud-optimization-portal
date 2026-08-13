@@ -30,6 +30,7 @@ import type {
   Ec2CostAnalysisRunRepository,
   Ec2CostRecommendationListQuery,
   Ec2CostRecommendationRepository,
+  Ec2CostRecommendationScopeQuery,
   UpsertEc2CostRecommendationInput,
 } from '../contracts/ec2-cost-repository';
 import type {
@@ -143,6 +144,29 @@ export class DynamoDbEc2CostRepository
       }),
     );
     return stripRecommendationKeys(created);
+  }
+
+  async getRecommendationByScope(
+    query: Ec2CostRecommendationScopeQuery,
+  ): Promise<Ec2CostRecommendationRecord | null> {
+    const pk = cloudResourceAccountPartitionKey(query.tenantId, query.accountId);
+    const sk = ec2CostRecommendationSortKey({
+      region: query.region,
+      category: query.category,
+      resourceId: query.resourceId,
+      ruleVersion: query.ruleVersion,
+    });
+    const result = await this.client.send(
+      new GetCommand({ TableName: this.tableName, Key: { pk, sk } }),
+    );
+    const item = result.Item as CostRecommendationItem | undefined;
+    if (!item || item.entityType !== 'EC2_COST_RECOMMENDATION') {
+      return null;
+    }
+    if (item.tenantId !== query.tenantId) {
+      return null;
+    }
+    return stripRecommendationKeys(item);
   }
 
   async getRecommendation(

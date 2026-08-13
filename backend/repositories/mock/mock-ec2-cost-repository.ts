@@ -11,6 +11,7 @@ import type {
   Ec2CostAnalysisRunRepository,
   Ec2CostRecommendationListQuery,
   Ec2CostRecommendationRepository,
+  Ec2CostRecommendationScopeQuery,
   UpsertEc2CostRecommendationInput,
 } from '../contracts/ec2-cost-repository';
 import type {
@@ -92,6 +93,24 @@ export class MockEc2CostRepository
     };
     this.recommendations.set(input.findingKey, created);
     return created;
+  }
+
+  async getRecommendationByScope(
+    query: Ec2CostRecommendationScopeQuery,
+  ): Promise<Ec2CostRecommendationRecord | null> {
+    const findingKey = buildEc2CostFindingKey({
+      tenantId: query.tenantId,
+      accountId: query.accountId,
+      region: query.region,
+      resourceId: query.resourceId,
+      category: query.category,
+      ruleVersion: query.ruleVersion,
+    });
+    const record = this.recommendations.get(findingKey);
+    if (!record || record.tenantId !== query.tenantId || record.accountId !== query.accountId) {
+      return null;
+    }
+    return record;
   }
 
   async getRecommendation(
