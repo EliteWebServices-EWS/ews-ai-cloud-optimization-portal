@@ -23,7 +23,9 @@ Stored inventory → instance/volume selection → bounded CloudWatch `GetMetric
 | Orchestrator | `ec2-cost-analysis-orchestrator.ts` |
 | API service | `backend/services/ec2-cost-analysis-api-service.ts` |
 | Persistence keys | `backend/database/cloud-resources/ec2-cost-keys.ts` |
-| Repositories | `mock-ec2-cost-repository.ts`, `dynamodb-ec2-cost-repository.ts` |
+| Evidence observation keys | `backend/database/cloud-resources/evidence-observation-keys.ts` |
+| Longitudinal evidence (Sprint 1) | `backend/persistence-intelligence/`, `backend/services/evidence-persistence-service.ts` — see [sprint-1-persistence-intelligence.md](./sprint-1-persistence-intelligence.md) |
+| Repositories | `mock-ec2-cost-repository.ts`, `dynamodb-ec2-cost-repository.ts`, `mock-evidence-observation-repository.ts`, `dynamodb-evidence-observation-repository.ts` |
 
 ## Advisory-only
 

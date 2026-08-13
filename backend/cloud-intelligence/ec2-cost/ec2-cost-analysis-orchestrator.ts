@@ -21,6 +21,8 @@ import {
 import type { Ec2PerformanceMetricsClientFactory } from './ec2-performance-metrics-client.port';
 import type { Ec2PerformanceEvidence } from './ec2-cost-models';
 import type { Ec2CostAnalysisRunRecord } from './ec2-cost-models';
+import { assertEc2EvidencePersistenceRequired } from '../../persistence/persistence-config';
+import type { EvidencePersistenceService } from '../../services/evidence-persistence-service';
 
 export interface Ec2CostAnalysisOrchestratorInput {
   tenantId: string;
@@ -32,6 +34,8 @@ export interface Ec2CostAnalysisOrchestratorInput {
   startedAt: string;
   metricsClientFactory?: Ec2PerformanceMetricsClientFactory;
   resumeRunExpectedVersion?: number;
+  correlationId?: string;
+  jobId?: string;
 }
 
 export interface Ec2CostAnalysisOrchestratorResult {
@@ -66,9 +70,12 @@ export class Ec2CostAnalysisOrchestrator {
     private readonly resources: Ec2CloudResourceRepository,
     private readonly recommendations: Ec2CostRecommendationRepository,
     private readonly runs: Ec2CostAnalysisRunRepository,
+    private readonly evidencePersistence?: EvidencePersistenceService,
   ) {}
 
   async run(input: Ec2CostAnalysisOrchestratorInput): Promise<Ec2CostAnalysisOrchestratorResult> {
+    assertEc2EvidencePersistenceRequired(this.evidencePersistence);
+
     const warnings: string[] = [];
     const recommendationCounts: Record<string, number> = {};
     let instancesFound = 0;
@@ -306,45 +313,78 @@ export class Ec2CostAnalysisOrchestrator {
             recommendationCounts[result.category] =
               (recommendationCounts[result.category] ?? 0) + 1;
 
+            const existingRecommendation = await this.recommendations.getRecommendationByScope({
+              tenantId: input.tenantId,
+              accountId: input.accountId,
+              region,
+              category: result.category,
+              resourceId: result.resourceId,
+              ruleVersion: rule.ruleVersion,
+            });
+            const recommendationId =
+              existingRecommendation?.recommendationId ?? `ec2cost-${randomUUID()}`;
+            const recommendationPayload = {
+              tenantId: input.tenantId,
+              accountId: input.accountId,
+              region,
+              service: 'ec2' as const,
+              resourceType: result.resourceType,
+              resourceId: result.resourceId,
+              category: result.category,
+              severity: result.severity,
+              confidenceScore: result.confidenceScore,
+              confidenceLevel: result.confidenceLevel,
+              title: result.title,
+              summary: result.summary,
+              businessJustification: result.businessJustification,
+              recommendedAction: result.recommendedAction,
+              evidenceSummary: result.evidenceSummary,
+              observedValues: result.observedValues,
+              thresholds: result.thresholds,
+              currentInstanceType: result.currentInstanceType,
+              candidateInstanceType: result.candidateInstanceType,
+              currentMonthlyCost: result.currentMonthlyCost,
+              projectedMonthlyCost: result.projectedMonthlyCost,
+              estimatedMonthlySavings: result.estimatedMonthlySavings,
+              estimatedAnnualSavings: result.estimatedAnnualSavings,
+              currency:
+                result.pricingStatus === 'CONTROLLED_CATALOG_SAMPLE' ||
+                result.pricingStatus === 'VERIFIED_RATE'
+                  ? ('USD' as const)
+                  : undefined,
+              pricingAssumptions: result.pricingAssumptions,
+              pricingStatus: result.pricingStatus,
+              analysisRunId: input.runId,
+              ruleId: rule.ruleId,
+              ruleVersion: rule.ruleVersion,
+              findingKey,
+              recommendationId,
+            };
+
+            if (this.evidencePersistence) {
+              const collectionTimestamp = new Date().toISOString();
+              const observationTimestamp = evidence?.observationEnd ?? endTime.toISOString();
+              await this.evidencePersistence.recordEc2CostRecommendationObservation({
+                recommendation: {
+                  ...recommendationPayload,
+                  version: existingRecommendation?.version ?? 1,
+                  lifecycleStatus: existingRecommendation?.lifecycleStatus ?? 'OPEN',
+                  firstDetectedAt:
+                    existingRecommendation?.firstDetectedAt ?? collectionTimestamp,
+                  lastDetectedAt: existingRecommendation?.lastDetectedAt ?? collectionTimestamp,
+                  createdAt: existingRecommendation?.createdAt ?? collectionTimestamp,
+                  updatedAt: existingRecommendation?.updatedAt ?? collectionTimestamp,
+                },
+                observationTimestamp,
+                collectionTimestamp,
+                correlationId: input.correlationId,
+                jobId: input.jobId,
+              });
+            }
+
             const saved = await this.recommendations.upsertRecommendation({
               findingKey,
-              recommendation: {
-                tenantId: input.tenantId,
-                accountId: input.accountId,
-                region,
-                service: 'ec2',
-                resourceType: result.resourceType,
-                resourceId: result.resourceId,
-                category: result.category,
-                severity: result.severity,
-                confidenceScore: result.confidenceScore,
-                confidenceLevel: result.confidenceLevel,
-                title: result.title,
-                summary: result.summary,
-                businessJustification: result.businessJustification,
-                recommendedAction: result.recommendedAction,
-                evidenceSummary: result.evidenceSummary,
-                observedValues: result.observedValues,
-                thresholds: result.thresholds,
-                currentInstanceType: result.currentInstanceType,
-                candidateInstanceType: result.candidateInstanceType,
-                currentMonthlyCost: result.currentMonthlyCost,
-                projectedMonthlyCost: result.projectedMonthlyCost,
-                estimatedMonthlySavings: result.estimatedMonthlySavings,
-                estimatedAnnualSavings: result.estimatedAnnualSavings,
-                currency:
-                  result.pricingStatus === 'CONTROLLED_CATALOG_SAMPLE' ||
-                  result.pricingStatus === 'VERIFIED_RATE'
-                    ? 'USD'
-                    : undefined,
-                pricingAssumptions: result.pricingAssumptions,
-                pricingStatus: result.pricingStatus,
-                analysisRunId: input.runId,
-                ruleId: rule.ruleId,
-                ruleVersion: rule.ruleVersion,
-                findingKey,
-                recommendationId: `ec2cost-${randomUUID()}`,
-              },
+              recommendation: recommendationPayload,
             });
             if (saved.version === 1) {
               recommendationsCreated += 1;

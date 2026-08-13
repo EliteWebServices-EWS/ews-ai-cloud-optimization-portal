@@ -37,6 +37,8 @@ import { AwsAccountApiService } from './services/aws-account-api-service';
 import { createEc2CloudResourceRepositories } from './services/ec2-cloud-resource-repository-factory';
 import { Ec2DiscoveryApiService } from './services/ec2-discovery-api-service';
 import { createEc2CostRepositories } from './services/ec2-cost-repository-factory';
+import { createEvidenceObservationRepository } from './services/evidence-observation-repository-factory';
+import { EvidencePersistenceService } from './services/evidence-persistence-service';
 import { Ec2CostAnalysisApiService } from './services/ec2-cost-analysis-api-service';
 import { createEc2SecurityRepositories } from './services/ec2-security-repository-factory';
 import { Ec2SecurityAnalysisApiService } from './services/ec2-security-analysis-api-service';
@@ -139,11 +141,16 @@ export function createApp(options?: CreateAppOptions): express.Application {
   );
 
   const ec2CostRepositories = createEc2CostRepositories();
+  const evidenceObservations = createEvidenceObservationRepository();
+  const evidencePersistence = new EvidencePersistenceService(evidenceObservations);
   const ec2CostAnalysisApi = new Ec2CostAnalysisApiService(
     awsAccountRepository,
     ec2CloudResourceRepositories.resources,
     ec2CostRepositories.recommendations,
     ec2CostRepositories.runs,
+    undefined,
+    undefined,
+    evidencePersistence,
   );
 
   const ec2SecurityRepositories = createEc2SecurityRepositories();

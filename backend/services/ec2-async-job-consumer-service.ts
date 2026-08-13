@@ -438,7 +438,13 @@ export class Ec2AsyncJobConsumerService {
 
     await this.deps.cost.startCostAnalysis(
       job.tenantId,
-      { accountId: job.accountId, regions: job.regions, runId, resumeRunExpectedVersion },
+      {
+        accountId: job.accountId,
+        regions: job.regions,
+        runId,
+        resumeRunExpectedVersion,
+        jobId: job.jobId,
+      },
       context,
     );
     const after = await this.deps.stageCompletion.costRunProof(

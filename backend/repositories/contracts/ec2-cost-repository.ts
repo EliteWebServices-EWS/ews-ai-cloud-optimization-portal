@@ -36,8 +36,20 @@ export interface UpsertEc2CostRecommendationInput {
   };
 }
 
+export interface Ec2CostRecommendationScopeQuery {
+  tenantId: string;
+  accountId: string;
+  region: string;
+  category: string;
+  resourceId: string;
+  ruleVersion: string;
+}
+
 export interface Ec2CostRecommendationRepository {
   upsertRecommendation(input: UpsertEc2CostRecommendationInput): Promise<Ec2CostRecommendationRecord>;
+  getRecommendationByScope(
+    query: Ec2CostRecommendationScopeQuery,
+  ): Promise<Ec2CostRecommendationRecord | null>;
   getRecommendation(
     tenantId: string,
     accountId: string,

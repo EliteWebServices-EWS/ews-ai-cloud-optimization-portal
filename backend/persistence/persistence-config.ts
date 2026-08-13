@@ -91,3 +91,22 @@ export function shouldUseDurablePersistence(
 
   return listMissingPersistenceTables().length === 0;
 }
+
+/**
+ * EC2 cost intelligence must not persist recommendations in deployed
+ * environments when longitudinal evidence persistence is unavailable.
+ */
+export function assertEc2EvidencePersistenceRequired(
+  evidencePersistence: unknown,
+  environment = resolveEnvironmentName(),
+): void {
+  if (!isDeployedEnvironment(environment)) {
+    return;
+  }
+
+  if (!evidencePersistence) {
+    throw new PersistenceConfigurationError(
+      'EC2 cost analysis requires EvidencePersistenceService in deployed environments.',
+    );
+  }
+}
