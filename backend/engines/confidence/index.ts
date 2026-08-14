@@ -3,4 +3,8 @@ export {
   createConfidenceEngine,
   calculateConfidence,
 } from './confidence.engine';
-export { DEFAULT_CONFIDENCE_CONFIG, type ConfidenceConfig } from './confidence.config';
+export {
+  CONFIDENCE_FORMULA_VERSION,
+  DEFAULT_CONFIDENCE_CONFIG,
+  type ConfidenceConfig,
+} from './confidence.config';

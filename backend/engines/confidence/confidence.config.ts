@@ -17,6 +17,9 @@ export interface ConfidenceConfig {
   maxCpuCoefficientOfVariation: number;
 }
 
+/** Identifies the frozen Sprint 1 commercial weighted scoring formula. */
+export const CONFIDENCE_FORMULA_VERSION = 'commercial-weighted-v1';
+
 /** Default confidence configuration for Demo Mode. */
 export const DEFAULT_CONFIDENCE_CONFIG: ConfidenceConfig = {
   scoreHigh: 80,

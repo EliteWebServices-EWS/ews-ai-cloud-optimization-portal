@@ -1,7 +1,7 @@
 import type { ConfidenceFactor, ConfidenceResult, StandardizedEvidence } from '../../shared/types';
 import type { EvidenceValidationResult } from '../../shared/types';
 import { CONFIDENCE_STATUS } from '../../shared/constants';
-import type { ConfidenceConfig } from './confidence.config';
+import { CONFIDENCE_FORMULA_VERSION, type ConfidenceConfig } from './confidence.config';
 
 export interface ConfidenceInput {
   evidence: StandardizedEvidence;
@@ -175,8 +175,17 @@ function toLegacyLevel(status: ConfidenceResult['status']): ConfidenceResult['le
   return 'low';
 }
 
-function buildConfidenceReason(status: ConfidenceResult['status'], score: number): string {
+function buildCommercialReason(
+  status: ConfidenceResult['status'],
+  score: number,
+  factors: ConfidenceFactor[]
+): string {
   if (status === CONFIDENCE_STATUS.HIGH) {
+    const weakFactors = factors.filter((factor) => factor.score < 100);
+    if (weakFactors.length > 0) {
+      const summary = weakFactors.map((factor) => `${factor.name}: ${factor.detail}`).join('; ');
+      return `High confidence (${score}) — commercial score strong with factor limitations: ${summary}`;
+    }
     return `High confidence (${score}) — stable workload over observation period`;
   }
   if (status === CONFIDENCE_STATUS.MEDIUM) {
@@ -202,13 +211,14 @@ export function calculateConfidence(input: ConfidenceInput): ConfidenceResult {
 
   const score = Math.round(weightedScore);
   const status = resolveConfidenceStatus(score, input.config);
-  const reason = buildConfidenceReason(status, score);
+  const reason = buildCommercialReason(status, score, factors);
 
   return {
     score,
     status,
     reason,
     factors,
+    formulaVersion: CONFIDENCE_FORMULA_VERSION,
     level: toLegacyLevel(status),
   };
 }

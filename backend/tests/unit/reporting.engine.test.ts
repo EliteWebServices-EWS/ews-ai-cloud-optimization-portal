@@ -113,6 +113,7 @@ function buildCompleteInput(overrides: Partial<ReportGenerationInput> = {}): Rep
       status: CONFIDENCE_STATUS.HIGH,
       reason: 'Stable utilization pattern',
       factors: [],
+      formulaVersion: 'commercial-weighted-v1',
       level: 'high',
     },
     recommendation: {
@@ -260,6 +261,7 @@ describe('ReportingEngine', () => {
         status: CONFIDENCE_STATUS.LOW,
         reason: 'Volatile metrics',
         factors: [],
+        formulaVersion: 'commercial-weighted-v1',
         level: 'low',
       },
     });

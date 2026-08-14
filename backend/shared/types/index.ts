@@ -89,10 +89,15 @@ export interface ConfidenceFactor {
 
 /** Confidence scoring output — should this optimization be trusted? */
 export interface ConfidenceResult {
+  /** Frozen commercial weighted score from the existing Sprint 1 formula. */
   score: number;
+  /** Threshold classification derived from the commercial score. */
   status: ConfidenceStatus;
+  /** Explanation of the resulting confidence assessment. */
   reason: string;
   factors: ConfidenceFactor[];
+  /** Identifies the frozen commercial scoring formula/configuration baseline. */
+  formulaVersion: string;
   /** @deprecated Use status — retained for demo workflow compatibility. */
   level: 'low' | 'medium' | 'high';
 }
