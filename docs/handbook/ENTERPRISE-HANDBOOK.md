@@ -36,7 +36,7 @@ A genuinely intelligent, **evidence-driven ML cloud optimization recommendation 
 
 ### Gaps
 
-- Longitudinal **persistence intelligence** (material-change tracking, `persistence_hours`) is **proposed**, not implemented
+- **Longitudinal persistence intelligence** — Sprint 1 EC2 Cost evidence persistence foundation is **CURRENT**; enterprise-wide cross-domain convergence remains **PROPOSED**
 - **Evidence maturity** taxonomy (`MATURE` / `PARTIAL` / `IMMATURE`) is **proposed**
 - **ML safe degradation** and **ML eligibility** are **proposed**
 - Workflow **AWS Provider** layer is a **stub**; live EC2 uses a separate STS path
@@ -98,6 +98,7 @@ Use these labels consistently throughout the handbook. **Do not upgrade or downg
 | AWS account onboarding | **CURRENT** | External ID, verify, STS AssumeRole |
 | EC2 discovery (live) | **CURRENT** | `backend/cloud-intelligence/`, discovery API service |
 | EC2 cost intelligence | **CURRENT** | `backend/cloud-intelligence/ec2-cost/` |
+| EC2 Cost longitudinal evidence persistence | **CURRENT** | `backend/persistence-intelligence/`, `backend/services/evidence-persistence-service.ts`; `docs/architecture/sprint-1-persistence-intelligence.md` |
 | EC2 security intelligence | **CURRENT** | Security analysis services and routes |
 | EC2 async jobs | **CURRENT** | SQS producer/consumer, job repository, frontend polling |
 | Workflow orchestrator | **CURRENT** | `backend/orchestrator/workflow.orchestrator.ts` |
@@ -215,6 +216,8 @@ flowchart TB
 
 **Legend:** Solid boxes in **current** subgraphs are implemented. Dotted **proposed** nodes are target capabilities.
 
+**Note:** Sprint 1 EC2 Cost longitudinal evidence persistence is **CURRENT** in `backend/persistence-intelligence/` but omitted from this simplified diagram.
+
 ### Architectural layers (CURRENT)
 
 | Layer | Location | Responsibility |
@@ -310,11 +313,11 @@ Preserve fail-closed tenant and MFA policies. Harden production to `strict` tena
 
 ### Target State
 
-Longitudinal persistence intelligence with fingerprinted recommendation history, material-change detection, and out-of-order observation handling.
+Enterprise-wide persistence intelligence convergence: fingerprinted recommendation history across domains, material-change detection normalized for downstream consumers, and cross-path correlation.
 
 ### Gaps
 
-Persistence intelligence model (`NEW`, `STABLE`, `CHANGED`, `MISSING_PREVIOUS`, `persistence_hours`) — **PROPOSED**, not found in repository code.
+Sprint 1 EC2 Cost longitudinal evidence persistence foundation (`NEW`, `STABLE`, `CHANGED`, `MISSING_PREVIOUS`, `persistence_hours`, append-only evidence observations) — **CURRENT** (`backend/persistence-intelligence/`). Cross-domain persistence convergence and shared evidence envelope — **PROPOSED**.
 
 ---
 
@@ -375,7 +378,7 @@ ENQUEUE → DISCOVERY → COST_ANALYSIS → SECURITY_ANALYSIS → GOVERNANCE_ANA
 
 ### Target State
 
-DLQ reconciliation terminalizing durable jobs, full observability dashboards, mid-pipeline persistence intelligence integration.
+DLQ reconciliation terminalizing durable jobs, full observability dashboards, persistence intelligence integration across remaining pipeline domains and workflow engines.
 
 ### Gaps
 
@@ -422,7 +425,7 @@ flowchart LR
 | Stage | Status (summary) |
 |-------|------------------|
 | Evidence | **CURRENT** — evidence engine + EC2 live collectors |
-| Persistence | **PARTIALLY IMPLEMENTED** — reports/jobs; full persistence intelligence **PROPOSED** (Sprint 1) |
+| Persistence | **PARTIALLY IMPLEMENTED** — EC2 Cost longitudinal evidence observations with `PersistenceAssessment` (**CURRENT**, Sprint 1); cross-domain persistence convergence **PROPOSED** |
 | Evidence Maturity | **PROPOSED** (Sprint 2) |
 | Governance | **CURRENT** — rule engine |
 | Confidence | **CURRENT** — weighted deterministic 0–100 |
@@ -442,12 +445,12 @@ The handbook references conceptual contracts that describe decision semantics ac
 
 | Contract | Sprint | Purpose |
 |----------|--------|---------|
-| `PersistenceAssessment` | 1 | Longitudinal persistence state and material-change semantics |
+| `PersistenceAssessment` | 1 | Longitudinal persistence state and material-change semantics — **CURRENT** for EC2 Cost path (`backend/persistence-intelligence/types.ts`) |
 | `EvidenceMaturity` | 2 | Maturity classification and reason codes |
 | `MLDecision` | 3 | Eligibility, execution outcome, and safe-degradation semantics |
 | `RollbackAssessment` | 4 | Maintain / rollback / insufficient-evidence outcome |
 
-> **Contract note:** These contracts define **semantic guarantees** rather than mandatory TypeScript property names. Existing repository contracts should be extended or adapted where appropriate rather than duplicated unnecessarily. They are **PROPOSED** — the exact interfaces do not exist in the repository today.
+> **Contract note:** These contracts define **semantic guarantees** rather than mandatory TypeScript property names. `PersistenceAssessment` is implemented for the Sprint 1 EC2 Cost evidence persistence foundation. `EvidenceMaturity`, `MLDecision`, and `RollbackAssessment` remain **PROPOSED** — not production engines today.
 
 Every implemented transition should produce **auditable reason codes** where engines support them. **Gap:** not all lifecycle stages emit standardized reason codes yet.
 
@@ -485,47 +488,57 @@ Cross-path evidence normalization — **PARTIALLY IMPLEMENTED**
 
 ### Current State
 
-**CURRENT behaviour:**
+**Sprint 1 EC2 Cost longitudinal evidence persistence foundation — CURRENT / ACCEPTED** (`docs/architecture/sprint-1-persistence-intelligence.md`; `backend/persistence-intelligence/`):
+
+- Append-only evidence observations on `sisum-cloud-resources-*`
+- Deterministic recommendation fingerprinting
+- `PersistenceAssessment` with state classification: `NEW`, `STABLE`, `CHANGED`, `MISSING_PREVIOUS`
+- `persistence_hours` derived from observation timestamps
+- Tenant-scoped repository access via `EvidenceObservationRepository`
+- Logical observation idempotency keyed by tenant/account/findingKey/analysisRunId/observationTimestamp
+- Historical ordering by `observationTimestamp` with deterministic tie-breaking using `logicalObservationId`
+- Late/out-of-order observation handling
+- Provenance fields including `jobId`, `correlationId`, and `analysisRunId`
+- Evidence-before-intelligence ordering in `Ec2CostAnalysisOrchestrator` (evidence observation before recommendation upsert)
+- Production/staging fail-closed requirement when `EvidencePersistenceService` is absent
+- Repository and unit/integration test coverage for persistence transitions
+
+This capability is **implemented for the EC2 Cost intelligence path**, not for every workflow engine or platform domain. Legacy workflow governance, readiness, recommendation, and confidence engines do **not** yet consume `PersistenceAssessment`.
+
+**Other CURRENT persistence behaviour (not longitudinal intelligence):**
 
 - Reports persisted to `sisum-reports-*` with ownership index
 - EC2 async jobs persist pipeline state and events
 - Learning store records outcomes per workflow
 - Recommendation existence in a report **does not** equal longitudinal persistence intelligence
 
-### Target State (PROPOSED)
+### Target State (PROPOSED — broader convergence)
 
-**`PersistenceAssessment`** (conceptual contract — **PROPOSED**, not an existing TypeScript interface):
+Enterprise-wide persistence intelligence convergence:
 
-Persistence state model:
+- Cross-domain correlation envelope linking workflow, Cost, Security, and execution evidence
+- Normalized persistence facts consumable by governance, readiness, confidence, and future evidence maturity
+- Broader plugin coverage beyond EC2 Cost
 
-| State | Meaning |
-|-------|---------|
-| `NEW` | First observation of recommendation fingerprint |
-| `STABLE` | Fingerprint unchanged over observation window |
-| `CHANGED` | Material change detected |
-| `MISSING_PREVIOUS` | Expected prior history absent |
+The Sprint 1 invariant-level foundation is implemented for EC2 Cost; broader enterprise-wide convergence and downstream consumption remain future work.
 
-Additional fields (conceptual — **not implemented**):
-
-- `persistence_hours`
-- `previousRecommendationReference`
-- `currentRecommendationFingerprint` / `previousFingerprint`
-- Timestamps for first seen / last changed
-- Duplicate observation handling
-- Out-of-order observation handling
-- Idempotent persistence writes
-
-> **Contract note:** `PersistenceAssessment` defines **semantic guarantees** rather than mandatory TypeScript property names. Existing repository contracts should be extended or adapted where appropriate rather than duplicated unnecessarily.
-
-> Research-derived persistence methods — implementation subject to applicable IP authorization. Do not copy proprietary formulas into the commercial repository without authorization.
+> Research-derived persistence methods beyond implemented invariant-level mechanics — subject to applicable IP authorization. Do not copy proprietary formulas into the commercial repository without authorization.
 
 ### Gaps
 
-Entire persistence intelligence layer — **PROPOSED** (Sprint 1)
+- Sprint 1 EC2 Cost longitudinal evidence persistence foundation — **CURRENT** (Accepted Sprint 1)
+- Cross-domain persistence convergence and shared evidence envelope — **PROPOSED**
+- Legacy workflow/readiness/confidence consumption of `PersistenceAssessment` — **PROPOSED** (Sprint 2 design boundary)
+- Full cross-entity atomicity (`TransactWriteItems`) — **not implemented** (accepted Sprint 1 limitation)
 
 ### Engineering Direction
 
 Implement invariant-level persistence tracking without exposing unauthorized proprietary constants.
+
+Preserve the distinction between:
+
+- **Implemented invariant-level persistence mechanics** (Sprint 1 EC2 Cost foundation — **CURRENT**)
+- **Future research-derived intelligence/maturity semantics** (evidence maturity, ML eligibility — **PROPOSED**)
 
 ---
 
@@ -885,18 +898,20 @@ Verification + Rollback + Provenance + Enterprise Release Qualification
 
 ### Sprint 1 — Evidence Foundation + Persistence
 
+**Status:** EC2 Cost longitudinal evidence persistence foundation — **CURRENT** (Accepted Sprint 1). Broader cross-domain persistence convergence remains **PROPOSED**.
+
 | Item | Deliverable |
 |------|-------------|
 | Persistence state model | `NEW`, `STABLE`, `CHANGED`, `MISSING_PREVIOUS` |
 | Longitudinal history | Fingerprinted recommendation timeline |
-| `persistence_hours` | Conceptual duration tracking |
+| `persistence_hours` | Duration tracking from observation timestamps |
 | Evidence fixtures | Test fixtures for persistence scenarios |
 | Confidence baseline | Preserve existing 0–100 model; document weights/thresholds |
 | Governance mapping | Initial PRESERVED/IMPROVED/REPLACED/MISSING table |
 | Tests | Repository + unit tests for persistence transitions |
 | **Acceptance criteria** | Material recommendation change detected and persisted; duplicate/idempotent observations handled; no unauthorized proprietary formula exposure |
 
-**Sprint 1 release gate:** Persistence intelligence semantics and tests must pass before Sprint 2 maturity work begins.
+**Sprint 1 release gate:** EC2 Cost persistence intelligence semantics and tests must pass before Sprint 2 maturity work begins.
 
 ### Sprint 2 — Evidence Maturity + Governance + Confidence
 
@@ -1073,7 +1088,7 @@ A recommendation is **not** enterprise-ready merely because it exists.
 | 1 | Tenant context established | **CURRENT** |
 | 2 | AWS account verified | **CURRENT** |
 | 3 | Evidence collected | **CURRENT** (path-dependent) |
-| 4 | Persistence recorded | **PARTIALLY IMPLEMENTED** |
+| 4 | Persistence recorded | **PARTIALLY IMPLEMENTED** — EC2 Cost longitudinal evidence observations (**CURRENT**); not yet universal across all domains |
 | 5 | Evidence maturity assessed | **PROPOSED** |
 | 6 | Governance passed | **CURRENT** |
 | 7 | Confidence scored | **CURRENT** |
@@ -1096,7 +1111,7 @@ A recommendation is **not** enterprise-ready merely because it exists.
 - EC2 async job reliability (DLQ reconciliation, scope blocking hardening)
 - Frontend history/progress reconciliation
 - Strict tenant mode for production
-- Persistence intelligence (Sprint 1)
+- Cross-domain persistence convergence (post-Sprint 1 EC2 Cost foundation)
 
 ### Medium term
 
@@ -1162,7 +1177,7 @@ Human-approved actions only (CURRENT)
 
 | Research concept | Commercial status | Mapping |
 |------------------|-------------------|---------|
-| Longitudinal persistence intelligence | Not in code | **MISSING** |
+| Longitudinal persistence intelligence | EC2 Cost foundation implemented (`backend/persistence-intelligence/`); not universal across all domains | **PARTIALLY IMPLEMENTED** / **IMPROVED** |
 | Evidence maturity taxonomy | Readiness only | **PARTIALLY IMPLEMENTED** |
 | Weighted confidence 0–100 | Implemented | **PRESERVED** (verify against research via golden vectors) |
 | Governance gating | Implemented | **PRESERVED** / **IMPROVED** |
