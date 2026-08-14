@@ -101,6 +101,7 @@ function buildCompleteInput(): ReportGenerationInput {
       status: CONFIDENCE_STATUS.HIGH,
       reason: 'Stable utilization pattern',
       factors: [],
+      formulaVersion: 'commercial-weighted-v1',
       level: 'high',
     },
     recommendation: {

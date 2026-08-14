@@ -59,7 +59,14 @@ describe('MockLearningRepository', () => {
     };
     const confidence: ConfidenceHistoryEntry = {
       historyId: 'confidence-001', tenantId: 'tenant-a', workflowId: 'workflow-001',
-      confidence: { score: 92, status: 'HIGH', reason: 'Strong evidence', factors: [], level: 'high' },
+      confidence: {
+        score: 92,
+        status: 'HIGH',
+        reason: 'Strong evidence',
+        factors: [],
+        formulaVersion: 'commercial-weighted-v1',
+        level: 'high',
+      },
       recordedAt: '2026-07-21T12:02:00.000Z',
     };
     await repository.addFeedback(feedback);

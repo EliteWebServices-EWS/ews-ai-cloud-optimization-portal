@@ -82,6 +82,7 @@ function buildConfidence(
       status: 'HIGH',
       reason: 'Strong evidence',
       factors: [],
+      formulaVersion: 'commercial-weighted-v1',
       level: 'high',
     } as ConfidenceHistoryEntry['confidence'],
     recordedAt: '2026-07-21T12:02:00.000Z',
