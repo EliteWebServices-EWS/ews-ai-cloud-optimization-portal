@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict';
 import { createReportingEngine } from '../../engines';
 import {
-  CONFIDENCE_STATUS,
   PLUGIN_NAMES,
   RECOMMENDATION_STATUS,
   VERIFICATION_STATUS,
   WORKFLOW_STATES,
 } from '../../shared/constants';
 import type { ReportGenerationInput } from '../../shared/types';
+import { buildConfidenceResult } from '../fixtures/evidence';
 
 const TENANT_ID = 'integration-report-tenant';
 
@@ -96,14 +96,10 @@ function buildCompleteInput(): ReportGenerationInput {
       recommendedCost: 36,
       roi: 50,
     },
-    confidence: {
+    confidence: buildConfidenceResult({
       score: 85,
-      status: CONFIDENCE_STATUS.HIGH,
       reason: 'Stable utilization pattern',
-      factors: [],
-      formulaVersion: 'commercial-weighted-v1',
-      level: 'high',
-    },
+    }),
     recommendation: {
       status: RECOMMENDATION_STATUS.RECOMMENDED,
       summary: 'Rightsize instance from t3.large to t3.medium',

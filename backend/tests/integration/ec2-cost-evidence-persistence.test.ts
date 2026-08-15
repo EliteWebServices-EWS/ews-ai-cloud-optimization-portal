@@ -7,36 +7,18 @@ import { MockEc2CloudResourceRepository } from '../../repositories/mock/mock-ec2
 import { MockEc2CostRepository } from '../../repositories/mock/mock-ec2-cost-repository';
 import { MockEvidenceObservationRepository } from '../../repositories/mock/mock-evidence-observation-repository';
 import { EvidencePersistenceService } from '../../services/evidence-persistence-service';
+import {
+  ACCOUNT_A,
+  buildEmptyMetricsFactory,
+  RESOURCE_ID_STOPPED,
+  seedStoppedInstanceWithVolume,
+  TENANT_A,
+} from '../fixtures/evidence';
 
 describe('EC2 cost evidence persistence integration', () => {
   it('persists historical observations through the cost analysis orchestrator', async () => {
     const resources = new MockEc2CloudResourceRepository();
-    await resources.upsertDiscoveredResource({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
-      region: 'us-east-1',
-      resourceType: 'INSTANCE',
-      resourceId: 'i-stopped',
-      tags: [],
-      status: 'ACTIVE',
-      metadata: { state: 'stopped' },
-      discoveredAt: new Date('2026-08-10T10:00:00.000Z').toISOString(),
-    });
-    await resources.upsertDiscoveredResource({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
-      region: 'us-east-1',
-      resourceType: 'VOLUME',
-      resourceId: 'vol-1',
-      tags: [],
-      status: 'ACTIVE',
-      metadata: {
-        sizeGiB: 50,
-        volumeType: 'gp3',
-        attachments: [{ instanceId: 'i-stopped', state: 'attached' }],
-      },
-      discoveredAt: new Date('2026-08-10T10:00:00.000Z').toISOString(),
-    });
+    await seedStoppedInstanceWithVolume(resources, undefined, new Date('2026-08-10T10:00:00.000Z').toISOString());
 
     const costRepo = new MockEc2CostRepository({
       recommendationNow: () => new Date('2026-08-10T12:00:00.000Z'),
@@ -50,13 +32,11 @@ describe('EC2 cost evidence persistence integration', () => {
       persistence,
     );
 
-    const metricsFactory = () => ({
-      collectMetrics: async () => [],
-    });
+    const metricsFactory = buildEmptyMetricsFactory();
 
     const first = await orchestrator.run({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
+      tenantId: TENANT_A,
+      accountId: ACCOUNT_A,
       regions: ['us-east-1'],
       observationDays: 14,
       runId: 'run-1',
@@ -68,16 +48,16 @@ describe('EC2 cost evidence persistence integration', () => {
     assert.equal(first.recommendationsCreated, 1);
 
     const findingKey = buildEc2CostFindingKey({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
+      tenantId: TENANT_A,
+      accountId: ACCOUNT_A,
       region: 'us-east-1',
-      resourceId: 'i-stopped',
+      resourceId: RESOURCE_ID_STOPPED,
       category: 'STOPPED_WITH_STORAGE',
       ruleVersion: '1.0.0',
     });
     const firstHistory = await observations.listObservationsForFinding({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
+      tenantId: TENANT_A,
+      accountId: ACCOUNT_A,
       findingKey,
     });
     assert.equal(firstHistory.items.length, 1);
@@ -85,8 +65,8 @@ describe('EC2 cost evidence persistence integration', () => {
     assert.equal(firstHistory.items[0]!.correlationId, 'corr-1');
 
     const second = await orchestrator.run({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
+      tenantId: TENANT_A,
+      accountId: ACCOUNT_A,
       regions: ['us-east-1'],
       observationDays: 14,
       runId: 'run-2',
@@ -98,8 +78,8 @@ describe('EC2 cost evidence persistence integration', () => {
     assert.equal(second.recommendationsUpdated, 1);
 
     const secondHistory = await observations.listObservationsForFinding({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
+      tenantId: TENANT_A,
+      accountId: ACCOUNT_A,
       findingKey,
     });
     assert.equal(secondHistory.items.length, 2);

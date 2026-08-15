@@ -1,41 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildRecommendationFingerprintInputFromEc2Cost } from '../../persistence-intelligence/recommendation-fingerprint';
 import { MockEvidenceObservationRepository } from '../../repositories/mock/mock-evidence-observation-repository';
 import type { RecordEvidenceObservationInput } from '../../persistence-intelligence/types';
+import { buildRecordEvidenceObservationInput } from '../fixtures/evidence';
 
 function baseInput(overrides: Partial<RecordEvidenceObservationInput> = {}): RecordEvidenceObservationInput {
-  return {
-    tenantId: 'tenant-a',
-    accountId: '111122223333',
-    region: 'us-east-1',
-    service: 'ec2',
-    resourceType: 'INSTANCE',
-    resourceId: 'i-abc',
-    findingKey: 'tenant-a#111122223333#us-east-1#i-abc#UNDERUTILIZED#1.0.0',
-    recommendationId: 'rec-1',
-    recommendedAction: 'Rightsize to t3.medium',
-    category: 'UNDERUTILIZED',
-    ruleId: 'ec2-cost-underutilized',
-    ruleVersion: '1.0.0',
-    analysisRunId: 'run-1',
-    recommendationVersion: 1,
-    fingerprintInput: buildRecommendationFingerprintInputFromEc2Cost({
-      service: 'ec2',
-      resourceType: 'INSTANCE',
-      resourceId: 'i-abc',
-      region: 'us-east-1',
-      category: 'UNDERUTILIZED',
-      recommendedAction: 'Rightsize to t3.medium',
-      ruleId: 'ec2-cost-underutilized',
-      ruleVersion: '1.0.0',
-    }),
-    observationTimestamp: '2026-08-10T12:00:00.000Z',
-    collectionTimestamp: '2026-08-10T12:05:00.000Z',
-    provenance: 'ec2-cost-analysis',
-    ...overrides,
-  };
+  return buildRecordEvidenceObservationInput(overrides);
 }
 
 describe('Sprint 1 persistence regression', () => {

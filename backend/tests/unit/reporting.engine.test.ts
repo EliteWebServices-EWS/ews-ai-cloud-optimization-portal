@@ -20,6 +20,7 @@ import {
   WORKFLOW_STATES,
 } from '../../shared/constants';
 import type { ReportGenerationInput } from '../../shared/types';
+import { buildConfidenceResult } from '../fixtures/evidence';
 
 const TENANT_ID = 'sisum-default';
 
@@ -108,14 +109,10 @@ function buildCompleteInput(overrides: Partial<ReportGenerationInput> = {}): Rep
       recommendedCost: 30.37,
       roi: 50,
     },
-    confidence: {
+    confidence: buildConfidenceResult({
       score: 88,
-      status: CONFIDENCE_STATUS.HIGH,
       reason: 'Stable utilization pattern',
-      factors: [],
-      formulaVersion: 'commercial-weighted-v1',
-      level: 'high',
-    },
+    }),
     recommendation: {
       status: RECOMMENDATION_STATUS.RECOMMENDED,
       summary: 'Rightsize t3.large to t3.medium',
@@ -256,14 +253,12 @@ describe('ReportingEngine', () => {
     const highInput = buildCompleteInput({ workflowId: 'wf-high' });
     const lowInput = buildCompleteInput({
       workflowId: 'wf-low',
-      confidence: {
+      confidence: buildConfidenceResult({
         score: 40,
         status: CONFIDENCE_STATUS.LOW,
         reason: 'Volatile metrics',
-        factors: [],
-        formulaVersion: 'commercial-weighted-v1',
         level: 'low',
-      },
+      }),
     });
 
     await engine.execute(highInput);

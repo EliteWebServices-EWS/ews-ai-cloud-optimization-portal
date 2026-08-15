@@ -14,6 +14,7 @@ import type {
   RecordEvidenceObservationInput,
   RecordEvidenceObservationResult,
 } from '../../persistence-intelligence/types';
+import { seedStoppedInstanceWithVolume } from '../fixtures/evidence';
 
 class FailingEvidenceObservationRepository extends MockEvidenceObservationRepository {
   constructor(private readonly message = 'EVIDENCE_WRITE_FAILED') {
@@ -40,32 +41,7 @@ class FailingUpsertEc2CostRepository extends MockEc2CostRepository {
 }
 
 async function seedStoppedInstanceScenario(resources: MockEc2CloudResourceRepository): Promise<void> {
-  await resources.upsertDiscoveredResource({
-    tenantId: 'tenant-a',
-    accountId: '111122223333',
-    region: 'us-east-1',
-    resourceType: 'INSTANCE',
-    resourceId: 'i-stopped',
-    tags: [],
-    status: 'ACTIVE',
-    metadata: { state: 'stopped' },
-    discoveredAt: '2026-08-10T10:00:00.000Z',
-  });
-  await resources.upsertDiscoveredResource({
-    tenantId: 'tenant-a',
-    accountId: '111122223333',
-    region: 'us-east-1',
-    resourceType: 'VOLUME',
-    resourceId: 'vol-1',
-    tags: [],
-    status: 'ACTIVE',
-    metadata: {
-      sizeGiB: 50,
-      volumeType: 'gp3',
-      attachments: [{ instanceId: 'i-stopped', state: 'attached' }],
-    },
-    discoveredAt: '2026-08-10T10:00:00.000Z',
-  });
+  await seedStoppedInstanceWithVolume(resources);
 }
 
 describe('Sprint 1 persistence consistency', () => {

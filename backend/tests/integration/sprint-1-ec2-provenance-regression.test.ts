@@ -8,36 +8,12 @@ import { MockEc2CloudResourceRepository } from '../../repositories/mock/mock-ec2
 import { MockEc2CostRepository } from '../../repositories/mock/mock-ec2-cost-repository';
 import { MockEvidenceObservationRepository } from '../../repositories/mock/mock-evidence-observation-repository';
 import { EvidencePersistenceService } from '../../services/evidence-persistence-service';
+import { seedStoppedInstanceWithVolume } from '../fixtures/evidence';
 
 describe('Sprint 1 EC2 provenance and observation timestamp regression', () => {
   it('persists evidence observationTimestamp from metrics observationEnd and async jobId', async () => {
     const resources = new MockEc2CloudResourceRepository();
-    await resources.upsertDiscoveredResource({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
-      region: 'us-east-1',
-      resourceType: 'INSTANCE',
-      resourceId: 'i-stopped',
-      tags: [],
-      status: 'ACTIVE',
-      metadata: { state: 'stopped' },
-      discoveredAt: '2026-08-10T08:00:00.000Z',
-    });
-    await resources.upsertDiscoveredResource({
-      tenantId: 'tenant-a',
-      accountId: '111122223333',
-      region: 'us-east-1',
-      resourceType: 'VOLUME',
-      resourceId: 'vol-1',
-      tags: [],
-      status: 'ACTIVE',
-      metadata: {
-        sizeGiB: 50,
-        volumeType: 'gp3',
-        attachments: [{ instanceId: 'i-stopped', state: 'attached' }],
-      },
-      discoveredAt: '2026-08-10T08:00:00.000Z',
-    });
+    await seedStoppedInstanceWithVolume(resources, undefined, '2026-08-10T08:00:00.000Z');
 
     const costRepo = new MockEc2CostRepository();
     const observations = new MockEvidenceObservationRepository();
