@@ -6,7 +6,7 @@ import { renderEc2SummaryCard } from '../components/EC2SummaryCard';
 import { renderEc2CostBreakdownCard } from '../components/EC2CostBreakdownCard';
 import { renderEc2InstanceMixCard } from '../components/EC2InstanceMixCard';
 import { renderEc2SecurityFindingsCard } from '../components/EC2SecurityFindingsCard';
-import { renderEc2RightsizingCard } from '../components/EC2RightsizingCard';
+import { renderEc2RightsizingCard, formatRightsizingSavings, formatRightsizingUtilization } from '../components/EC2RightsizingCard';
 import { renderEc2ExecutiveSummaryCard } from '../components/EC2ExecutiveSummaryCard';
 import type {
   Ec2CostBreakdown,
@@ -163,6 +163,64 @@ describe('Dashboard components', () => {
     expect(container.textContent).toContain('Rightsizing');
     expect(container.textContent).toContain('i-123456');
     expect(container.textContent).toContain('m6i.large');
+    expect(container.textContent).toContain('18% utilization');
+    expect(container.textContent).toContain('$124.50/mo');
+  });
+
+  it('renders safe rightsizing wording for missing or non-finite metrics', () => {
+    const opportunities: Ec2RightsizingOpportunity[] = [
+      {
+        instanceId: 'i-missing-metrics',
+        currentType: 't3.micro',
+        recommendedType: 'Review workload steady-state CPU; consider instance family change after approval.',
+      },
+      {
+        instanceId: 'i-nan-metrics',
+        currentType: 'm5.large',
+        recommendedType: 't3.medium',
+        utilization: Number.NaN,
+        savings: Number.NaN,
+      },
+      {
+        instanceId: 'i-infinite-metrics',
+        currentType: 'c5.xlarge',
+        recommendedType: 'c5.large',
+        utilization: Number.POSITIVE_INFINITY,
+        savings: Number.NEGATIVE_INFINITY,
+      },
+      {
+        instanceId: 'i-zero-metrics',
+        currentType: 't3.small',
+        recommendedType: 't3.micro',
+        utilization: 0,
+        savings: 0,
+      },
+    ];
+
+    renderEc2RightsizingCard(container, opportunities);
+    const text = container.textContent ?? '';
+
+    expect(text).toContain('Utilization not analyzed');
+    expect(text).toContain('Savings unavailable');
+    expect(text).not.toContain('NaN');
+    expect(text).not.toContain('Infinity');
+    expect(text).toContain('0% utilization');
+    expect(text).toContain('$0.00/mo');
+    expect(text).toContain('Review workload steady-state CPU');
+  });
+
+  it('formats rightsizing utilization and savings helpers safely', () => {
+    expect(formatRightsizingUtilization(undefined)).toBe('Utilization not analyzed');
+    expect(formatRightsizingUtilization(Number.NaN)).toBe('Utilization not analyzed');
+    expect(formatRightsizingUtilization(Number.POSITIVE_INFINITY)).toBe('Utilization not analyzed');
+    expect(formatRightsizingUtilization(12.4)).toBe('12.4% utilization');
+    expect(formatRightsizingUtilization(0)).toBe('0% utilization');
+
+    expect(formatRightsizingSavings(undefined)).toBe('Savings unavailable');
+    expect(formatRightsizingSavings(Number.NaN)).toBe('Savings unavailable');
+    expect(formatRightsizingSavings(Number.POSITIVE_INFINITY)).toBe('Savings unavailable');
+    expect(formatRightsizingSavings(42.5)).toBe('$42.50/mo');
+    expect(formatRightsizingSavings(0)).toBe('$0.00/mo');
   });
 
   it('renders EC2 executive summary with savings and priority message', () => {

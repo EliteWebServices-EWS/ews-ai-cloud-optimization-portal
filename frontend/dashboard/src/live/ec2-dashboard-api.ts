@@ -69,6 +69,8 @@ export interface Ec2CostRecommendationApi {
   pricingStatus: string;
   estimatedMonthlySavings?: number;
   currentMonthlyCost?: number;
+  currentInstanceType?: string;
+  candidateInstanceType?: string;
   analyzedAt?: string;
 }
 

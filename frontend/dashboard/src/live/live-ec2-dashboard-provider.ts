@@ -6,6 +6,8 @@ import {
   maskAccountId,
   pricingStatusLabel,
 } from '../ec2/ec2-dashboard-view-model';
+import type { Ec2CostRecommendationApi } from './ec2-dashboard-api';
+import type { Ec2RightsizingOpportunity } from '../types';
 import {
   Ec2DashboardApiError,
   fetchEc2CostRecommendations,
@@ -27,6 +29,20 @@ export type LiveEc2DashboardErrorCode =
 
 export interface LiveEc2LoadResult {
   viewModel: Ec2DashboardViewModel;
+}
+
+function mapRightsizingOpportunity(item: Ec2CostRecommendationApi): Ec2RightsizingOpportunity {
+  const opportunity: Ec2RightsizingOpportunity = {
+    instanceId: item.resourceId,
+    currentType: item.currentInstanceType ?? 'Instance type unavailable',
+    recommendedType: item.candidateInstanceType ?? item.recommendedAction,
+  };
+
+  if (Number.isFinite(item.estimatedMonthlySavings)) {
+    opportunity.savings = item.estimatedMonthlySavings;
+  }
+
+  return opportunity;
 }
 
 function countInstances(summary: {
@@ -177,13 +193,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
 
     const rightsizing = (costList?.items ?? [])
       .filter((item) => isRightsizingCategory(item.category))
-      .map((item) => ({
-        instanceId: item.resourceId,
-        currentType: item.resourceId,
-        recommendedType: item.recommendedAction,
-        savings: item.estimatedMonthlySavings ?? 0,
-        utilization: Number.NaN,
-      }));
+      .map(mapRightsizingOpportunity);
 
     const costRecommendations = (costList?.items ?? []).map((item) => ({
       recommendationId: item.recommendationId,
@@ -295,6 +305,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
         critical: 0,
         unknown: totalInstances === 0 ? 1 : 0,
       },
+      // Fleet-average CPU is not exposed by the live dashboard API contract (follow-up).
       averageCpuUtilization: undefined,
       warnings,
       errors: costFailed ? errors : [],
