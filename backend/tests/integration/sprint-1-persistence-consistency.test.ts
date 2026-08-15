@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { Ec2CostAnalysisOrchestrator } from '../../cloud-intelligence/ec2-cost/ec2-cost-analysis-orchestrator';
 import type { Ec2CostRecommendationRecord } from '../../cloud-intelligence/ec2-cost/ec2-cost-models';
+import type { Ec2PerformanceEvidence } from '../../cloud-intelligence/ec2-cost/ec2-cost-models';
 import { buildEc2CostFindingKey } from '../../database/cloud-resources/ec2-cost-keys';
 import { PersistenceDataQualityError } from '../../persistence-intelligence/errors';
 import type { UpsertEc2CostRecommendationInput } from '../../repositories/contracts/ec2-cost-repository';
@@ -14,6 +15,11 @@ import type {
   RecordEvidenceObservationInput,
   RecordEvidenceObservationResult,
 } from '../../persistence-intelligence/types';
+import {
+  FIXED_OBSERVATION_TS_1,
+  FIXED_OBSERVATION_TS_2,
+  RESOURCE_ID_STOPPED,
+} from '../fixtures/evidence/identities';
 import { seedStoppedInstanceWithVolume } from '../fixtures/evidence';
 
 class FailingEvidenceObservationRepository extends MockEvidenceObservationRepository {
@@ -42,6 +48,23 @@ class FailingUpsertEc2CostRepository extends MockEc2CostRepository {
 
 async function seedStoppedInstanceScenario(resources: MockEc2CloudResourceRepository): Promise<void> {
   await seedStoppedInstanceWithVolume(resources);
+}
+
+function buildStoppedInstanceMetricsEvidence(observationEnd: string): Ec2PerformanceEvidence {
+  return {
+    tenantId: 'tenant-a',
+    accountId: '111122223333',
+    region: 'us-east-1',
+    instanceId: RESOURCE_ID_STOPPED,
+    observationStart: '2026-07-27T12:00:00.000Z',
+    observationEnd,
+    periodSeconds: 3600,
+    expectedSampleCount: 336,
+    actualSampleCount: 336,
+    dataCompleteness: 'COMPLETE',
+    collectedAt: '2026-08-10T12:05:00.000Z',
+    warnings: [],
+  };
 }
 
 describe('Sprint 1 persistence consistency', () => {
@@ -260,6 +283,7 @@ describe('Sprint 1 persistence consistency', () => {
       costRepo,
       persistence,
     );
+    let orchestratorRunCount = 0;
     const runInput = {
       tenantId: 'tenant-a',
       accountId: '111122223333',
@@ -268,7 +292,14 @@ describe('Sprint 1 persistence consistency', () => {
       runId: 'run-rec-retry',
       requestedAt: '2026-08-10T11:00:00.000Z',
       startedAt: '2026-08-10T11:00:00.000Z',
-      metricsClientFactory: () => ({ collectMetrics: async () => [] }),
+      metricsClientFactory: () => {
+        orchestratorRunCount += 1;
+        const observationEnd =
+          orchestratorRunCount === 1 ? FIXED_OBSERVATION_TS_1 : FIXED_OBSERVATION_TS_2;
+        return {
+          collectMetrics: async () => [buildStoppedInstanceMetricsEvidence(observationEnd)],
+        };
+      },
     };
 
     await assert.rejects(() => orchestrator.run(runInput), /RECOMMENDATION_WRITE_FAILED/);
@@ -293,6 +324,10 @@ describe('Sprint 1 persistence consistency', () => {
     });
     assert.equal(history.items.length, 2);
     assert.equal(recommendations.items.length, 1);
+    assert.notEqual(
+      history.items[0]!.observationTimestamp,
+      history.items[1]!.observationTimestamp,
+    );
     assert.equal(history.items[0]!.assessment.state, 'NEW');
     assert.equal(history.items[1]!.assessment.state, 'STABLE');
   });
