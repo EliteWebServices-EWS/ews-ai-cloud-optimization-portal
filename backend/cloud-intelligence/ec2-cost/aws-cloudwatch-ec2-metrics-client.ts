@@ -25,10 +25,13 @@ import {
   METRIC_STATUS_FAILED,
 } from './ec2-cloudwatch-metric-queries';
 import { EC2_COST_MAX_METRIC_DATA_QUERIES_PER_REQUEST } from './ec2-cloudwatch-query-batching';
+import { logEc2CostCloudWatchMetricsFailure } from './ec2-cost-metrics-error-diagnostics';
 import { toEc2CostMetricsAppError } from './ec2-cost-metrics-errors';
+import { createLogger, type Logger } from '../../shared/utils';
 
 export interface AwsCloudWatchEc2MetricsClientOptions {
   maxMetricDataQueriesPerRequest?: number;
+  logger?: Logger;
 }
 
 async function fetchBatchMetricSeries(
@@ -72,6 +75,7 @@ export function createAwsCloudWatchEc2MetricsClient(
 ): Ec2PerformanceMetricsClientPort {
   const maxQueriesPerRequest =
     options.maxMetricDataQueriesPerRequest ?? EC2_COST_MAX_METRIC_DATA_QUERIES_PER_REQUEST;
+  const logger = options.logger ?? createLogger('Ec2CostMetrics');
 
   return {
     async collectMetrics(request: Ec2MetricsCollectionRequest): Promise<Ec2PerformanceEvidence[]> {
@@ -101,7 +105,19 @@ export function createAwsCloudWatchEc2MetricsClient(
             queries: queryBatch,
           }, seriesById);
         } catch (error) {
-          throw toEc2CostMetricsAppError(error);
+          const mapped = toEc2CostMetricsAppError(error);
+          logEc2CostCloudWatchMetricsFailure(
+            logger,
+            {
+              operation: 'GetMetricData',
+              region: request.region,
+              tenantId: context.tenantId,
+              accountId: context.accountId,
+              mappedCode: mapped.code,
+            },
+            error,
+          );
+          throw mapped;
         }
       }
 

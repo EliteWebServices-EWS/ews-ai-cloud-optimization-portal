@@ -25,9 +25,14 @@ export interface LogContext {
   requestId?: string;
   errorName?: string;
   awsErrorCode?: string;
+  awsErrorName?: string;
   httpStatusCode?: number;
+  awsHttpStatusCode?: number;
   awsRequestId?: string;
+  awsRetryAttempts?: number;
   retryable?: boolean;
+  region?: string;
+  mappedCode?: string;
   attemptCount?: number;
   resumeRunExpectedVersion?: number;
 }
