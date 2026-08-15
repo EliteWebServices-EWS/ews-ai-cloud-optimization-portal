@@ -26,6 +26,7 @@
     "test:ec2-async-jobs": "npm run test:exec -- tests/unit/ec2-async-job-repository.test.ts tests/unit/ec2-async-job-template.test.ts tests/integration/ec2-async-job-api-http.test.ts",
     "test:ec2-analysis-consumer": "npm run test:exec -- tests/unit/ec2-intelligence-queue-message-parser.test.ts tests/unit/ec2-async-job-consumer-service.test.ts tests/unit/ec2-analysis-consumer-handler.test.ts tests/unit/ec2-stage-run-stale-worker-fencing.test.ts",
     "test:learning-validation": "npm run test:exec -- tests/integration/learning.validation.test.ts tests/unit/learning.validation.safety.test.ts",
+    "test:sprint1-evidence-fixtures": "npm run test:exec -- tests/unit/evidence-fixtures.catalog.test.ts tests/unit/dynamodb-evidence-observation-repository.test.ts tests/integration/sprint-1-evidence-tenant-isolation.test.ts tests/integration/sprint-1-evidence-golden-path.test.ts tests/unit/persistence-intelligence.test.ts tests/unit/mock-evidence-observation-repository.test.ts tests/unit/sprint-1-persistence-regression.test.ts tests/integration/ec2-cost-evidence-persistence.test.ts tests/integration/sprint-1-persistence-consistency.test.ts tests/integration/sprint-1-ec2-provenance-regression.test.ts tests/unit/confidence.scoring.test.ts tests/unit/confidence.engine.test.ts",
     "validate:tenant-admin": "npm run test:sprint12",
     "migrate:persistence": "tsx scripts/migrate-memory-to-dynamodb.ts"
   },

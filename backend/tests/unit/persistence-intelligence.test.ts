@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 import { stableStringify } from '../../persistence-intelligence/canonical-json';
 import { PersistenceDataQualityError } from '../../persistence-intelligence/errors';
 import {
-  buildLogicalObservationId,
   selectRelevantPreviousObservation,
   sortObservationsByObservationTimestamp,
 } from '../../persistence-intelligence/observation-ordering';
@@ -20,40 +19,13 @@ import type {
   EvidenceObservationRecord,
   RecordEvidenceObservationInput,
 } from '../../persistence-intelligence/types';
+import {
+  buildEvidenceObservationRecord,
+  buildRecordEvidenceObservationInput,
+} from '../fixtures/evidence';
 
 function baseInput(overrides: Partial<RecordEvidenceObservationInput> = {}): RecordEvidenceObservationInput {
-  return {
-    tenantId: 'tenant-a',
-    accountId: '111122223333',
-    region: 'us-east-1',
-    service: 'ec2',
-    resourceType: 'INSTANCE',
-    resourceId: 'i-abc',
-    findingKey: 'fk-1',
-    recommendationId: 'rec-1',
-    recommendedAction: 'Rightsize to t3.medium',
-    category: 'UNDERUTILIZED',
-    ruleId: 'ec2-cost-underutilized',
-    ruleVersion: '1.0.0',
-    analysisRunId: 'run-1',
-    recommendationVersion: 1,
-    fingerprintInput: buildRecommendationFingerprintInputFromEc2Cost({
-      service: 'ec2',
-      resourceType: 'INSTANCE',
-      resourceId: 'i-abc',
-      region: 'us-east-1',
-      category: 'UNDERUTILIZED',
-      recommendedAction: 'Rightsize to t3.medium',
-      ruleId: 'ec2-cost-underutilized',
-      ruleVersion: '1.0.0',
-      observedValues: { avgCpu: 4.2 },
-      thresholds: { maxCpu: 20 },
-    }),
-    observationTimestamp: '2026-08-10T12:00:00.000Z',
-    collectionTimestamp: '2026-08-10T12:05:00.000Z',
-    provenance: 'ec2-cost-analysis',
-    ...overrides,
-  };
+  return buildRecordEvidenceObservationInput(overrides);
 }
 
 function observationFromInput(
@@ -62,44 +34,7 @@ function observationFromInput(
   observationTimestamp: string,
   logicalSuffix = 'log-1',
 ): EvidenceObservationRecord {
-  const fingerprint = computeRecommendationFingerprint(input.fingerprintInput);
-  const logicalObservationId = buildLogicalObservationId({
-    tenantId: input.tenantId,
-    accountId: input.accountId,
-    findingKey: input.findingKey,
-    analysisRunId: input.analysisRunId,
-    observationTimestamp,
-  });
-  return {
-    observationId: `obs-${logicalSuffix}`,
-    logicalObservationId,
-    tenantId: input.tenantId,
-    accountId: input.accountId,
-    region: input.region,
-    service: input.service,
-    resourceType: input.resourceType,
-    resourceId: input.resourceId,
-    findingKey: input.findingKey,
-    recommendationId: input.recommendationId,
-    recommendationFingerprint: fingerprint,
-    recommendedAction: input.recommendedAction,
-    category: input.category,
-    ruleId: input.ruleId,
-    ruleVersion: input.ruleVersion,
-    analysisRunId: input.analysisRunId,
-    provenance: input.provenance,
-    observationTimestamp,
-    collectionTimestamp: input.collectionTimestamp,
-    persistedAt: input.collectionTimestamp,
-    assessment: {
-      state: assessmentState,
-      recommendationFingerprint: fingerprint,
-      persistenceHours: null,
-      reasonCodes: [PERSISTENCE_REASON.FIRST_OBSERVATION],
-      logicalObservationId,
-    },
-    version: 1,
-  };
+  return buildEvidenceObservationRecord(input, assessmentState, observationTimestamp, logicalSuffix);
 }
 
 describe('persistence intelligence fingerprint', () => {

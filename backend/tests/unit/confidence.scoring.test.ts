@@ -6,60 +6,16 @@ import {
   DEFAULT_CONFIDENCE_CONFIG,
 } from '../../engines/confidence';
 import type { EvidenceValidationResult, StandardizedEvidence } from '../../shared/types';
+import {
+  buildHealthyEvidence,
+  buildHealthyValidation,
+  RESOURCE_ID_CONFIDENCE_GOLDEN,
+} from '../fixtures/evidence';
 
-const RESOURCE_ID = 'i-confidence-001';
+const RESOURCE_ID = RESOURCE_ID_CONFIDENCE_GOLDEN;
 
-const evidence: StandardizedEvidence = {
-  telemetry: {
-    cpuUtilization: 20,
-    memoryUtilization: 40,
-    observationWindowDays: 7,
-  },
-  metrics: {
-    cpuUtilization: [20, 20, 20, 20, 20, 20, 20],
-    memoryUtilization: [40, 40, 40, 40, 40, 40, 40],
-    period: '1h',
-    datapoints: 7,
-    utilizationHistory: Array.from({ length: 5 }, (_, index) => ({
-      timestamp: `2026-08-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
-      cpuUtilization: 20,
-      memoryUtilization: 40,
-    })),
-  },
-  pricing: {
-    instanceType: 't3.medium',
-    region: 'us-east-1',
-    hourlyRate: 0.0416,
-    monthlyRate: 30.37,
-    currency: 'USD',
-  },
-  recommendations: [
-    {
-      resourceId: RESOURCE_ID,
-      resourceType: 'EC2',
-      action: 'rightsizing',
-      target: 't3.small',
-      reason: 'Stable low utilization',
-    },
-  ],
-  tags: {
-    Environment: 'test',
-  },
-  instance: {
-    instanceId: RESOURCE_ID,
-    instanceType: 't3.medium',
-    state: 'running',
-    region: 'us-east-1',
-    launchTime: '2026-01-01T00:00:00.000Z',
-  },
-  collectedAt: '2026-08-07T00:00:00.000Z',
-};
-
-const validation: EvidenceValidationResult = {
-  valid: true,
-  errors: [],
-  warnings: [],
-};
+const evidence: StandardizedEvidence = buildHealthyEvidence();
+const validation: EvidenceValidationResult = buildHealthyValidation();
 
 function calculate(input: {
   evidence?: StandardizedEvidence;
