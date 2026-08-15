@@ -218,6 +218,85 @@ describe('LiveEc2DashboardDataProvider', () => {
     });
     expect(vm.security.status).toBe('PARTIAL');
   });
+
+  it('maps live rightsizing without NaN utilization or zero-placeholder savings', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [
+        {
+          recommendationId: 'rec-burst',
+          accountId: '111122223333',
+          region: 'us-east-1',
+          resourceId: 'i-0ce183611f7fc8ed2',
+          category: 'BURSTABLE_CREDIT_PRESSURE',
+          severity: 'MEDIUM',
+          confidenceLevel: 'MEDIUM',
+          title: 'Burstable credit pressure',
+          summary: 'T-family credit balance or surplus charges indicate burst pressure.',
+          businessJustification: 'Credit exhaustion can throttle performance.',
+          recommendedAction:
+            'Review workload steady-state CPU; consider instance family change after approval.',
+          pricingStatus: 'UNAVAILABLE',
+          currentInstanceType: 't3.micro',
+        },
+        {
+          recommendationId: 'rec-downsize',
+          accountId: '111122223333',
+          region: 'us-east-1',
+          resourceId: 'i-downsize-001',
+          category: 'REVIEW_DOWNSIZE',
+          severity: 'MEDIUM',
+          confidenceLevel: 'MEDIUM',
+          title: 'Low utilization running instance',
+          summary: 'Sustained low CPU may indicate idle capacity.',
+          businessJustification: 'Rightsize after review.',
+          recommendedAction: 'Review downsizing after approval.',
+          pricingStatus: 'VERIFIED_RATE',
+          currentInstanceType: 'm6i.large',
+          candidateInstanceType: 't3.medium',
+          estimatedMonthlySavings: 124.5,
+        },
+      ],
+      savingsSummary: {
+        validatedMonthlySavings: 124.5,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+
+    expect(vm.averageCpuUtilization).toBeUndefined();
+    expect(vm.optimization.rightsizing).toHaveLength(2);
+
+    const burst = vm.optimization.rightsizing.find((row) => row.instanceId === 'i-0ce183611f7fc8ed2');
+    expect(burst?.currentType).toBe('t3.micro');
+    expect(burst?.recommendedType).toContain('Review workload steady-state CPU');
+    expect(burst?.utilization).toBeUndefined();
+    expect(burst?.savings).toBeUndefined();
+
+    const downsize = vm.optimization.rightsizing.find((row) => row.instanceId === 'i-downsize-001');
+    expect(downsize?.currentType).toBe('m6i.large');
+    expect(downsize?.recommendedType).toBe('t3.medium');
+    expect(downsize?.savings).toBe(124.5);
+    expect(downsize?.utilization).toBeUndefined();
+    expect(vm.cost.pricingStatus).toBe('UNAVAILABLE');
+    expect(vm.cost.estimatedMonthlyCost).toBeUndefined();
+  });
 });
 
 describe('Ec2DashboardController provider selection', () => {

@@ -292,8 +292,8 @@ export interface Ec2RightsizingOpportunity {
   instanceId: string;
   currentType: string;
   recommendedType: string;
-  savings: number;
-  utilization: number;
+  savings?: number;
+  utilization?: number;
 }
 
 export interface Ec2ExecutiveSummary {

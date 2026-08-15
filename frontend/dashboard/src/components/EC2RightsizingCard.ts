@@ -5,6 +5,20 @@
 import { escapeHtml, formatCurrency } from '../utils/format';
 import type { Ec2RightsizingOpportunity } from '../types';
 
+export function formatRightsizingUtilization(utilization: number | undefined): string {
+  if (typeof utilization !== 'number' || !Number.isFinite(utilization)) {
+    return 'Utilization not analyzed';
+  }
+  return `${utilization}% utilization`;
+}
+
+export function formatRightsizingSavings(savings: number | undefined): string {
+  if (typeof savings !== 'number' || !Number.isFinite(savings)) {
+    return 'Savings unavailable';
+  }
+  return `${formatCurrency(savings)}/mo`;
+}
+
 export function renderEc2RightsizingCard(
   container: HTMLElement,
   opportunities: Ec2RightsizingOpportunity[] = []
@@ -20,7 +34,7 @@ export function renderEc2RightsizingCard(
         <li>
           <strong>${escapeHtml(opportunity.instanceId)}</strong>
           <span>${escapeHtml(opportunity.currentType)} → ${escapeHtml(opportunity.recommendedType)}</span>
-          <small>${opportunity.utilization}% utilization · ${escapeHtml(formatCurrency(opportunity.savings))}/mo</small>
+          <small>${escapeHtml(formatRightsizingUtilization(opportunity.utilization))} · ${escapeHtml(formatRightsizingSavings(opportunity.savings))}</small>
         </li>
       `
     )
