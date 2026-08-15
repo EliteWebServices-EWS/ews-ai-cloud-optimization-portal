@@ -41,10 +41,10 @@ export function buildEc2FindingKeyForIdentity(
 }
 
 /**
- * DynamoDB sort-key safe finding key (no `#` separators).
- * Used for DynamoDbEvidenceObservationRepository adapter tests only.
- * EC2 production finding keys from buildEc2CostFindingKey() currently contain `#`
- * and are rejected by evidenceObservationSortKey() — see sprint-1-evidence-fixtures-qa.md.
+ * Legacy simplified finding key (hyphen separators, no `#`).
+ * Retained for generic DynamoDB adapter parity scenarios that intentionally
+ * avoid production EC2 composite key shape. Production EC2 keys from
+ * buildEc2CostFindingKey() are supported by evidenceObservationSortKey().
  */
 export function buildDynamoSafeFindingKey(
   identity: EvidenceIdentity,

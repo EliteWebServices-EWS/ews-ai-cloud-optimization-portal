@@ -8,7 +8,7 @@ export function evidenceObservationSortKey(input: {
   observationTimestampIso: string;
   logicalObservationId: string;
 }): string {
-  return `${EVIDENCE_OBSERVATION_SK_PREFIX}FK#${requireKeyValue(
+  return `${EVIDENCE_OBSERVATION_SK_PREFIX}FK#${requireOpaqueKeyValue(
     input.findingKey,
     'findingKey',
   )}#TS#${requireKeyValue(input.observationTimestampIso, 'observationTimestampIso')}#LOG#${requireOpaqueKeyValue(
@@ -18,5 +18,5 @@ export function evidenceObservationSortKey(input: {
 }
 
 export function evidenceObservationSortKeyPrefixForFinding(findingKey: string): string {
-  return `${EVIDENCE_OBSERVATION_SK_PREFIX}FK#${requireKeyValue(findingKey, 'findingKey')}#`;
+  return `${EVIDENCE_OBSERVATION_SK_PREFIX}FK#${requireOpaqueKeyValue(findingKey, 'findingKey')}#`;
 }
