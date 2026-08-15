@@ -1,8 +1,9 @@
 # Sprint 1 — Canonical Evidence Fixtures QA Report
 
-**Status:** Implemented (Engineer 4)
+**Status:** Implemented (Engineer 4) — **Live AWS validation complete** (see [Sprint 1 Live AWS Validation](./sprint-1-live-aws-validation.md))
 **Branch:** `feature/sprint-1-evidence-fixtures`
 **Fixture root:** `backend/tests/fixtures/evidence/`
+**Sprint 1 release gate:** **PASS / LIVE AWS VALIDATED**
 
 ## 1. Canonical fixture catalogue
 
@@ -134,17 +135,59 @@ Main `.github/workflows/ci.yml` still does not run backend tests (pre-existing).
 
 ## 15. Production defects discovered
 
-### PD-1 — FIX IMPLEMENTED / AWAITING LIVE AWS VALIDATION
+### PD-1 — LIVE AWS VALIDATED
 
 | Field | Detail |
 | --- | --- |
-| Status | **FIX IMPLEMENTED / AWAITING LIVE AWS VALIDATION** |
+| Status | **LIVE AWS VALIDATED** |
 | Root cause | `buildEc2CostFindingKey()` emits composite EC2 finding keys containing `#`; `evidenceObservationSortKey()` previously validated `findingKey` via `requireKeyValue()`, which rejects `#` |
 | Production fix | `backend/database/cloud-resources/evidence-observation-keys.ts` — `findingKey` validation now uses `requireOpaqueKeyValue()` in both `evidenceObservationSortKey()` and `evidenceObservationSortKeyPrefixForFinding()`; EC2 finding-key format unchanged |
 | Regression test | `backend/tests/unit/dynamodb-evidence-observation-repository.test.ts` — production-shaped EC2 finding keys from `buildEc2CostFindingKey()` containing `#` |
-| Validated locally | Targeted DynamoDB evidence observation repository tests pass; Sprint 1 fixture suite passes; build passes; full backend regression passes |
-| Not yet validated | Merge, deploy, and live AWS EC2 cost analysis evidence persistence revalidation pending — do not treat PD-1 as fully production-validated until post-deploy confirmation |
+| Validated locally | Targeted DynamoDB evidence observation repository tests; Sprint 1 fixture suite; build; full backend regression |
+| Live AWS proof | Evidence observations persisted with composite finding keys containing `#` (see [Sprint 1 Live AWS Validation](./sprint-1-live-aws-validation.md)) |
 | Note | `buildDynamoSafeFindingKey()` remains for simplified generic adapter scenarios only; it is no longer required for production EC2 key compatibility |
+
+### PD-2 — stage completion proof consistency (production hardening)
+
+| Field | Detail |
+| --- | --- |
+| Status | **Production hardening — live path validated** |
+| Fix | Strongly consistent `{ consistentRead: true }` on async stage-proof `getRun()` reads |
+| Scope note | Did not alone fix the cost-stage CloudWatch failure; an independent `GetMetricData` request-shape defect was found later (PD-4) |
+
+### PD-3 — CloudWatch failure diagnostics
+
+| Field | Detail |
+| --- | --- |
+| Status | **Diagnostics implemented — root cause identified in live AWS** |
+| Live result | Exposed `awsErrorName=ValidationError`, `awsHttpStatusCode=400` for `GetMetricData` without logging raw messages, stacks, credentials, or payloads |
+| Scope note | Diagnostic only — **not** the behavioral fix |
+
+### PD-4 — CloudWatch GetMetricData request shape
+
+| Field | Detail |
+| --- | --- |
+| Status | **ROOT CAUSE CONFIRMED / FIX DEPLOYED / LIVE AWS VALIDATED** |
+| Root cause | Top-level `MetricDataQuery.Period` mutually exclusive with `MetricStat` when `MetricStat.Period` is present |
+| Fix | Remove top-level `Period`; preserve `MetricStat.Period` |
+| Live proof | Post-fix async job `job-idem-0693c0b806e7673074d3361f61793d7f` — cost run `SUCCEEDED`, `instancesEvaluated=1`, `warnings=[]` (see [Sprint 1 Live AWS Validation](./sprint-1-live-aws-validation.md)) |
+
+## 16. Live AWS validation and release gate
+
+**Authoritative record:** [sprint-1-live-aws-validation.md](./sprint-1-live-aws-validation.md)
+
+| Layer | Status |
+| --- | --- |
+| Local / fixture validation | **IMPLEMENTED / TESTED** (sections 1–14 above) |
+| Live AWS validation | **PASS** — real EC2 workload in account `572262081497`, region `us-east-1`, instance `i-0ce183611f7fc8ed2` |
+| Sprint 1 release gate | **PASS / LIVE AWS VALIDATED** |
+
+Release-gate proof summary:
+
+- First observation: `NEW`, `persistenceHours = null`
+- Second observation: `STABLE`, `persistenceHours = 2.6530827777777777`, `PERSISTENCE_FINGERPRINT_UNCHANGED`, `comparedToObservationId` recorded
+
+Non-blocking follow-ups (dashboard Avg CPU, NaN utilization rendering, pricing unavailable) are documented in the live validation report and do **not** invalidate this gate.
 
 ---
 
