@@ -59,7 +59,10 @@ export class Ec2AsyncJobStageCompletionService {
     accountId: string,
     runId: string,
   ): Promise<StageCompletionProof> {
-    return classifyRun(await this.discoveryRuns.getRun(tenantId, accountId, runId), this.nowMs());
+    return classifyRun(
+      await this.discoveryRuns.getRun(tenantId, accountId, runId, { consistentRead: true }),
+      this.nowMs(),
+    );
   }
 
   async costRunProof(
@@ -67,7 +70,10 @@ export class Ec2AsyncJobStageCompletionService {
     accountId: string,
     runId: string,
   ): Promise<StageCompletionProof> {
-    return classifyRun(await this.costRuns.getRun(tenantId, accountId, runId), this.nowMs());
+    return classifyRun(
+      await this.costRuns.getRun(tenantId, accountId, runId, { consistentRead: true }),
+      this.nowMs(),
+    );
   }
 
   async securityRunProof(
@@ -75,7 +81,10 @@ export class Ec2AsyncJobStageCompletionService {
     accountId: string,
     runId: string,
   ): Promise<StageCompletionProof> {
-    return classifyRun(await this.securityRuns.getRun(tenantId, accountId, runId), this.nowMs());
+    return classifyRun(
+      await this.securityRuns.getRun(tenantId, accountId, runId, { consistentRead: true }),
+      this.nowMs(),
+    );
   }
 }
 

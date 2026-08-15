@@ -417,11 +417,16 @@ export class DynamoDbEc2CloudResourceRepository
     tenantId: string,
     accountId: string,
     runId: string,
+    options?: { consistentRead?: boolean },
   ): Promise<Ec2DiscoveryRunRecord | null> {
     const pk = cloudResourceAccountPartitionKey(tenantId, accountId);
     const sk = ec2DiscoveryRunSortKey(runId);
     const result = await this.client.send(
-      new GetCommand({ TableName: this.tableName, Key: { pk, sk } }),
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { pk, sk },
+        ...(options?.consistentRead ? { ConsistentRead: true } : {}),
+      }),
     );
     if (!result.Item) {
       return null;

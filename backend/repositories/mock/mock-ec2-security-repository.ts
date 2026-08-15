@@ -341,6 +341,7 @@ export class MockEc2SecurityRepository
     tenantId: string,
     accountId: string,
     runId: string,
+    _options?: { consistentRead?: boolean },
   ): Promise<Ec2SecurityAnalysisRunRecord | null> {
     return this.runs.get(runKey(tenantId, accountId, runId)) ?? null;
   }

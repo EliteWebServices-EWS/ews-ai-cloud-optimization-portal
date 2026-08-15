@@ -321,6 +321,7 @@ export class MockEc2CostRepository
     tenantId: string,
     accountId: string,
     runId: string,
+    _options?: { consistentRead?: boolean },
   ): Promise<Ec2CostAnalysisRunRecord | null> {
     return this.runs.get(runKey(tenantId, accountId, runId)) ?? null;
   }
