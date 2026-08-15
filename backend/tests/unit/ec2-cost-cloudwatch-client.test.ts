@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { createAwsCloudWatchEc2MetricsClient } from '../../cloud-intelligence/ec2-cost/aws-cloudwatch-ec2-metrics-client';
 import type { Ec2PerformanceMetricsClientPort } from '../../cloud-intelligence/ec2-cost/ec2-performance-metrics-client.port';
+import { AppError } from '../../shared/utils';
 
 describe('AwsCloudWatchEc2MetricsClient', () => {
   it('batches multiple instances in one GetMetricData call', async () => {
@@ -237,5 +238,63 @@ describe('AwsCloudWatchEc2MetricsClient', () => {
     });
     assert.equal(JSON.stringify(evidence).includes('requestId'), false);
     assert.equal(JSON.stringify(evidence).includes('$metadata'), false);
+  });
+
+  it('logs sanitized GetMetricData diagnostics and rethrows mapped AppError', async () => {
+    const logs: string[] = [];
+    const originalError = console.error;
+    console.error = (message?: unknown) => {
+      logs.push(String(message));
+    };
+
+    try {
+      const cloudWatch = {
+        send: async () => {
+          throw Object.assign(new Error('sensitive cloudwatch failure'), {
+            name: 'ValidationException',
+            $metadata: {
+              httpStatusCode: 400,
+              requestId: 'request-123',
+              attempts: 1,
+            },
+            MetricDataQueries: [{ Id: 'secret-query' }],
+          });
+        },
+      };
+      const client = createAwsCloudWatchEc2MetricsClient(cloudWatch as never, {
+        tenantId: 'tenant-a',
+        accountId: '111122223333',
+      });
+
+      await assert.rejects(
+        () =>
+          client.collectMetrics({
+            region: 'us-east-1',
+            targets: [{ region: 'us-east-1', instanceId: 'i-fail' }],
+            observationDays: 7,
+            periodSeconds: 3600,
+            endTime: new Date('2026-01-15T12:00:00.000Z'),
+          }),
+        (error: unknown) => {
+          assert.ok(error instanceof AppError);
+          assert.equal(error.code, 'CLOUDWATCH_METRICS_FAILED');
+          return true;
+        },
+      );
+
+      assert.equal(logs.length, 1);
+      const payload = JSON.parse(logs[0] ?? '{}') as Record<string, unknown>;
+      assert.equal(payload.scope, 'Ec2CostMetrics');
+      assert.equal(payload.operation, 'GetMetricData');
+      assert.equal(payload.region, 'us-east-1');
+      assert.equal(payload.mappedCode, 'CLOUDWATCH_METRICS_FAILED');
+      assert.equal(payload.awsErrorName, 'ValidationException');
+      assert.equal(payload.awsHttpStatusCode, 400);
+      assert.equal(payload.awsRequestId, 'request-123');
+      assert.equal(JSON.stringify(payload).includes('sensitive cloudwatch failure'), false);
+      assert.equal(JSON.stringify(payload).includes('secret-query'), false);
+    } finally {
+      console.error = originalError;
+    }
   });
 });
