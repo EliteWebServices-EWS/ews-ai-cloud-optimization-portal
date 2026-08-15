@@ -117,5 +117,10 @@ export interface Ec2SecurityAnalysisRunRepository {
   createRun(input: CreateEc2SecurityAnalysisRunInput): Promise<Ec2SecurityAnalysisRunRecord>;
   claimExecution(input: ClaimEc2SecurityAnalysisRunExecutionInput): Promise<Ec2SecurityAnalysisRunRecord>;
   completeRun(input: CompleteEc2SecurityAnalysisRunInput): Promise<Ec2SecurityAnalysisRunRecord>;
-  getRun(tenantId: string, accountId: string, runId: string): Promise<Ec2SecurityAnalysisRunRecord | null>;
+  getRun(
+    tenantId: string,
+    accountId: string,
+    runId: string,
+    options?: { consistentRead?: boolean },
+  ): Promise<Ec2SecurityAnalysisRunRecord | null>;
 }

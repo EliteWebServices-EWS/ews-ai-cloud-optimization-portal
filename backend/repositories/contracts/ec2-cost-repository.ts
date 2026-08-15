@@ -120,5 +120,10 @@ export interface Ec2CostAnalysisRunRepository {
   createRun(input: CreateEc2CostAnalysisRunInput): Promise<Ec2CostAnalysisRunRecord>;
   claimExecution(input: ClaimEc2CostAnalysisRunExecutionInput): Promise<Ec2CostAnalysisRunRecord>;
   completeRun(input: CompleteEc2CostAnalysisRunInput): Promise<Ec2CostAnalysisRunRecord>;
-  getRun(tenantId: string, accountId: string, runId: string): Promise<Ec2CostAnalysisRunRecord | null>;
+  getRun(
+    tenantId: string,
+    accountId: string,
+    runId: string,
+    options?: { consistentRead?: boolean },
+  ): Promise<Ec2CostAnalysisRunRecord | null>;
 }

@@ -285,6 +285,7 @@ export class MockEc2CloudResourceRepository
     tenantId: string,
     accountId: string,
     runId: string,
+    _options?: { consistentRead?: boolean },
   ): Promise<Ec2DiscoveryRunRecord | null> {
     return this.runs.get(runKey(tenantId, accountId, runId)) ?? null;
   }

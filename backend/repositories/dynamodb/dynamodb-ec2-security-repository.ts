@@ -547,11 +547,16 @@ export class DynamoDbEc2SecurityRepository
     tenantId: string,
     accountId: string,
     runId: string,
+    options?: { consistentRead?: boolean },
   ): Promise<Ec2SecurityAnalysisRunRecord | null> {
     const pk = cloudResourceAccountPartitionKey(tenantId, accountId);
     const sk = ec2SecurityAnalysisRunSortKey(runId);
     const response = await this.client.send(
-      new GetCommand({ TableName: this.tableName, Key: { pk, sk } }),
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { pk, sk },
+        ...(options?.consistentRead ? { ConsistentRead: true } : {}),
+      }),
     );
     if (!response.Item) {
       return null;

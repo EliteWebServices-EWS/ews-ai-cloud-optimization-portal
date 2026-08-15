@@ -108,6 +108,7 @@ export interface Ec2DiscoveryRunRepository {
     tenantId: string,
     accountId: string,
     runId: string,
+    options?: { consistentRead?: boolean },
   ): Promise<Ec2DiscoveryRunRecord | null>;
 }
 
