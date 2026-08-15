@@ -134,19 +134,17 @@ Main `.github/workflows/ci.yml` still does not run backend tests (pre-existing).
 
 ## 15. Production defects discovered
 
-### PD-1 — EC2 findingKey `#` incompatible with DynamoDB evidence observation sort keys
+### PD-1 — FIX IMPLEMENTED / AWAITING LIVE AWS VALIDATION
 
 | Field | Detail |
 | --- | --- |
-| Production file | `backend/database/cloud-resources/evidence-observation-keys.ts` (`requireKeyValue` on `findingKey`) |
-| Related | `backend/database/cloud-resources/ec2-cost-keys.ts` (`buildEc2CostFindingKey()` emits `#` separators) |
-| Failing test | `backend/tests/unit/dynamodb-evidence-observation-repository.test.ts` (when using EC2 finding keys directly) |
-| Observed defect | `buildEc2CostFindingKey()` values are rejected by `evidenceObservationSortKey()` with `findingKey must not contain #` |
-| Expected behavior | EC2 cost evidence observations persisted through `DynamoDbEvidenceObservationRepository` should accept production finding keys |
-| Proposed minimal fix | Use `requireOpaqueKeyValue` (or equivalent) for `findingKey` in evidence observation sort keys, with regression tests using EC2 composite keys |
-| Engineer 4 handling | DynamoDB adapter parity tests use `buildDynamoSafeFindingKey()` workaround; mock/orchestrator tests continue using `buildEc2CostFindingKey()` |
-
-No production code was modified on this branch.
+| Status | **FIX IMPLEMENTED / AWAITING LIVE AWS VALIDATION** |
+| Root cause | `buildEc2CostFindingKey()` emits composite EC2 finding keys containing `#`; `evidenceObservationSortKey()` previously validated `findingKey` via `requireKeyValue()`, which rejects `#` |
+| Production fix | `backend/database/cloud-resources/evidence-observation-keys.ts` — `findingKey` validation now uses `requireOpaqueKeyValue()` in both `evidenceObservationSortKey()` and `evidenceObservationSortKeyPrefixForFinding()`; EC2 finding-key format unchanged |
+| Regression test | `backend/tests/unit/dynamodb-evidence-observation-repository.test.ts` — production-shaped EC2 finding keys from `buildEc2CostFindingKey()` containing `#` |
+| Validated locally | Targeted DynamoDB evidence observation repository tests pass; Sprint 1 fixture suite passes; build passes; full backend regression passes |
+| Not yet validated | Merge, deploy, and live AWS EC2 cost analysis evidence persistence revalidation pending — do not treat PD-1 as fully production-validated until post-deploy confirmation |
+| Note | `buildDynamoSafeFindingKey()` remains for simplified generic adapter scenarios only; it is no longer required for production EC2 key compatibility |
 
 ---
 
