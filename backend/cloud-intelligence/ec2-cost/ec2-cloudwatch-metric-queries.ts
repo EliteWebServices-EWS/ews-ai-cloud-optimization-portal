@@ -40,7 +40,6 @@ export function buildMetricDataQueriesForTargets(
     const dim = [{ Name: 'InstanceId', Value: target.instanceId }];
     const base = {
       ReturnData: true,
-      Period: period,
     };
     metricQueries.push({
       Id: metricId(target.instanceId, METRIC_CPU),
