@@ -235,7 +235,7 @@ export function createEc2CostRoutes(deps: Ec2CostRouteDeps): Router {
       const tenantId = resolveRouteTenantContext(req).tenantId;
       try {
         const query = parseEc2CostRecommendationListQuery(tenantId, req.query as Record<string, unknown>);
-        const page = await deps.ec2CostAnalysisApi.listRecommendations(query);
+        const page = await deps.ec2CostAnalysisApi.listRecommendationsWithPerformanceSummary(query);
         const items = page.items.map(sanitizeEc2CostRecommendationForApi);
         const savingsSummary = aggregateEc2CostSavingsSummary(page.items);
 
@@ -262,6 +262,7 @@ export function createEc2CostRoutes(deps: Ec2CostRouteDeps): Router {
               items,
               nextToken: page.nextToken,
               savingsSummary,
+              performanceSummary: page.performanceSummary,
             },
             requestId,
           ),

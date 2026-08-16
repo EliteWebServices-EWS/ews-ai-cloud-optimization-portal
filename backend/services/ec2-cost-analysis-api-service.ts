@@ -27,6 +27,10 @@ import {
 import { Ec2CostAnalysisOrchestrator } from '../cloud-intelligence/ec2-cost/ec2-cost-analysis-orchestrator';
 import { createEc2CostCloudWatchClientFactory } from '../cloud-intelligence/ec2-cost/ec2-cost-cloudwatch-factory';
 import type { Ec2PerformanceMetricsClientFactory } from '../cloud-intelligence/ec2-cost/ec2-performance-metrics-client.port';
+import {
+  projectEc2CostPerformanceSummary,
+  type Ec2CostPerformanceSummaryProjection,
+} from '../cloud-intelligence/ec2-cost/ec2-cost-performance-summary';
 import type { AuditActor } from '../audit';
 import type { EvidencePersistenceService } from './evidence-persistence-service';
 
@@ -210,6 +214,29 @@ export class Ec2CostAnalysisApiService {
       parseEc2CostRegion(query.region);
     }
     return this.recommendations.listRecommendations(query);
+  }
+
+  async listRecommendationsWithPerformanceSummary(query: Ec2CostRecommendationListQuery): Promise<{
+    items: Awaited<ReturnType<Ec2CostRecommendationRepository['listRecommendations']>>['items'];
+    nextToken?: string;
+    performanceSummary?: Ec2CostPerformanceSummaryProjection;
+  }> {
+    const page = await this.listRecommendations(query);
+    const latestRun = query.region
+      ? await this.runs.getLatestCompletedRun({
+          tenantId: query.tenantId,
+          accountId: query.accountId,
+          region: query.region,
+        })
+      : null;
+    const performanceSummary = latestRun
+      ? projectEc2CostPerformanceSummary(latestRun, query.region)
+      : undefined;
+    return {
+      items: page.items,
+      nextToken: page.nextToken,
+      performanceSummary,
+    };
   }
 
   async getRecommendation(tenantId: string, accountId: string, recommendationId: string) {

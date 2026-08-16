@@ -74,6 +74,18 @@ export interface Ec2CostRecommendationApi {
   analyzedAt?: string;
 }
 
+export interface Ec2CostPerformanceSummaryApi {
+  availability: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  averageCpuUtilizationPercent?: number;
+  instancesEvaluated: number;
+  instancesWithMetrics: number;
+  instancesIncludedInAverage: number;
+  observationStart?: string;
+  observationEnd?: string;
+  analysisRunId?: string;
+  analyzedAt?: string;
+}
+
 export interface Ec2CostListApi {
   items: Ec2CostRecommendationApi[];
   nextToken?: string;
@@ -82,6 +94,7 @@ export interface Ec2CostListApi {
     sampleEstimateMonthlySavings: number;
     currency: string;
   };
+  performanceSummary?: Ec2CostPerformanceSummaryApi;
 }
 
 export interface AwsAccountListItem {

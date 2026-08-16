@@ -1,6 +1,7 @@
 import type { PageResult } from './repository-types';
 import type {
   Ec2CostAnalysisRunRecord,
+  Ec2CostPerformanceSummary,
   Ec2CostRecommendationRecord,
 } from '../../cloud-intelligence/ec2-cost/ec2-cost-models';
 
@@ -101,6 +102,13 @@ export interface CompleteEc2CostAnalysisRunInput {
   regionsFailed: string[];
   warnings: string[];
   failureRetryable?: boolean;
+  performanceSummariesByRegion?: Record<string, Ec2CostPerformanceSummary>;
+}
+
+export interface GetLatestCompletedEc2CostAnalysisRunQuery {
+  tenantId: string;
+  accountId: string;
+  region?: string;
 }
 
 export interface ClaimEc2CostAnalysisRunExecutionInput {
@@ -125,5 +133,8 @@ export interface Ec2CostAnalysisRunRepository {
     accountId: string,
     runId: string,
     options?: { consistentRead?: boolean },
+  ): Promise<Ec2CostAnalysisRunRecord | null>;
+  getLatestCompletedRun(
+    query: GetLatestCompletedEc2CostAnalysisRunQuery,
   ): Promise<Ec2CostAnalysisRunRecord | null>;
 }
