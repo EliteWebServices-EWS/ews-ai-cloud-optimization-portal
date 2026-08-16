@@ -2,6 +2,7 @@ import type { Ec2DashboardDataProvider, Ec2DashboardLoadInput } from '../ec2/ec2
 import type { Ec2DashboardViewModel } from '../ec2/ec2-dashboard-view-model';
 import type { Ec2SecurityFinding } from '../types';
 import {
+  hasVerifiedRatePricingContext,
   isRightsizingCategory,
   maskAccountId,
   pricingStatusLabel,
@@ -256,6 +257,8 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
       detail: rec.businessJustification,
     }));
 
+    const fleetSavingsAvailable = hasVerifiedRatePricingContext(costRecommendations);
+
     return {
       mode: 'live',
       dataStatus,
@@ -307,6 +310,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
             ? 'This account has no EC2 instances. Other EC2 resource types may still appear in inventory.'
             : 'Review cost recommendations and refresh discovery to keep inventory current.',
         savings: validatedMonthlySavings,
+        savingsUnavailable: !fleetSavingsAvailable,
         securityRisk:
           securitySection.status === 'READY' || securitySection.status === 'PARTIAL'
             ? securitySummary?.instancesAnalyzed === 0
@@ -386,6 +390,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
         title: 'Unable to load EC2 dashboard',
         headline: message,
         savings: 0,
+        savingsUnavailable: true,
         securityRisk: 'Unavailable',
         priority: 'Medium',
         confidence: 0,

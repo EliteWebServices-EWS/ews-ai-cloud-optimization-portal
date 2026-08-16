@@ -143,6 +143,9 @@ const RIGHTSIZING_CATEGORIES = new Set([
   'INSTANCE_FAMILY_UPGRADE',
 ]);
 
+export const PRICING_UNAVAILABLE_LABEL = 'Pricing unavailable';
+export const SAVINGS_UNAVAILABLE_LABEL = 'Savings unavailable';
+
 export function pricingStatusLabel(status: string): string {
   switch (status) {
     case 'VERIFIED_RATE':
@@ -150,10 +153,48 @@ export function pricingStatusLabel(status: string): string {
     case 'CONTROLLED_CATALOG_SAMPLE':
       return 'Sample cost estimate — not an AWS bill';
     case 'UNAVAILABLE':
-      return 'Pricing unavailable';
+      return PRICING_UNAVAILABLE_LABEL;
     default:
-      return 'Pricing unavailable';
+      return PRICING_UNAVAILABLE_LABEL;
   }
+}
+
+export function isFleetMonthlyCostAvailable(vm: Ec2DashboardViewModel): boolean {
+  return (
+    typeof vm.cost.estimatedMonthlyCost === 'number' &&
+    Number.isFinite(vm.cost.estimatedMonthlyCost)
+  );
+}
+
+/** Live production recommendations with verified-rate pricing context. */
+export function hasVerifiedRatePricingContext(
+  recommendations: Pick<Ec2DashboardCostRecommendationView, 'pricingStatus'>[],
+): boolean {
+  return recommendations.some((rec) => rec.pricingStatus === 'VERIFIED_RATE');
+}
+
+/** Authoritative fleet savings — validated in live; sample allowed in demo only. */
+export function isFleetSavingsAvailable(vm: Ec2DashboardViewModel): boolean {
+  if (vm.mode === 'demo') {
+    if (vm.cost.sampleEstimateMonthlySavings > 0) {
+      return true;
+    }
+    if (vm.cost.costBreakdown?.estimatedSavingsUnavailable === false) {
+      return true;
+    }
+    return false;
+  }
+  return hasVerifiedRatePricingContext(vm.cost.recommendations);
+}
+
+export function resolveFleetSavingsAmount(vm: Ec2DashboardViewModel): number {
+  if (vm.mode === 'demo') {
+    if (vm.cost.costBreakdown?.estimatedSavings !== undefined) {
+      return vm.cost.costBreakdown.estimatedSavings;
+    }
+    return vm.cost.sampleEstimateMonthlySavings;
+  }
+  return vm.cost.validatedMonthlySavings;
 }
 
 export function mapViewModelToEc2Summary(vm: Ec2DashboardViewModel): Ec2DashboardSummary {
@@ -184,24 +225,31 @@ export function mapViewModelToEc2Summary(vm: Ec2DashboardViewModel): Ec2Dashboar
           : vm.security.instancesAnalyzed === 0 && vm.security.message?.includes('completed')
             ? 'Complete (no instances)'
             : undefined,
-    monthlyCostUnavailable: vm.cost.estimatedMonthlyCost === undefined,
+    monthlyCostUnavailable: !isFleetMonthlyCostAvailable(vm),
   };
 }
 
 export function mapViewModelToCostBreakdown(vm: Ec2DashboardViewModel): Ec2CostBreakdown {
   if (vm.cost.costBreakdown) {
-    return vm.cost.costBreakdown;
+    return {
+      ...vm.cost.costBreakdown,
+      currentMonthlyCostUnavailable:
+        vm.cost.costBreakdown.currentMonthlyCostUnavailable ??
+        vm.cost.costBreakdown.currentMonthlyCost === undefined,
+      estimatedSavingsUnavailable:
+        vm.cost.costBreakdown.estimatedSavingsUnavailable ??
+        vm.cost.costBreakdown.estimatedSavings === undefined,
+    };
   }
-  const current = vm.cost.estimatedMonthlyCost ?? 0;
-  const savings =
-    vm.cost.validatedMonthlySavings > 0
-      ? vm.cost.validatedMonthlySavings
-      : vm.mode === 'demo'
-        ? vm.cost.sampleEstimateMonthlySavings
-        : vm.cost.validatedMonthlySavings;
+
+  const costAvailable = isFleetMonthlyCostAvailable(vm);
+  const savingsAvailable = isFleetSavingsAvailable(vm);
+
   return {
-    currentMonthlyCost: current,
-    estimatedSavings: savings,
+    currentMonthlyCost: costAvailable ? vm.cost.estimatedMonthlyCost : undefined,
+    currentMonthlyCostUnavailable: !costAvailable,
+    estimatedSavings: savingsAvailable ? resolveFleetSavingsAmount(vm) : undefined,
+    estimatedSavingsUnavailable: !savingsAvailable,
     computeCost: 0,
     storageCost: 0,
     networkCost: 0,
@@ -209,10 +257,10 @@ export function mapViewModelToCostBreakdown(vm: Ec2DashboardViewModel): Ec2CostB
     savingsLabel:
       vm.mode === 'live' && vm.cost.sampleEstimateMonthlySavings > 0
         ? `Sample estimate $${vm.cost.sampleEstimateMonthlySavings.toFixed(2)} (not validated)`
-        : vm.mode === 'live' && vm.cost.validatedMonthlySavings === 0
+        : vm.mode === 'live' && !savingsAvailable
           ? undefined
           : vm.cost.pricingLabel,
-    showBreakdownDetails: Boolean(vm.cost.costBreakdown) && current > 0,
+    showBreakdownDetails: false,
   };
 }
 
@@ -229,7 +277,7 @@ export function mapViewModelToInstanceMix(vm: Ec2DashboardViewModel): Ec2Instanc
       family,
       count,
       share,
-      monthlyCost: 0,
+      monthlyCostUnavailable: true,
     };
   });
   return { total, byFamily };

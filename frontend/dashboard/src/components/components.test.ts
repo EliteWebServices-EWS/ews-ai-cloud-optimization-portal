@@ -121,8 +121,8 @@ describe('Dashboard components', () => {
     const mix: Ec2InstanceMix = {
       total: 42,
       byFamily: [
-        { family: 'm7i', count: 18, share: 43, monthlyCost: 1100 },
-        { family: 'c7i', count: 12, share: 29, monthlyCost: 820 },
+        { family: 'm7i', count: 18, share: 43, monthlyCost: 1100, monthlyCostUnavailable: false },
+        { family: 'c7i', count: 12, share: 29, monthlyCost: 820, monthlyCostUnavailable: false },
       ],
     };
 
@@ -237,6 +237,100 @@ describe('Dashboard components', () => {
     expect(container.textContent).toContain('Executive Summary');
     expect(container.textContent).toContain('$541.20');
     expect(container.textContent).toContain('High');
+  });
+
+  it('renders unavailable pricing labels instead of zero placeholders', () => {
+    renderEc2SummaryCard(container, {
+      region: 'us-east-1',
+      totalInstances: 1,
+      runningInstances: 1,
+      stoppedInstances: 0,
+      monthlyCost: 0,
+      averageCpuUtilization: Number.NaN,
+      rightsizingOpportunities: 0,
+      securityFindings: 0,
+      governanceScore: Number.NaN,
+      recommendations: [],
+      monthlyCostLabel: 'Pricing unavailable',
+      monthlyCostUnavailable: true,
+      averageCpuLabel: 'Not analyzed',
+    });
+    expect(container.textContent).toContain('Pricing unavailable');
+    expect(container.textContent).not.toContain('$0.00');
+
+    renderEc2CostBreakdownCard(container, {
+      currentMonthlyCostUnavailable: true,
+      estimatedSavingsUnavailable: true,
+      computeCost: 0,
+      storageCost: 0,
+      networkCost: 0,
+      otherCost: 0,
+    });
+    expect(container.textContent).toContain('Current Monthly');
+    expect(container.textContent).toContain('Pricing unavailable');
+    expect(container.textContent).toContain('Estimated Savings');
+    expect(container.textContent).toContain('Savings unavailable');
+    expect(container.textContent).not.toContain('$0.00');
+
+    renderEc2ExecutiveSummaryCard(container, {
+      title: 'EC2 optimization overview',
+      headline: 'Review recommendations',
+      savings: 0,
+      savingsUnavailable: true,
+      securityRisk: 'Not yet run',
+      priority: 'Medium',
+      confidence: 0,
+    });
+    expect(container.textContent).toContain('Projected Savings');
+    expect(container.textContent).toContain('Savings unavailable');
+    expect(container.textContent).not.toContain('$0.00');
+
+    renderEc2InstanceMixCard(container, {
+      total: 1,
+      byFamily: [{ family: 't3', count: 1, share: 100, monthlyCostUnavailable: true }],
+    });
+    expect(container.textContent).toContain('t3');
+    expect(container.textContent).toContain('100%');
+    expect(container.textContent).not.toContain('$0.00');
+  });
+
+  it('renders genuine zero and positive authoritative pricing values', () => {
+    renderEc2CostBreakdownCard(container, {
+      currentMonthlyCost: 0,
+      currentMonthlyCostUnavailable: false,
+      estimatedSavings: 0,
+      estimatedSavingsUnavailable: false,
+      computeCost: 0,
+      storageCost: 0,
+      networkCost: 0,
+      otherCost: 0,
+    });
+    expect(container.textContent).toContain('$0.00');
+
+    renderEc2ExecutiveSummaryCard(container, {
+      title: 'Validated savings complete',
+      headline: 'No remaining validated savings',
+      savings: 0,
+      savingsUnavailable: false,
+      securityRisk: 'Low risk',
+      priority: 'Low',
+      confidence: 90,
+    });
+    expect(container.textContent).toContain('$0.00');
+
+    renderEc2CostBreakdownCard(container, {
+      currentMonthlyCost: 2840.25,
+      currentMonthlyCostUnavailable: false,
+      estimatedSavings: 420.5,
+      estimatedSavingsUnavailable: false,
+      computeCost: 1620,
+      storageCost: 460,
+      networkCost: 230,
+      otherCost: 120,
+      showBreakdownDetails: true,
+    });
+    expect(container.textContent).toContain('$2,840.25');
+    expect(container.textContent).toContain('$420.50');
   });
 
   it('renders empty state when governance is undefined', () => {

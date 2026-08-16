@@ -10,15 +10,21 @@ export function renderEc2InstanceMixCard(
   mix: Ec2InstanceMix
 ): void {
   const rows = mix.byFamily
-    .map(
-      (entry) => `
+    .map((entry) => {
+      const costHtml =
+        entry.monthlyCostUnavailable === false &&
+        typeof entry.monthlyCost === 'number' &&
+        Number.isFinite(entry.monthlyCost)
+          ? `<strong>${escapeHtml(formatCurrency(entry.monthlyCost))}</strong>`
+          : '';
+      return `
         <li>
           <span class="family-name">${escapeHtml(entry.family)}</span>
           <span class="family-share">${entry.share}%</span>
-          <strong>${escapeHtml(formatCurrency(entry.monthlyCost))}</strong>
+          ${costHtml}
         </li>
-      `
-    )
+      `;
+    })
     .join('');
 
   container.innerHTML = `

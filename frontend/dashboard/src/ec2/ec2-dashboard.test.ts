@@ -3,6 +3,7 @@ import { PublicDemoEc2DashboardDataProvider } from '../demo/public-demo-ec2-dash
 import { buildCuratedEc2DemoViewModel } from '../demo/ec2-demo-data';
 import { LiveEc2DashboardDataProvider } from '../live/live-ec2-dashboard-provider';
 import {
+  mapViewModelToCostBreakdown,
   mapViewModelToEc2Summary,
   mapViewModelToInstanceMix,
   maskAccountId,
@@ -634,6 +635,276 @@ describe('shared widgets from view model', () => {
     );
 
     expect(summaryEl.textContent).toContain('Avg CPU4.3%');
+  });
+
+  it('renders unavailable live pricing consistently without zero placeholders', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [
+        {
+          recommendationId: 'rec-burst',
+          accountId: '111122223333',
+          region: 'us-east-1',
+          resourceId: 'i-0ce183611f7fc8ed2',
+          category: 'BURSTABLE_CREDIT_PRESSURE',
+          severity: 'MEDIUM',
+          confidenceLevel: 'MEDIUM',
+          title: 'Burstable credit pressure',
+          summary: 'T-family credit balance or surplus charges indicate burst pressure.',
+          businessJustification: 'Credit exhaustion can throttle performance.',
+          recommendedAction: 'Review workload steady-state CPU; consider instance family change after approval.',
+          pricingStatus: 'UNAVAILABLE',
+          currentInstanceType: 't3.micro',
+        },
+      ],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+
+    const summary = mapViewModelToEc2Summary(vm);
+    expect(summary.monthlyCostUnavailable).toBe(true);
+    expect(summary.monthlyCostLabel).toBe('Pricing unavailable');
+
+    const breakdown = mapViewModelToCostBreakdown(vm);
+    expect(breakdown.currentMonthlyCostUnavailable).toBe(true);
+    expect(breakdown.estimatedSavingsUnavailable).toBe(true);
+
+    const mix = mapViewModelToInstanceMix(vm);
+    expect(mix.byFamily[0]?.monthlyCostUnavailable).toBe(true);
+
+    expect(vm.executive.savingsUnavailable).toBe(true);
+    expect(vm.cost.sampleEstimateMonthlySavings).toBe(0);
+
+    const panels = {
+      chrome: document.createElement('div'),
+      summary: document.createElement('div'),
+      cost: document.createElement('div'),
+      instanceMix: document.createElement('div'),
+      security: document.createElement('div'),
+      rightsizing: document.createElement('div'),
+      executive: document.createElement('div'),
+    };
+    renderEc2DashboardPanels(panels, vm);
+
+    for (const panel of [panels.summary, panels.cost, panels.instanceMix, panels.executive]) {
+      expect(panel.textContent).not.toContain('$0.00');
+    }
+    expect(panels.summary.textContent).toContain('Pricing unavailable');
+    expect(panels.cost.textContent).toContain('Pricing unavailable');
+    expect(panels.cost.textContent).toContain('Savings unavailable');
+    expect(panels.executive.textContent).toContain('Savings unavailable');
+    expect(panels.instanceMix.textContent).toContain('t3');
+    expect(panels.instanceMix.textContent).toContain('100%');
+    expect(panels.rightsizing.textContent).toContain('Savings unavailable');
+  });
+
+  it('renders validated savings when authoritative values exist', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 'm6i.large': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [
+        {
+          recommendationId: 'rec-downsize',
+          accountId: '111122223333',
+          region: 'us-east-1',
+          resourceId: 'i-downsize-001',
+          category: 'REVIEW_DOWNSIZE',
+          severity: 'MEDIUM',
+          confidenceLevel: 'MEDIUM',
+          title: 'Low utilization running instance',
+          summary: 'Sustained low CPU may indicate idle capacity.',
+          businessJustification: 'Rightsize after review.',
+          recommendedAction: 'Review downsizing after approval.',
+          pricingStatus: 'VERIFIED_RATE',
+          currentInstanceType: 'm6i.large',
+          candidateInstanceType: 't3.medium',
+          estimatedMonthlySavings: 124.5,
+        },
+      ],
+      savingsSummary: {
+        validatedMonthlySavings: 124.5,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+
+    expect(vm.executive.savingsUnavailable).toBe(false);
+    expect(vm.executive.savings).toBe(124.5);
+
+    const breakdown = mapViewModelToCostBreakdown(vm);
+    expect(breakdown.estimatedSavingsUnavailable).toBe(false);
+    expect(breakdown.estimatedSavings).toBe(124.5);
+
+    const executiveEl = document.createElement('div');
+    renderEc2DashboardPanels(
+      {
+        chrome: document.createElement('div'),
+        summary: document.createElement('div'),
+        cost: document.createElement('div'),
+        instanceMix: document.createElement('div'),
+        security: document.createElement('div'),
+        rightsizing: document.createElement('div'),
+        executive: executiveEl,
+      },
+      vm,
+    );
+
+    expect(executiveEl.textContent).toContain('$124.50');
+    expect(executiveEl.textContent).not.toContain('Savings unavailable');
+  });
+
+  it('renders authoritative zero validated savings when VERIFIED_RATE context exists', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [
+        {
+          recommendationId: 'rec-verified-zero',
+          accountId: '111122223333',
+          region: 'us-east-1',
+          resourceId: 'i-verified-zero',
+          category: 'REVIEW_DOWNSIZE',
+          severity: 'LOW',
+          confidenceLevel: 'MEDIUM',
+          title: 'Already right-sized',
+          summary: 'No validated savings remain.',
+          businessJustification: 'Verified pricing context with zero savings.',
+          recommendedAction: 'No action required.',
+          pricingStatus: 'VERIFIED_RATE',
+          currentInstanceType: 't3.micro',
+          estimatedMonthlySavings: 0,
+        },
+      ],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+
+    expect(vm.executive.savingsUnavailable).toBe(false);
+    expect(vm.executive.savings).toBe(0);
+
+    const breakdown = mapViewModelToCostBreakdown(vm);
+    expect(breakdown.estimatedSavingsUnavailable).toBe(false);
+    expect(breakdown.estimatedSavings).toBe(0);
+
+    const executiveEl = document.createElement('div');
+    const costEl = document.createElement('div');
+    renderEc2DashboardPanels(
+      {
+        chrome: document.createElement('div'),
+        summary: document.createElement('div'),
+        cost: costEl,
+        instanceMix: document.createElement('div'),
+        security: document.createElement('div'),
+        rightsizing: document.createElement('div'),
+        executive: executiveEl,
+      },
+      vm,
+    );
+
+    expect(executiveEl.textContent).toContain('$0.00');
+    expect(executiveEl.textContent).not.toContain('Savings unavailable');
+    expect(costEl.textContent).toContain('$0.00');
+    expect(costEl.textContent).not.toContain('Savings unavailable');
+  });
+
+  it('does not treat sample-only savingsSummary totals as authoritative in live mode', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [
+        {
+          recommendationId: 'rec-sample-only',
+          accountId: '111122223333',
+          region: 'us-east-1',
+          resourceId: 'i-sample',
+          category: 'INSTANCE_FAMILY_UPGRADE',
+          severity: 'LOW',
+          confidenceLevel: 'MEDIUM',
+          title: 'Review instance family upgrade',
+          summary: 'Catalog sample only.',
+          businessJustification: 'Sample pricing must not drive live savings widgets.',
+          recommendedAction: 'Review migration after approval.',
+          pricingStatus: 'CONTROLLED_CATALOG_SAMPLE',
+          currentInstanceType: 't2.micro',
+          candidateInstanceType: 't3.micro',
+        },
+      ],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 42,
+        currency: 'USD',
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+
+    expect(vm.executive.savingsUnavailable).toBe(true);
+    expect(mapViewModelToCostBreakdown(vm).estimatedSavingsUnavailable).toBe(true);
   });
 });
 
