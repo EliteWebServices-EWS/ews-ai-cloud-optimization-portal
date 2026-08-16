@@ -3,14 +3,38 @@
  */
 
 import { escapeHtml, formatCurrency } from '../utils/format';
+import { PRICING_UNAVAILABLE_LABEL, SAVINGS_UNAVAILABLE_LABEL } from '../ec2/ec2-dashboard-view-model';
 import type { Ec2CostBreakdown } from '../types';
+
+function formatCurrentMonthlyCost(breakdown: Ec2CostBreakdown): string {
+  if (breakdown.currentMonthlyCostUnavailable) {
+    return PRICING_UNAVAILABLE_LABEL;
+  }
+  if (typeof breakdown.currentMonthlyCost !== 'number' || !Number.isFinite(breakdown.currentMonthlyCost)) {
+    return PRICING_UNAVAILABLE_LABEL;
+  }
+  return formatCurrency(breakdown.currentMonthlyCost);
+}
+
+function formatEstimatedSavings(breakdown: Ec2CostBreakdown): string {
+  if (breakdown.estimatedSavingsUnavailable) {
+    return SAVINGS_UNAVAILABLE_LABEL;
+  }
+  if (typeof breakdown.estimatedSavings !== 'number' || !Number.isFinite(breakdown.estimatedSavings)) {
+    return SAVINGS_UNAVAILABLE_LABEL;
+  }
+  return formatCurrency(breakdown.estimatedSavings);
+}
 
 export function renderEc2CostBreakdownCard(
   container: HTMLElement,
   breakdown: Ec2CostBreakdown
 ): void {
-  const total = breakdown.currentMonthlyCost;
-  const showDetails = breakdown.showBreakdownDetails !== false && total > 0;
+  const total = breakdown.currentMonthlyCost ?? 0;
+  const showDetails =
+    !breakdown.currentMonthlyCostUnavailable &&
+    breakdown.showBreakdownDetails !== false &&
+    total > 0;
   const computeShare = showDetails ? (breakdown.computeCost / total) * 100 : 0;
   const storageShare = showDetails ? (breakdown.storageCost / total) * 100 : 0;
   const networkShare = showDetails ? (breakdown.networkCost / total) * 100 : 0;
@@ -36,11 +60,11 @@ export function renderEc2CostBreakdownCard(
       <div class="metric-grid compact">
         <article class="metric-card">
           <h4>Current Monthly</h4>
-          <div class="metric-value">${escapeHtml(formatCurrency(breakdown.currentMonthlyCost))}</div>
+          <div class="metric-value">${escapeHtml(formatCurrentMonthlyCost(breakdown))}</div>
         </article>
         <article class="metric-card">
           <h4>Estimated Savings</h4>
-          <div class="metric-value">${escapeHtml(formatCurrency(breakdown.estimatedSavings))}</div>
+          <div class="metric-value">${escapeHtml(formatEstimatedSavings(breakdown))}</div>
         </article>
       </div>
       ${savingsNote}

@@ -258,8 +258,8 @@ export interface Ec2DashboardSummary {
 }
 
 export interface Ec2CostBreakdown {
-  currentMonthlyCost: number;
-  estimatedSavings: number;
+  currentMonthlyCost?: number;
+  estimatedSavings?: number;
   computeCost: number;
   storageCost: number;
   networkCost: number;
@@ -267,13 +267,16 @@ export interface Ec2CostBreakdown {
   savingsLabel?: string;
   /** When false, only headline costs are shown (live partial pricing). */
   showBreakdownDetails?: boolean;
+  currentMonthlyCostUnavailable?: boolean;
+  estimatedSavingsUnavailable?: boolean;
 }
 
 export interface Ec2InstanceMixFamily {
   family: string;
   count: number;
   share: number;
-  monthlyCost: number;
+  monthlyCost?: number;
+  monthlyCostUnavailable?: boolean;
 }
 
 export interface Ec2InstanceMix {
@@ -300,6 +303,7 @@ export interface Ec2ExecutiveSummary {
   title: string;
   headline: string;
   savings: number;
+  savingsUnavailable?: boolean;
   securityRisk: string;
   priority: 'Low' | 'Medium' | 'High';
   confidence: number;
