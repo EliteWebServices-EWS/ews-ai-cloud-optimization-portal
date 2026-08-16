@@ -21,6 +21,7 @@ import {
 import type { Ec2PerformanceMetricsClientFactory } from './ec2-performance-metrics-client.port';
 import type { Ec2PerformanceEvidence } from './ec2-cost-models';
 import type { Ec2CostAnalysisRunRecord } from './ec2-cost-models';
+import { buildPerformanceSummariesByRegion } from './ec2-cost-performance-summary';
 import { assertEc2EvidencePersistenceRequired } from '../../persistence/persistence-config';
 import type { EvidencePersistenceService } from '../../services/evidence-persistence-service';
 
@@ -185,6 +186,12 @@ export class Ec2CostAnalysisOrchestrator {
         },
       );
       recommendationsResolved += resolved;
+      const performanceSummariesByRegion = buildPerformanceSummariesByRegion({
+        evidenceByInstance: new Map(),
+        regions: input.regions,
+        regionsFailed: [],
+        instancesEvaluatedByRegion: new Map(input.regions.map((region) => [region, 0])),
+      });
       await this.runs.completeRun({
         tenantId: input.tenantId,
         accountId: input.accountId,
@@ -201,6 +208,7 @@ export class Ec2CostAnalysisOrchestrator {
         regionsSucceeded: input.regions,
         regionsFailed: [],
         warnings,
+        performanceSummariesByRegion,
       });
       return {
         runId: input.runId,
@@ -219,6 +227,12 @@ export class Ec2CostAnalysisOrchestrator {
     }
 
     if (!input.metricsClientFactory) {
+      const performanceSummariesByRegion = buildPerformanceSummariesByRegion({
+        evidenceByInstance: new Map(),
+        regions: input.regions,
+        regionsFailed: input.regions,
+        instancesEvaluatedByRegion: new Map(input.regions.map((region) => [region, 0])),
+      });
       await this.runs.completeRun({
         tenantId: input.tenantId,
         accountId: input.accountId,
@@ -235,11 +249,16 @@ export class Ec2CostAnalysisOrchestrator {
         regionsSucceeded: [],
         regionsFailed: input.regions,
         warnings: ['CloudWatch metrics client was not configured for this analysis.'],
+        performanceSummariesByRegion,
       });
       throw new Error('EC2_COST_METRICS_CLIENT_MISSING');
     }
 
     const evidenceByInstance = new Map<string, Ec2PerformanceEvidence>();
+    const instancesEvaluatedByRegion = new Map<string, number>();
+    for (const region of input.regions) {
+      instancesEvaluatedByRegion.set(region, 0);
+    }
     const endTime = new Date();
 
     for (const region of input.regions) {
@@ -274,6 +293,7 @@ export class Ec2CostAnalysisOrchestrator {
           }
         }
         instancesEvaluated += regionInstances.length;
+        instancesEvaluatedByRegion.set(region, regionInstances.length);
         regionsSucceeded.push(region);
       } catch (error) {
         regionsFailed.push(region);
@@ -413,6 +433,13 @@ export class Ec2CostAnalysisOrchestrator {
       });
     }
 
+    const performanceSummariesByRegion = buildPerformanceSummariesByRegion({
+      evidenceByInstance,
+      regions: input.regions,
+      regionsFailed,
+      instancesEvaluatedByRegion,
+    });
+
     await this.runs.completeRun({
       tenantId: input.tenantId,
       accountId: input.accountId,
@@ -429,6 +456,7 @@ export class Ec2CostAnalysisOrchestrator {
       regionsSucceeded,
       regionsFailed,
       warnings,
+      performanceSummariesByRegion,
     });
 
     return {

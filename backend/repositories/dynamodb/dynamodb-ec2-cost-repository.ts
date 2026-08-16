@@ -12,6 +12,7 @@ import {
   cloudResourceAccountPartitionKey,
   ec2CostAnalysisRunSortKey,
   ec2CostRecommendationSortKey,
+  EC2_COST_ANALYSIS_RUN_SK_PREFIX,
   EC2_COST_RECOMMENDATION_SK_PREFIX,
   RepositoryConflictError,
   RepositoryNotFoundError,
@@ -31,6 +32,7 @@ import type {
   Ec2CostRecommendationListQuery,
   Ec2CostRecommendationRepository,
   Ec2CostRecommendationScopeQuery,
+  GetLatestCompletedEc2CostAnalysisRunQuery,
   UpsertEc2CostRecommendationInput,
 } from '../contracts/ec2-cost-repository';
 import type {
@@ -469,7 +471,7 @@ export class DynamoDbEc2CostRepository
           TableName: this.tableName,
           Key: { pk, sk },
           UpdateExpression:
-            'SET #status = :status, completedAt = :completedAt, instancesFound = :ifound, instancesEvaluated = :ieval, recommendationsCreated = :rc, recommendationsUpdated = :ru, recommendationsResolved = :rr, insufficientDataCount = :idc, regionsSucceeded = :rs, regionsFailed = :rf, warnings = :warnings, #updatedAt = :updatedAt, #version = #version + :one, failureRetryable = :failureRetryable REMOVE executionOwnerId, leaseExpiresAt',
+            'SET #status = :status, completedAt = :completedAt, instancesFound = :ifound, instancesEvaluated = :ieval, recommendationsCreated = :rc, recommendationsUpdated = :ru, recommendationsResolved = :rr, insufficientDataCount = :idc, regionsSucceeded = :rs, regionsFailed = :rf, warnings = :warnings, performanceSummariesByRegion = :performanceSummariesByRegion, #updatedAt = :updatedAt, #version = #version + :one, failureRetryable = :failureRetryable REMOVE executionOwnerId, leaseExpiresAt',
           ConditionExpression: '#version = :expected',
           ExpressionAttributeNames: {
             '#status': 'status',
@@ -488,6 +490,7 @@ export class DynamoDbEc2CostRepository
             ':rs': input.regionsSucceeded,
             ':rf': input.regionsFailed,
             ':warnings': input.warnings,
+            ':performanceSummariesByRegion': input.performanceSummariesByRegion ?? {},
             ':updatedAt': new Date().toISOString(),
             ':one': 1,
             ':expected': input.expectedVersion,
@@ -528,6 +531,72 @@ export class DynamoDbEc2CostRepository
     }
     return stripRunKeys(result.Item as CostRunItem);
   }
+
+  async getLatestCompletedRun(
+    query: GetLatestCompletedEc2CostAnalysisRunQuery,
+  ): Promise<Ec2CostAnalysisRunRecord | null> {
+    const pk = cloudResourceAccountPartitionKey(query.tenantId, query.accountId);
+    // CORRECT BUT SCALABILITY FOLLOW-UP: this scans every cost-run item in the
+    // tenant/account partition via paginated Query. Acceptable for correctness now;
+    // future optimization may use a time-ordered run index, latest-run pointer, GSI,
+    // or dedicated summary record.
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    let latestRun: Ec2CostAnalysisRunRecord | null = null;
+    let latestCompletedAt = '';
+
+    do {
+      const page = await this.client.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+          ExpressionAttributeValues: {
+            ':pk': pk,
+            ':prefix': EC2_COST_ANALYSIS_RUN_SK_PREFIX,
+          },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      for (const item of page.Items ?? []) {
+        const run = stripRunKeys(item as CostRunItem);
+        if (!isEligibleCompletedCostRun(run, query)) {
+          continue;
+        }
+        const completedAt = run.completedAt!;
+        if (completedAt.localeCompare(latestCompletedAt) > 0) {
+          latestRun = run;
+          latestCompletedAt = completedAt;
+        }
+      }
+
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return latestRun;
+  }
+}
+
+function isValidCompletedAtTimestamp(value: string): boolean {
+  return value.trim().length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function isEligibleCompletedCostRun(
+  run: Ec2CostAnalysisRunRecord,
+  query: GetLatestCompletedEc2CostAnalysisRunQuery,
+): boolean {
+  if (run.tenantId !== query.tenantId || run.accountId !== query.accountId) {
+    return false;
+  }
+  if (run.status !== 'SUCCEEDED' && run.status !== 'PARTIAL') {
+    return false;
+  }
+  if (!run.completedAt || !isValidCompletedAtTimestamp(run.completedAt)) {
+    return false;
+  }
+  if (query.region && !run.regions.includes(query.region)) {
+    return false;
+  }
+  return true;
 }
 
 function stripRecommendationKeys(item: CostRecommendationItem): Ec2CostRecommendationRecord {

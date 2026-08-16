@@ -99,4 +99,58 @@ describe('Ec2CostAnalysisOrchestrator', () => {
     assert.equal(second.recommendationsUpdated, 1);
     assert.equal(second.recommendationsCreated, 0);
   });
+
+  it('persists region performance summaries from collected evidence on completeRun', async () => {
+    const resources = new MockEc2CloudResourceRepository();
+    await resources.upsertDiscoveredResource({
+      tenantId: 't1',
+      accountId: '111122223333',
+      region: 'us-east-1',
+      resourceType: 'INSTANCE',
+      resourceId: 'i-running',
+      tags: [],
+      status: 'ACTIVE',
+      metadata: { state: 'running', instanceType: 't3.micro' },
+      discoveredAt: new Date().toISOString(),
+    });
+
+    const costRepo = new MockEc2CostRepository();
+    const orchestrator = new Ec2CostAnalysisOrchestrator(resources, costRepo, costRepo);
+
+    await orchestrator.run({
+      tenantId: 't1',
+      accountId: '111122223333',
+      regions: ['us-east-1'],
+      observationDays: 14,
+      runId: 'run-metrics',
+      requestedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      metricsClientFactory: () => ({
+        collectMetrics: async () => [
+          {
+            tenantId: 't1',
+            accountId: '111122223333',
+            region: 'us-east-1',
+            instanceId: 'i-running',
+            observationStart: '2026-08-01T00:00:00.000Z',
+            observationEnd: '2026-08-15T00:00:00.000Z',
+            periodSeconds: 3600,
+            expectedSampleCount: 336,
+            actualSampleCount: 320,
+            cpuAveragePercent: 4.27,
+            dataCompleteness: 'COMPLETE',
+            collectedAt: '2026-08-15T00:00:00.000Z',
+            warnings: [],
+          },
+        ],
+      }),
+    });
+
+    const stored = await costRepo.getRun('t1', '111122223333', 'run-metrics');
+    assert.equal(stored?.performanceSummariesByRegion?.['us-east-1']?.availability, 'AVAILABLE');
+    assert.equal(
+      stored?.performanceSummariesByRegion?.['us-east-1']?.averageCpuUtilizationPercent,
+      4.27,
+    );
+  });
 });

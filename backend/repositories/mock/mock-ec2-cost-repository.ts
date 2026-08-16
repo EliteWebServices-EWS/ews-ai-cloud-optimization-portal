@@ -12,6 +12,7 @@ import type {
   Ec2CostRecommendationListQuery,
   Ec2CostRecommendationRepository,
   Ec2CostRecommendationScopeQuery,
+  GetLatestCompletedEc2CostAnalysisRunQuery,
   UpsertEc2CostRecommendationInput,
 } from '../contracts/ec2-cost-repository';
 import type {
@@ -308,6 +309,7 @@ export class MockEc2CostRepository
       regionsSucceeded: input.regionsSucceeded,
       regionsFailed: input.regionsFailed,
       warnings: input.warnings,
+      performanceSummariesByRegion: input.performanceSummariesByRegion,
       version: existing.version + 1,
       updatedAt: input.completedAt,
       failureRetryable:
@@ -324,6 +326,22 @@ export class MockEc2CostRepository
     _options?: { consistentRead?: boolean },
   ): Promise<Ec2CostAnalysisRunRecord | null> {
     return this.runs.get(runKey(tenantId, accountId, runId)) ?? null;
+  }
+
+  async getLatestCompletedRun(
+    query: GetLatestCompletedEc2CostAnalysisRunQuery,
+  ): Promise<Ec2CostAnalysisRunRecord | null> {
+    const runs = [...this.runs.values()]
+      .filter(
+        (run) =>
+          run.tenantId === query.tenantId &&
+          run.accountId === query.accountId &&
+          (run.status === 'SUCCEEDED' || run.status === 'PARTIAL') &&
+          Boolean(run.completedAt) &&
+          (!query.region || run.regions.includes(query.region)),
+      )
+      .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+    return runs[0] ?? null;
   }
 
   /** Test helper */

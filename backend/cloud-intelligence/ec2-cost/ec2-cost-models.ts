@@ -61,6 +61,18 @@ export interface Ec2CostPricingAssumptions {
   region: string;
 }
 
+export type Ec2CostPerformanceSummaryAvailability = 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+
+export interface Ec2CostPerformanceSummary {
+  availability: Ec2CostPerformanceSummaryAvailability;
+  averageCpuUtilizationPercent?: number;
+  instancesEvaluated: number;
+  instancesWithMetrics: number;
+  instancesIncludedInAverage: number;
+  observationStart?: string;
+  observationEnd?: string;
+}
+
 export interface Ec2CostRecommendationRecord {
   recommendationId: string;
   tenantId: string;
@@ -129,6 +141,7 @@ export interface Ec2CostAnalysisRunRecord {
   leaseExpiresAt?: string;
   attemptCount?: number;
   failureRetryable?: boolean;
+  performanceSummariesByRegion?: Record<string, Ec2CostPerformanceSummary>;
 }
 
 export interface Ec2CostRuleInput {

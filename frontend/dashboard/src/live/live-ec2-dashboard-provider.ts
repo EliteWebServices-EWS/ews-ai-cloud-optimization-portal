@@ -45,6 +45,25 @@ function mapRightsizingOpportunity(item: Ec2CostRecommendationApi): Ec2Rightsizi
   return opportunity;
 }
 
+function mapAverageCpuUtilization(
+  performanceSummary: { availability: string; averageCpuUtilizationPercent?: number } | undefined,
+): number | undefined {
+  if (!performanceSummary) {
+    return undefined;
+  }
+  if (
+    performanceSummary.availability !== 'AVAILABLE' &&
+    performanceSummary.availability !== 'PARTIAL'
+  ) {
+    return undefined;
+  }
+  const average = performanceSummary.averageCpuUtilizationPercent;
+  if (typeof average !== 'number' || !Number.isFinite(average)) {
+    return undefined;
+  }
+  return average;
+}
+
 function countInstances(summary: {
   instancesByState: Record<string, number>;
   resourcesByType: Record<string, number>;
@@ -248,7 +267,8 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
       region,
       generatedAt: new Date().toISOString(),
       lastDiscoveryAt: summary.latestSuccessfulDiscoveryAt,
-      latestCostAnalysisAt: costList?.items[0]?.analyzedAt,
+      latestCostAnalysisAt:
+        costList?.performanceSummary?.analyzedAt ?? costList?.items[0]?.analyzedAt,
       latestSecurityAnalysisAt: securitySummary?.analyzedAt ?? undefined,
       freshnessStatus: summary.staleResourceCount > 0 ? 'Discovery data may be stale' : undefined,
       inventory: {
@@ -305,8 +325,7 @@ export class LiveEc2DashboardDataProvider implements Ec2DashboardDataProvider {
         critical: 0,
         unknown: totalInstances === 0 ? 1 : 0,
       },
-      // Fleet-average CPU is not exposed by the live dashboard API contract (follow-up).
-      averageCpuUtilization: undefined,
+      averageCpuUtilization: mapAverageCpuUtilization(costList?.performanceSummary),
       warnings,
       errors: costFailed ? errors : [],
       reports: {

@@ -297,6 +297,191 @@ describe('LiveEc2DashboardDataProvider', () => {
     expect(vm.cost.pricingStatus).toBe('UNAVAILABLE');
     expect(vm.cost.estimatedMonthlyCost).toBeUndefined();
   });
+
+  it('maps AVAILABLE performanceSummary to averageCpuUtilization and analyzedAt', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+      performanceSummary: {
+        availability: 'AVAILABLE',
+        averageCpuUtilizationPercent: 4.27,
+        instancesEvaluated: 1,
+        instancesWithMetrics: 1,
+        instancesIncludedInAverage: 1,
+        analysisRunId: 'run-live',
+        analyzedAt: '2026-08-15T01:00:00.000Z',
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+
+    expect(vm.averageCpuUtilization).toBe(4.27);
+    expect(vm.latestCostAnalysisAt).toBe('2026-08-15T01:00:00.000Z');
+  });
+
+  it('maps PARTIAL performanceSummary with finite average', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 2,
+      instancesByState: { running: 2 },
+      instancesByRegion: { 'us-east-1': 2 },
+      instancesByInstanceType: { 't3.micro': 2 },
+      resourcesByType: { INSTANCE: 2 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+      performanceSummary: {
+        availability: 'PARTIAL',
+        averageCpuUtilizationPercent: 6,
+        instancesEvaluated: 2,
+        instancesWithMetrics: 1,
+        instancesIncludedInAverage: 1,
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+
+    expect(vm.averageCpuUtilization).toBe(6);
+  });
+
+  it('leaves averageCpuUtilization undefined for UNAVAILABLE or missing performanceSummary', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValueOnce({
+      items: [],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+      performanceSummary: {
+        availability: 'UNAVAILABLE',
+        instancesEvaluated: 1,
+        instancesWithMetrics: 0,
+        instancesIncludedInAverage: 0,
+      },
+    });
+    const unavailableVm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+    expect(unavailableVm.averageCpuUtilization).toBeUndefined();
+
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValueOnce({
+      items: [],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+    });
+    const missingVm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+    expect(missingVm.averageCpuUtilization).toBeUndefined();
+  });
+
+  it('preserves zero average CPU and rejects non-finite API values', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValueOnce({
+      items: [],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+      performanceSummary: {
+        availability: 'AVAILABLE',
+        averageCpuUtilizationPercent: 0,
+        instancesEvaluated: 1,
+        instancesWithMetrics: 1,
+        instancesIncludedInAverage: 1,
+      },
+    });
+    const zeroVm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+    expect(zeroVm.averageCpuUtilization).toBe(0);
+
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValueOnce({
+      items: [],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+      performanceSummary: {
+        availability: 'AVAILABLE',
+        averageCpuUtilizationPercent: Number.NaN,
+        instancesEvaluated: 1,
+        instancesWithMetrics: 1,
+        instancesIncludedInAverage: 1,
+      },
+    });
+    const nanVm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+    expect(nanVm.averageCpuUtilization).toBeUndefined();
+  });
 });
 
 describe('Ec2DashboardController provider selection', () => {
@@ -399,6 +584,56 @@ describe('shared widgets from view model', () => {
 
     expect(summaryEl.textContent).toContain('0');
     expect(summaryEl.textContent).toContain('Not analyzed');
+  });
+
+  it('renders finite average CPU from live performance summary mapping', async () => {
+    vi.spyOn(ec2Api, 'fetchEc2ResourceSummary').mockResolvedValue({
+      totalResources: 1,
+      instancesByState: { running: 1 },
+      instancesByRegion: { 'us-east-1': 1 },
+      instancesByInstanceType: { 't3.micro': 1 },
+      resourcesByType: { INSTANCE: 1 },
+      staleResourceCount: 0,
+    });
+    vi.spyOn(ec2Api, 'fetchEc2CostRecommendations').mockResolvedValue({
+      items: [],
+      savingsSummary: {
+        validatedMonthlySavings: 0,
+        sampleEstimateMonthlySavings: 0,
+        currency: 'USD',
+      },
+      performanceSummary: {
+        availability: 'AVAILABLE',
+        averageCpuUtilizationPercent: 4.27,
+        instancesEvaluated: 1,
+        instancesWithMetrics: 1,
+        instancesIncludedInAverage: 1,
+      },
+    });
+    vi.spyOn(ec2Api, 'fetchEc2SecuritySummary').mockRejectedValue(
+      new ec2Api.Ec2DashboardApiError('NOT_FOUND', 'Not found', 404),
+    );
+
+    const vm = await new LiveEc2DashboardDataProvider().loadDashboard({
+      accessToken: 'token',
+      accountId: '111122223333',
+      region: 'us-east-1',
+    });
+    const summaryEl = document.createElement('div');
+    renderEc2DashboardPanels(
+      {
+        chrome: document.createElement('div'),
+        summary: summaryEl,
+        cost: document.createElement('div'),
+        instanceMix: document.createElement('div'),
+        security: document.createElement('div'),
+        rightsizing: document.createElement('div'),
+        executive: document.createElement('div'),
+      },
+      vm,
+    );
+
+    expect(summaryEl.textContent).toContain('Avg CPU4.3%');
   });
 });
 
