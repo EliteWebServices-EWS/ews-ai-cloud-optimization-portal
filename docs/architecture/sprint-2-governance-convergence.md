@@ -2,7 +2,13 @@
 
 ## Status
 
-Proposed (Sprint 2)
+Implemented (Sprint 2, Engineer 2).
+
+**CURRENT:** `PRESERVED`, `IMPROVED`, `REPLACED`, and live `MISSING` are
+operational through EC2 security analysis when eligibility guards pass.
+
+**APPROVED POLICY:** Strict evidence-only MISSING + lifecycle separation —
+see [`adr-int-03-governance-convergence-missing-semantics.md`](./adr-int-03-governance-convergence-missing-semantics.md).
 
 ## Owner
 
@@ -16,13 +22,51 @@ across repeated analysis runs — using the EC2 security/governance findings
 that already exist (`backend/engines/ec2-security`,
 `backend/cloud-intelligence/ec2-security`), not a parallel scanner.
 
-Out of scope: wiring this engine into the live
-`Ec2SecurityAnalysisOrchestrator` run loop, and any new HTTP API surface.
-The orchestrator and its findings model are untouched by this PR — see
-"No weakening of existing security rules" below. Both are natural,
-low-risk follow-ups once this engine has been reviewed: the reuse adapter
-(`governance-evidence-reuse.ts`) is designed to consume exactly the
-`Ec2SecurityAnalysisResult` the orchestrator already computes per run.
+HTTP read APIs for convergence history remain out of scope. The live
+production integration point is the existing EC2 security analysis path.
+
+## Live production integration (current behavior)
+
+After EC2 security findings are persisted successfully,
+`Ec2SecurityAnalysisOrchestrator` invokes `GovernanceConvergenceService`
+(additive, optional dependency):
+
+```text
+EC2 Security Analyzer (analyzeEc2Security)
+        ↓
+Existing security/governance findings per instance
+        ↓
+deriveGovernanceEvidenceFromFindings()
+        ↓
+GovernanceConvergenceRepository.recordObservation()
+        ↓
+Comparison against chronological prior observation
+        ↓
+PRESERVED / IMPROVED / REPLACED
+        ↓
+Latest checkpoint upsert (GOVERNANCE_CONVERGENCE_LATEST)
+        ↓
+If authoritative: reconcile live MISSING via latest checkpoints
+        ↓
+Deterministic convergence result persistence
+```
+
+Live `MISSING` uses `recordMissingEvidence()` internally when a prior checkpoint
+exists, the resource is `ACTIVE`, discovery + security proof passes for the
+region, the control was expected for an analyzed instance, and no current
+observation was produced (excluding technical persistence failures and
+`satisfied = undefined` insufficiency).
+
+Wiring:
+
+- `backend/cloud-intelligence/ec2-security/ec2-security-analysis-orchestrator.ts`
+- `backend/services/governance-convergence-service.ts`
+- `backend/services/ec2-security-analysis-api-service.ts`
+- `backend/services/ec2-async-job-consumer-factory.ts`
+- `backend/index.ts`
+
+Technical convergence failures add warnings and do **not** roll back or
+invalidate successful security finding persistence.
 
 ## Frozen contract (Task 1)
 
@@ -52,77 +96,143 @@ evidence with compliance").
 
 | Prior | Current | Mechanism (fingerprint) | State | Reason |
 | --- | --- | --- | --- | --- |
-| any | same as prior | unchanged | **PRESERVED** | `CONTROL_STILL_SATISFIED` (both `true`) / `VIOLATION_PERSISTS_UNCHANGED` (both `false`) / `EVIDENCE_UNAVAILABLE_UNCHANGED` (both `undefined`) |
-| `false` | `true` | changed | **IMPROVED** | `VIOLATION_RESOLVED` |
-| `undefined` | `true` | changed | **IMPROVED** | `MECHANISM_STRENGTHENED` |
-| `true` | `true` | changed (e.g. `ruleVersion` bump) | **REPLACED** | `MECHANISM_CHANGED_STILL_SATISFIED` |
-| `true` | `false` | changed | **REPLACED** | `CONTROL_REGRESSED` |
-| `undefined`/`true`/`false` | `undefined` | changed | **REPLACED** | `VIOLATION_CONTENT_CHANGED` |
-| — | (no current evidence at all) | — | **MISSING** | `CURRENT_EVIDENCE_ABSENT` |
+| any | same as prior | unchanged | **PRESERVED** | `GOVERNANCE_CONTROL_STILL_SATISFIED` (both `true`) / `GOVERNANCE_VIOLATION_PERSISTS_UNCHANGED` (both `false`) / `GOVERNANCE_EVIDENCE_UNAVAILABLE_UNCHANGED` (both `undefined`) |
+| `false` | `true` | changed | **IMPROVED** | `GOVERNANCE_VIOLATION_RESOLVED` |
+| `undefined` | `true` | changed | **IMPROVED** | `GOVERNANCE_MECHANISM_STRENGTHENED` |
+| `true` | `true` | changed (e.g. `ruleVersion` bump) | **REPLACED** | `GOVERNANCE_MECHANISM_CHANGED_STILL_SATISFIED` |
+| `true` | `false` | changed | **REPLACED** | `GOVERNANCE_CONTROL_REGRESSED` |
+| `undefined`/`true`/`false` | `undefined` | changed | **REPLACED** | `GOVERNANCE_VIOLATION_CONTENT_CHANGED` |
+| — | (no current evidence at all) | — | **MISSING** | `GOVERNANCE_CURRENT_EVIDENCE_ABSENT` |
 | (no prior evidence at all) | any | — | *(no result — see below)* | — |
 
-### Engineering decisions
+### Passed control vs MISSING
 
-- **REPLACED covers two conceptually different transitions**: "a different
-  mechanism now governs an unchanged-outcome control" (`ruleVersion`
-  changed, `satisfied` unchanged) and "the same mechanism now produces a
-  worse outcome" (`true → false`, `CONTROL_REGRESSED`). Both are grouped
-  under REPLACED rather than inventing a fifth state, consistent with the
-  Sprint 1 precedent
-  ([sprint-1-evidence-governance-mapping.md](./sprint-1-evidence-governance-mapping.md))
-  that REPLACED means "current evidence supersedes previous evidence"
-  without implying deletion — not narrowly "mechanism identity changed."
-  `reasonCodes` disambiguates the two without widening the frozen `state`
-  enum. `CONTROL_REGRESSED` is the highest-value signal this engine
-  produces and is never folded into PRESERVED.
-- **PRESERVED includes an unchanged violation**, not only unchanged
-  compliance. "Preserved" is read as "unchanged," and the reason code
-  (`VIOLATION_PERSISTS_UNCHANGED`) always tells the caller which case
-  applied — the raw `evidence.satisfied` value is never hidden.
-- **A true first sighting (no prior evidence at all) produces no
-  convergence result.** `assessGovernanceConvergence` returns `null` rather
-  than inventing a state outside the frozen four; the underlying evidence
-  observation is still recorded (Task 3), so a comparison becomes possible
-  on the next run. This is different from MISSING, which requires a prior
-  observation to exist and describes its absence *this* run.
-- **MISSING is never produced by comparing two evidence snapshots** — it is
-  produced by `buildMissingEvidenceAssessment`, called only when a control
-  that had prior evidence produces no current evidence at all this run. A
-  snapshot whose *evidence quality* degrades (e.g. security-group evidence
-  becomes insufficient) is REPLACED, not MISSING — evidence is still
-  present, just less certain. MISSING is reserved for genuine absence.
+For tracked checks the analyzer evaluates every run, absence of a direct
+violation finding means **evaluated and passed** (`satisfied = true`) unless
+an insufficiency gate is active. A corrected violation (`false → true`) is
+**IMPROVED**, never MISSING.
+
+**MISSING** is produced by live reconciliation (via `recordMissingEvidence()`)
+when prior checkpoint evidence exists, eligibility guards pass, and current
+authoritative observation is genuinely absent. It does not infer MISSING from
+passed controls, corrected violations, analyzer failures, or `satisfied = undefined`.
+
+Resource lifecycle events (`NOT_SEEN`, `STALE`, termination), out-of-scope
+regions, and partial/failed discovery or security runs **never** trigger live
+MISSING — see
+[`adr-int-03-governance-convergence-missing-semantics.md`](./adr-int-03-governance-convergence-missing-semantics.md).
+
+### Current EC2 adapter limitation
+
+Reconciliation machinery is integrated, but the current EC2 evidence adapter
+always derives `true | false | undefined` for all eight tracked controls on
+every analyzed ACTIVE instance. Insufficiency uses `undefined`, not absence.
+Genuine live MISSING is therefore **supported by infrastructure** but **not
+naturally produced** by today's adapter during ordinary successful runs.
+
+Integration tests that emit MISSING use a test-only
+`shouldRecordCurrentObservation()` override to simulate absence — not ordinary
+production evidence behavior.
+
+### Insufficient evidence
+
+When `insufficient_security_group_evidence` or
+`insufficient_ebs_encryption_evidence` is present, gated checks record
+`satisfied = undefined`. This is never treated as compliance and never
+automatically converted to MISSING. Evidence-quality degradation between runs
+is classified by the engine (typically **REPLACED**), not MISSING.
 
 ## Persistence (Task 4)
 
-Two record types, both stored append-only in the existing shared
-`SisumCloudResourcesTable` (`CLOUD_RESOURCES_TABLE_NAME`) — no new table or
-GSI, following the Sprint 1 precedent:
+Three record roles in the existing shared `SisumCloudResourcesTable`
+(`CLOUD_RESOURCES_TABLE_NAME`) — no new table or GSI, following the Sprint 1
+precedent:
 
-1. **`GovernanceEvidenceObservationRecord`** (Task 3) — the raw,
-   longitudinal evidence log. One row per analysis run per
-   (resource, check), written only when evidence was actually produced.
-   Idempotent on `(tenantId, accountId, findingKey, analysisRunId,
-   observationTimestamp)` via the same conditional-put pattern as
-   `DynamoDbEvidenceObservationRepository`.
-2. **`GovernanceConvergenceResultRecord`** (Task 4) — the durable
-   classification, extending `GovernanceConvergenceAssessment` with
-   `resultId`, tenant/account/resource/check identity, `findingKey`,
-   `analysisRunId`, and `persistedAt`. Produced whenever a classification
-   is made (PRESERVED/IMPROVED/REPLACED alongside a new observation, or
-   MISSING via `recordMissingEvidence`), answering "what governance
-   evidence was compared to reach this conclusion" directly from one row.
+1. **`GovernanceEvidenceObservationRecord`** — append-only raw evidence log.
+2. **`GovernanceConvergenceResultRecord`** — append-only durable classification.
+3. **`GovernanceLatestObservedControlRecord`** — mutable latest-state checkpoint
+   per `(tenant, account, region, resource, check)` for bounded MISSING
+   reconciliation. SK prefix `GOVERNANCE_CONVERGENCE_LATEST#`. Does not replace
+   or mutate historical observation/result rows. Advancement ordering:
+   `observationTimestamp` then `latestLogicalObservationId` (see
+   `observation-ordering.ts`).
 
-Ownership resolution (`resolveOwnerTenantId`) is pure parsing — the
-`findingKey` embeds `tenantId` as its first `#`-delimited segment (segment
-values are validated to exclude `#`, so the split is unambiguous) — no
-separate ownership-index write or read is needed.
+### Observation logical identity
+
+Derived from:
+
+```text
+tenantId + accountId + findingKey + analysisRunId + observationTimestamp
+```
+
+DynamoDB SK:
+`GOVERNANCE_CONVERGENCE_OBSERVATION#FK#{findingKey}#TS#{observationTimestampIso}#LOG#{logicalObservationId}`
+
+### Result logical identity (observation-backed)
+
+Derived from:
+
+```text
+tenantId + accountId + findingKey + currentLogicalObservationId + GOVERNANCE_CONVERGENCE_RULE_VERSION
+```
+
+DynamoDB SK:
+`GOVERNANCE_CONVERGENCE_RESULT#FK#{findingKey}#TS#{sourceObservationTimestampIso}#LR#{logicalResultId}`
+
+### Result logical identity (MISSING)
+
+Derived from:
+
+```text
+tenantId + accountId + findingKey + analysisRunId + GOVERNANCE_CONVERGENCE_RULE_VERSION + MISSING
+```
+
+DynamoDB SK:
+`GOVERNANCE_CONVERGENCE_RESULT#FK#{findingKey}#EVT#{analysisRunId}#LR#{logicalResultId}`
+
+Partition key for both entity types:
+`cloudResourceAccountPartitionKey(tenantId, accountId)`.
+
+### Duplicate and concurrent behavior
+
+- Exact logical observation replay: one observation row; convergence result
+  recovered if missing (`created: false`, result returned when reconstructable).
+- Exact logical MISSING replay: one MISSING result row.
+- Concurrent writers of the same logical result: conditional put + deterministic
+  get; exactly one durable row.
+
+### Partial-write recovery
+
+If observation persistence succeeds but result persistence fails, a retry of
+the same logical observation:
+
+1. loads the existing observation;
+2. returns the existing result if present;
+3. otherwise re-evaluates against the chronological predecessor and persists
+   the missing result under deterministic identity.
+
+Historical convergence results are never rewritten.
+
+### Out-of-order evidence
+
+Late-arriving observations compare against their true chronological
+predecessor (`findRelevantPreviousObservation`). Already-persisted convergence
+results remain immutable snapshots of the evaluation made at that logical event.
+
+### Provenance
+
+Observation-backed results persist tenant/account/region/resource/check,
+`findingKey`, previous/current evidence IDs, `currentLogicalObservationId`,
+`analysisRunId`, `ruleVersion`, and `evaluatedAt`. Compliant controls may
+legitimately have no `sourceFindingId` because passed controls produce no
+violation finding. MISSING results persist previous evidence reference only;
+current evidence reference remains absent by definition.
 
 ## Reusing existing findings (Task 3)
 
-`governance-evidence-reuse.ts` maps Task 2's eight named EC2
-governance/security signals onto the exact `check` identifiers the
-existing analyzer (`engines/ec2-security/ec2-security.analyzer.ts`)
-already produces:
+`governance-evidence-reuse.ts` maps eight named EC2 governance/security
+signals onto the exact `check` identifiers the existing analyzer already
+produces:
 
 | Task 2 signal | Existing `check` identifier |
 | --- | --- |
@@ -136,30 +246,18 @@ already produces:
 | Monitoring configuration | `cloudwatch_monitoring` |
 
 `deriveGovernanceEvidenceFromFindings` takes the `securityFindings` +
-`governanceFindings` arrays already produced by one analysis run
-(`Ec2SecurityAnalysisResult`) and derives `satisfied` per tracked check.
-Absence of a direct finding means "evaluated and passed" **except** when
-one of the existing evidence-insufficiency markers
-(`insufficient_security_group_evidence`,
-`insufficient_ebs_encryption_evidence`, added by
-`ec2-security-evidence.ts`'s `supplementAnalysisForInsufficientEvidence`)
-is present for a gated check — in that case `satisfied` is `undefined`,
-never inferred as `true`. This is the concrete mechanism for "do not
-equate absence of evidence with compliance."
+`governanceFindings` arrays already produced by one analysis run and derives
+`satisfied` per tracked check.
 
 ## Tenant isolation (Task 5)
 
 Every read is scoped by `(tenantId, accountId)` partition key plus an
-explicit `tenantId` equality check on returned items (defense in depth
-against a key-construction bug), matching the pattern used throughout this
-codebase's DynamoDB repositories. `findingKey` embedding `tenantId`
-structurally prevents cross-tenant collision even under a hypothetical
-`accountId` reuse.
+explicit `tenantId` equality check on returned items. `findingKey` embeds
+`tenantId` as its first `#`-delimited segment.
 
 ## No weakening of existing security rules
 
-This PR adds no changes to `Ec2SecurityAnalysisOrchestrator`,
-`ec2-security.analyzer.ts`, `Ec2SecurityFindingRepository`, or any
-existing finding's `status`/`severity` semantics. The only touched
-existing file is `database/cloud-resources/index.ts` (one new barrel
-export line).
+Governance convergence is additive intelligence. EC2 security analyzer rules,
+finding status lifecycle, severity semantics, and scoring are unchanged.
+Orchestrator wiring catches convergence failures and surfaces them as
+warnings without invalidating durable security findings.

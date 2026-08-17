@@ -41,6 +41,8 @@ import { createEvidenceObservationRepository } from './services/evidence-observa
 import { EvidencePersistenceService } from './services/evidence-persistence-service';
 import { createEvidenceMaturityRepository } from './services/evidence-maturity-repository-factory';
 import { EvidenceMaturityService } from './services/evidence-maturity-service';
+import { createGovernanceConvergenceRepository } from './services/governance-convergence-repository-factory';
+import { GovernanceConvergenceService } from './services/governance-convergence-service';
 import { Ec2CostAnalysisApiService } from './services/ec2-cost-analysis-api-service';
 import { createEc2SecurityRepositories } from './services/ec2-security-repository-factory';
 import { Ec2SecurityAnalysisApiService } from './services/ec2-security-analysis-api-service';
@@ -150,6 +152,11 @@ export function createApp(options?: CreateAppOptions): express.Application {
     evidenceMaturityRepository,
     evidenceObservations,
   );
+  const governanceConvergenceRepository = createGovernanceConvergenceRepository();
+  const governanceConvergence = new GovernanceConvergenceService(
+    governanceConvergenceRepository,
+    ec2CloudResourceRepositories.resources,
+  );
   const ec2CostAnalysisApi = new Ec2CostAnalysisApiService(
     awsAccountRepository,
     ec2CloudResourceRepositories.resources,
@@ -168,6 +175,7 @@ export function createApp(options?: CreateAppOptions): express.Application {
     ec2SecurityRepositories.findings,
     ec2SecurityRepositories.summaries,
     ec2SecurityRepositories.runs,
+    governanceConvergence,
   );
 
   const ec2AsyncJobRepository = createEc2AsyncJobRepository();

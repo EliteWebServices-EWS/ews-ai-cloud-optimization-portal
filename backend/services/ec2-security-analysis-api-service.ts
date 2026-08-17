@@ -24,6 +24,7 @@ import {
   buildRegionSecuritySummaryView,
 } from '../cloud-intelligence/ec2-security/ec2-security-summary-aggregate';
 import type { Ec2SecuritySummaryView } from '../cloud-intelligence/ec2-security/ec2-security-summary-aggregate';
+import type { GovernanceConvergenceService } from './governance-convergence-service';
 
 export class Ec2SecurityValidationError extends Error {
   constructor(message: string) {
@@ -54,6 +55,7 @@ export class Ec2SecurityAnalysisApiService {
     private readonly findings: Ec2SecurityFindingRepository,
     private readonly summaries: Ec2SecuritySummaryRepository,
     private readonly runs: Ec2SecurityAnalysisRunRepository,
+    private readonly governanceConvergence?: GovernanceConvergenceService,
   ) {}
 
   private async requireVerifiedAccount(tenantId: string, accountId: string) {
@@ -94,6 +96,7 @@ export class Ec2SecurityAnalysisApiService {
       this.findings,
       this.summaries,
       this.runs,
+      this.governanceConvergence,
     );
     const result = await orchestrator.runAnalysis({
       tenantId,

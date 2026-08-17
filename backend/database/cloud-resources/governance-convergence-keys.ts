@@ -29,18 +29,33 @@ export function governanceConvergenceObservationSortKeyPrefixForFinding(findingK
 export const GOVERNANCE_CONVERGENCE_RESULT_ENTITY = 'GOVERNANCE_CONVERGENCE_RESULT' as const;
 export const GOVERNANCE_CONVERGENCE_RESULT_SK_PREFIX = `${GOVERNANCE_CONVERGENCE_RESULT_ENTITY}#`;
 
-/** Append-only result log, sorted so the newest result per finding queries first (ScanIndexForward: false). */
-export function governanceConvergenceResultSortKey(input: {
+/** Deterministic result for an observation-backed convergence event. */
+export function governanceConvergenceObservationResultSortKey(input: {
   findingKey: string;
-  evaluatedAtIso: string;
-  resultId: string;
+  sourceObservationTimestampIso: string;
+  logicalResultId: string;
 }): string {
   return `${GOVERNANCE_CONVERGENCE_RESULT_SK_PREFIX}FK#${requireOpaqueKeyValue(
     input.findingKey,
     'findingKey',
-  )}#TS#${requireKeyValue(input.evaluatedAtIso, 'evaluatedAtIso')}#ID#${requireOpaqueKeyValue(
-    input.resultId,
-    'resultId',
+  )}#TS#${requireKeyValue(
+    input.sourceObservationTimestampIso,
+    'sourceObservationTimestampIso',
+  )}#LR#${requireOpaqueKeyValue(input.logicalResultId, 'logicalResultId')}`;
+}
+
+/** Deterministic result for a MISSING convergence event (no current observation). */
+export function governanceConvergenceMissingResultSortKey(input: {
+  findingKey: string;
+  analysisRunId: string;
+  logicalResultId: string;
+}): string {
+  return `${GOVERNANCE_CONVERGENCE_RESULT_SK_PREFIX}FK#${requireOpaqueKeyValue(
+    input.findingKey,
+    'findingKey',
+  )}#EVT#${requireKeyValue(input.analysisRunId, 'analysisRunId')}#LR#${requireOpaqueKeyValue(
+    input.logicalResultId,
+    'logicalResultId',
   )}`;
 }
 
@@ -80,4 +95,26 @@ export function buildGovernanceConvergenceFindingKey(input: {
 export function parseGovernanceConvergenceFindingKeyOwner(findingKey: string): string | undefined {
   const [tenantId] = findingKey.split('#');
   return tenantId && tenantId.length > 0 ? tenantId : undefined;
+}
+
+export const GOVERNANCE_CONVERGENCE_LATEST_ENTITY = 'GOVERNANCE_CONVERGENCE_LATEST' as const;
+export const GOVERNANCE_CONVERGENCE_LATEST_SK_PREFIX = `${GOVERNANCE_CONVERGENCE_LATEST_ENTITY}#`;
+
+/** Mutable latest-state checkpoint for one resource/check (separate from append-only observations). */
+export function governanceConvergenceLatestSortKey(input: {
+  region: string;
+  resourceId: string;
+  check: string;
+}): string {
+  return `${GOVERNANCE_CONVERGENCE_LATEST_SK_PREFIX}REGION#${requireKeyValue(
+    input.region,
+    'region',
+  )}#RESOURCE#${requireOpaqueKeyValue(input.resourceId, 'resourceId')}#CHECK#${requireKeyValue(
+    input.check,
+    'check',
+  )}`;
+}
+
+export function governanceConvergenceLatestSortKeyPrefixForRegion(region: string): string {
+  return `${GOVERNANCE_CONVERGENCE_LATEST_SK_PREFIX}REGION#${requireKeyValue(region, 'region')}#`;
 }

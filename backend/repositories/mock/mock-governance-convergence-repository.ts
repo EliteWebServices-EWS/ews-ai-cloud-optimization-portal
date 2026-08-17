@@ -1,29 +1,41 @@
 import { randomUUID } from 'node:crypto';
 
-import { RepositoryConflictError } from '../../database';
+import {
+  governanceConvergenceMissingResultSortKey,
+  governanceConvergenceObservationResultSortKey,
+  governanceConvergenceLatestSortKey,
+  parseGovernanceConvergenceFindingKeyOwner,
+} from '../../database/cloud-resources/governance-convergence-keys';
 import {
   assessGovernanceConvergence,
   buildMissingEvidenceAssessment,
 } from '../../governance-convergence/governance-convergence-engine';
 import {
+  buildMissingLogicalResultId,
+  buildObservationBackedLogicalResultId,
+} from '../../governance-convergence/governance-convergence-result-identity';
+import {
   buildLogicalObservationId,
+  latestObservedControlCandidateShouldAdvance,
   selectRelevantPreviousObservation,
   sortObservationsByObservationTimestamp,
 } from '../../governance-convergence/observation-ordering';
 import { normalizeObservationTimestampIso } from '../../governance-convergence/timestamp-rules';
-import { parseGovernanceConvergenceFindingKeyOwner } from '../../database/cloud-resources/governance-convergence-keys';
 import type {
   GovernanceConvergenceAssessment,
   GovernanceConvergenceResultRecord,
   GovernanceEvidenceObservationRecord,
+  GovernanceLatestObservedControlRecord,
   RecordGovernanceEvidenceObservationInput,
   RecordGovernanceEvidenceObservationResult,
+  UpsertGovernanceLatestObservedControlInput,
 } from '../../governance-convergence/types';
 import type {
   FindRelevantPreviousGovernanceObservationInput,
   GetGovernanceConvergenceObservationByLogicalIdInput,
   GovernanceConvergenceListQuery,
   GovernanceConvergenceRepository,
+  ListLatestObservedControlsQuery,
   RecordGovernanceMissingEvidenceInput,
 } from '../contracts/governance-convergence-repository';
 import type { PageResult } from '../contracts/repository-types';
@@ -37,10 +49,20 @@ function findingIndexKey(tenantId: string, accountId: string, findingKey: string
   return `${tenantId}#${accountId}#${findingKey}`;
 }
 
+function resultStorageKey(pk: string, sk: string): string {
+  return `${pk}||${sk}`;
+}
+
+function latestCheckpointStorageKey(tenantId: string, accountId: string, sk: string): string {
+  return `${tenantId}#${accountId}#${sk}`;
+}
+
 export class MockGovernanceConvergenceRepository implements GovernanceConvergenceRepository {
   private readonly observationsByLogicalId = new Map<string, GovernanceEvidenceObservationRecord>();
   private readonly observationsByFinding = new Map<string, GovernanceEvidenceObservationRecord[]>();
+  private readonly resultsByKey = new Map<string, GovernanceConvergenceResultRecord>();
   private readonly resultsByFinding = new Map<string, GovernanceConvergenceResultRecord[]>();
+  private readonly latestObservedControls = new Map<string, GovernanceLatestObservedControlRecord>();
 
   async getObservationByLogicalId(
     input: GetGovernanceConvergenceObservationByLogicalIdInput,
@@ -91,6 +113,67 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
     };
   }
 
+  private storeResult(record: GovernanceConvergenceResultRecord, pk: string, sk: string): void {
+    this.resultsByKey.set(resultStorageKey(pk, sk), record);
+    const indexKey = findingIndexKey(record.tenantId, record.accountId, record.findingKey);
+    const list = this.resultsByFinding.get(indexKey) ?? [];
+    if (!list.some((item) => item.resultId === record.resultId)) {
+      list.push(record);
+      this.resultsByFinding.set(indexKey, list);
+    }
+  }
+
+  private async recoverResultForObservation(
+    observation: GovernanceEvidenceObservationRecord,
+    input: RecordGovernanceEvidenceObservationInput,
+  ): Promise<GovernanceConvergenceResultRecord | undefined> {
+    const logicalResultId = buildObservationBackedLogicalResultId({
+      tenantId: observation.tenantId,
+      accountId: observation.accountId,
+      findingKey: observation.findingKey,
+      logicalObservationId: observation.logicalObservationId,
+    });
+    const existing = this.resultsByFinding
+      .get(findingIndexKey(observation.tenantId, observation.accountId, observation.findingKey))
+      ?.find((result) => result.resultId === logicalResultId);
+    if (existing) {
+      return existing;
+    }
+
+    const relevantPrevious = await this.findRelevantPreviousObservation({
+      tenantId: input.tenantId,
+      accountId: input.accountId,
+      findingKey: input.findingKey,
+      beforeObservationTimestamp: observation.observationTimestamp,
+      excludeLogicalObservationId: observation.logicalObservationId,
+    });
+
+    const assessment = assessGovernanceConvergence({
+      currentEvidence: input.evidence,
+      currentObservationId: observation.observationId,
+      previousObservation: relevantPrevious,
+      evaluatedAt: observation.persistedAt,
+    });
+    if (!assessment) {
+      return undefined;
+    }
+
+    return this.persistObservationBackedResult(
+      {
+        tenantId: input.tenantId,
+        accountId: input.accountId,
+        region: input.region,
+        resourceId: input.resourceId,
+        check: input.check,
+        findingKey: input.findingKey,
+        analysisRunId: input.analysisRunId,
+        logicalObservationId: observation.logicalObservationId,
+        sourceObservationTimestamp: observation.observationTimestamp,
+      },
+      assessment,
+    );
+  }
+
   async recordObservation(
     input: RecordGovernanceEvidenceObservationInput,
   ): Promise<RecordGovernanceEvidenceObservationResult> {
@@ -106,10 +189,8 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
     const key = observationStorageKey(input.tenantId, input.accountId, logicalObservationId);
     const existing = this.observationsByLogicalId.get(key);
     if (existing) {
-      const latestResult = await this.getLatestResult(input.tenantId, input.accountId, input.findingKey);
-      const matchingResult =
-        latestResult && latestResult.currentEvidenceId === existing.observationId ? latestResult : undefined;
-      return { observation: existing, result: matchingResult, created: false };
+      const recovered = await this.recoverResultForObservation(existing, input);
+      return { observation: existing, result: recovered, created: false };
     }
 
     const relevantPrevious = await this.findRelevantPreviousObservation({
@@ -139,7 +220,9 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
     };
 
     if (this.observationsByLogicalId.has(key)) {
-      throw new RepositoryConflictError('Governance evidence observation write conflict.');
+      const raced = this.observationsByLogicalId.get(key)!;
+      const recovered = await this.recoverResultForObservation(raced, input);
+      return { observation: raced, result: recovered, created: false };
     }
 
     this.observationsByLogicalId.set(key, record);
@@ -157,7 +240,20 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
 
     let result: GovernanceConvergenceResultRecord | undefined;
     if (assessment) {
-      result = this.persistResult(input, assessment);
+      result = this.persistObservationBackedResult(
+        {
+          tenantId: input.tenantId,
+          accountId: input.accountId,
+          region: input.region,
+          resourceId: input.resourceId,
+          check: input.check,
+          findingKey: input.findingKey,
+          analysisRunId: input.analysisRunId,
+          logicalObservationId,
+          sourceObservationTimestamp: observationTimestampIso,
+        },
+        assessment,
+      );
     }
 
     return { observation: record, result, created: true };
@@ -176,12 +272,25 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
       return null;
     }
 
+    const logicalResultId = buildMissingLogicalResultId({
+      tenantId: input.tenantId,
+      accountId: input.accountId,
+      findingKey: input.findingKey,
+      analysisRunId: input.analysisRunId,
+    });
+    const existing = this.resultsByFinding
+      .get(findingIndexKey(input.tenantId, input.accountId, input.findingKey))
+      ?.find((result) => result.resultId === logicalResultId);
+    if (existing) {
+      return existing;
+    }
+
     const assessment = buildMissingEvidenceAssessment({
       previousObservation: previous,
       evaluatedAt: input.evaluatedAt,
     });
 
-    return this.persistResult(
+    return this.persistMissingResult(
       {
         tenantId: input.tenantId,
         accountId: input.accountId,
@@ -190,6 +299,7 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
         check: previous.check,
         findingKey: input.findingKey,
         analysisRunId: input.analysisRunId,
+        logicalResultId,
       },
       assessment,
     );
@@ -231,7 +341,86 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
     return parseGovernanceConvergenceFindingKeyOwner(findingKey);
   }
 
-  private persistResult(
+  async upsertLatestObservedControl(
+    input: UpsertGovernanceLatestObservedControlInput,
+  ): Promise<GovernanceLatestObservedControlRecord> {
+    const latestObservationTimestamp = normalizeObservationTimestampIso(input.latestObservationTimestamp);
+    const sk = governanceConvergenceLatestSortKey({
+      region: input.region,
+      resourceId: input.resourceId,
+      check: input.check,
+    });
+    const storageKey = latestCheckpointStorageKey(input.tenantId, input.accountId, sk);
+    const existing = this.latestObservedControls.get(storageKey);
+    if (
+      existing &&
+      !latestObservedControlCandidateShouldAdvance(
+        {
+          latestObservationTimestamp,
+          latestLogicalObservationId: input.latestLogicalObservationId,
+        },
+        {
+          latestObservationTimestamp: existing.latestObservationTimestamp,
+          latestLogicalObservationId: existing.latestLogicalObservationId,
+        },
+      )
+    ) {
+      return existing;
+    }
+
+    const record: GovernanceLatestObservedControlRecord = {
+      tenantId: input.tenantId,
+      accountId: input.accountId,
+      region: input.region,
+      resourceId: input.resourceId,
+      check: input.check,
+      findingKey: input.findingKey,
+      latestObservationId: input.latestObservationId,
+      latestLogicalObservationId: input.latestLogicalObservationId,
+      latestObservationTimestamp,
+      latestAnalysisRunId: input.latestAnalysisRunId,
+      latestRuleVersion: input.latestRuleVersion,
+      resourceLifecycleStatus: input.resourceLifecycleStatus,
+      updatedAt: new Date().toISOString(),
+      version: existing ? existing.version + 1 : 1,
+    };
+    this.latestObservedControls.set(storageKey, record);
+    return record;
+  }
+
+  async listLatestObservedControls(
+    query: ListLatestObservedControlsQuery,
+  ): Promise<PageResult<GovernanceLatestObservedControlRecord>> {
+    const regionSet = new Set(query.regions);
+    const all = [...this.latestObservedControls.values()]
+      .filter(
+        (checkpoint) =>
+          checkpoint.tenantId === query.tenantId &&
+          checkpoint.accountId === query.accountId &&
+          regionSet.has(checkpoint.region),
+      )
+      .sort((left, right) => {
+        const regionCompare = left.region.localeCompare(right.region);
+        if (regionCompare !== 0) {
+          return regionCompare;
+        }
+        const resourceCompare = left.resourceId.localeCompare(right.resourceId);
+        if (resourceCompare !== 0) {
+          return resourceCompare;
+        }
+        return left.check.localeCompare(right.check);
+      });
+    const limit = normalizePageSize(query.limit);
+    const startIndex = query.nextToken ? Number.parseInt(query.nextToken, 10) || 0 : 0;
+    const page = all.slice(startIndex, startIndex + limit);
+    const nextIndex = startIndex + page.length;
+    return {
+      items: page,
+      nextToken: nextIndex < all.length ? String(nextIndex) : undefined,
+    };
+  }
+
+  private persistObservationBackedResult(
     identity: {
       tenantId: string;
       accountId: string;
@@ -240,12 +429,29 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
       check: string;
       findingKey: string;
       analysisRunId: string;
+      logicalObservationId: string;
+      sourceObservationTimestamp: string;
     },
     assessment: GovernanceConvergenceAssessment,
   ): GovernanceConvergenceResultRecord {
+    const logicalResultId = buildObservationBackedLogicalResultId({
+      tenantId: identity.tenantId,
+      accountId: identity.accountId,
+      findingKey: identity.findingKey,
+      logicalObservationId: identity.logicalObservationId,
+      ruleVersion: assessment.ruleVersion,
+    });
+    const existing = this.resultsByFinding
+      .get(findingIndexKey(identity.tenantId, identity.accountId, identity.findingKey))
+      ?.find((result) => result.resultId === logicalResultId);
+    if (existing) {
+      return existing;
+    }
+
     const record: GovernanceConvergenceResultRecord = {
       ...assessment,
-      resultId: randomUUID(),
+      resultId: logicalResultId,
+      currentLogicalObservationId: identity.logicalObservationId,
       tenantId: identity.tenantId,
       accountId: identity.accountId,
       region: identity.region,
@@ -257,10 +463,55 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
       persistedAt: new Date().toISOString(),
       version: 1,
     };
-    const key = findingIndexKey(identity.tenantId, identity.accountId, identity.findingKey);
-    const list = this.resultsByFinding.get(key) ?? [];
-    list.push(record);
-    this.resultsByFinding.set(key, list);
+    const sk = governanceConvergenceObservationResultSortKey({
+      findingKey: identity.findingKey,
+      sourceObservationTimestampIso: normalizeObservationTimestampIso(identity.sourceObservationTimestamp),
+      logicalResultId,
+    });
+    this.storeResult(record, `mock-pk-${identity.tenantId}-${identity.accountId}`, sk);
+    return record;
+  }
+
+  private persistMissingResult(
+    identity: {
+      tenantId: string;
+      accountId: string;
+      region: string;
+      resourceId: string;
+      check: string;
+      findingKey: string;
+      analysisRunId: string;
+      logicalResultId: string;
+    },
+    assessment: GovernanceConvergenceAssessment,
+  ): GovernanceConvergenceResultRecord {
+    const existing = this.resultsByFinding
+      .get(findingIndexKey(identity.tenantId, identity.accountId, identity.findingKey))
+      ?.find((result) => result.resultId === identity.logicalResultId);
+    if (existing) {
+      return existing;
+    }
+
+    const record: GovernanceConvergenceResultRecord = {
+      ...assessment,
+      resultId: identity.logicalResultId,
+      tenantId: identity.tenantId,
+      accountId: identity.accountId,
+      region: identity.region,
+      resourceType: 'INSTANCE',
+      resourceId: identity.resourceId,
+      check: identity.check,
+      findingKey: identity.findingKey,
+      analysisRunId: identity.analysisRunId,
+      persistedAt: new Date().toISOString(),
+      version: 1,
+    };
+    const sk = governanceConvergenceMissingResultSortKey({
+      findingKey: identity.findingKey,
+      analysisRunId: identity.analysisRunId,
+      logicalResultId: identity.logicalResultId,
+    });
+    this.storeResult(record, `mock-pk-${identity.tenantId}-${identity.accountId}`, sk);
     return record;
   }
 }

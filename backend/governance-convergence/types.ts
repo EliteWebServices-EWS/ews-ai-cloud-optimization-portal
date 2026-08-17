@@ -101,8 +101,46 @@ export interface RecordGovernanceEvidenceObservationResult {
  * classification, with enough provenance to answer "what governance
  * evidence was compared to reach this conclusion".
  */
+/**
+ * Mutable latest-state checkpoint for one (tenant, account, region, resource, check).
+ * Separate from append-only GOVERNANCE_CONVERGENCE_OBSERVATION rows.
+ */
+export interface GovernanceLatestObservedControlRecord {
+  tenantId: string;
+  accountId: string;
+  region: string;
+  resourceId: string;
+  check: string;
+  findingKey: string;
+  latestObservationId: string;
+  latestLogicalObservationId: string;
+  latestObservationTimestamp: string;
+  latestAnalysisRunId: string;
+  latestRuleVersion: string;
+  resourceLifecycleStatus?: 'ACTIVE' | 'NOT_SEEN' | 'STALE';
+  updatedAt: string;
+  version: number;
+}
+
+export interface UpsertGovernanceLatestObservedControlInput {
+  tenantId: string;
+  accountId: string;
+  region: string;
+  resourceId: string;
+  check: string;
+  findingKey: string;
+  latestObservationId: string;
+  latestLogicalObservationId: string;
+  latestObservationTimestamp: string;
+  latestAnalysisRunId: string;
+  latestRuleVersion: string;
+  resourceLifecycleStatus?: 'ACTIVE' | 'NOT_SEEN' | 'STALE';
+}
+
 export interface GovernanceConvergenceResultRecord extends GovernanceConvergenceAssessment {
   resultId: string;
+  /** Deterministic logical observation identity for observation-backed results. */
+  currentLogicalObservationId?: string;
   tenantId: string;
   accountId: string;
   region: string;
