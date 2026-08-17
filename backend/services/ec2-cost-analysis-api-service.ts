@@ -33,6 +33,7 @@ import {
 } from '../cloud-intelligence/ec2-cost/ec2-cost-performance-summary';
 import type { AuditActor } from '../audit';
 import type { EvidencePersistenceService } from './evidence-persistence-service';
+import type { EvidenceMaturityService } from './evidence-maturity-service';
 
 export class Ec2CostValidationError extends Error {
   constructor(message: string) {
@@ -107,6 +108,7 @@ export class Ec2CostAnalysisApiService {
     private readonly credentialProvider: StsCredentialProvider = new StsCredentialProvider(),
     private readonly metricsClientFactoryOverride?: Ec2PerformanceMetricsClientFactory,
     private readonly evidencePersistence?: EvidencePersistenceService,
+    private readonly evidenceMaturity?: EvidenceMaturityService,
   ) {}
 
   private async requireVerifiedAccount(tenantId: string, accountId: string) {
@@ -131,6 +133,7 @@ export class Ec2CostAnalysisApiService {
       this.recommendations,
       this.runs,
       this.evidencePersistence,
+      this.evidenceMaturity,
     );
   }
 
