@@ -6,3 +6,5 @@ export * from './governance-evidence-fingerprint';
 export * from './observation-ordering';
 export * from './governance-convergence-engine';
 export * from './governance-evidence-reuse';
+export * from './governance-convergence-result-identity';
+export * from './governance-convergence-authority';

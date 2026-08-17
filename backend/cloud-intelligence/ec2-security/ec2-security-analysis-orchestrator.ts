@@ -33,6 +33,10 @@ import {
 } from './ec2-security-inventory-mapper';
 
 import { summarizeRegionalAnalysisResults } from './ec2-security-summary-aggregate';
+import type {
+  GovernanceActiveInventoryInstance,
+  GovernanceConvergenceService,
+} from '../../services/governance-convergence-service';
 
 
 
@@ -130,6 +134,8 @@ export class Ec2SecurityAnalysisOrchestrator {
 
     private readonly runs: Ec2SecurityAnalysisRunRepository,
 
+    private readonly governanceConvergence?: GovernanceConvergenceService,
+
   ) {}
 
 
@@ -177,6 +183,8 @@ export class Ec2SecurityAnalysisOrchestrator {
 
     const instanceRegion = new Map<string, string>();
 
+    const activeInventoryInstances: GovernanceActiveInventoryInstance[] = [];
+
 
 
     for (const region of input.regions) {
@@ -214,6 +222,12 @@ export class Ec2SecurityAnalysisOrchestrator {
         metadataByInstanceId.set(instance.resourceId, instance.metadata ?? {});
 
         instanceRegion.set(instance.resourceId, region);
+
+        activeInventoryInstances.push({
+          instanceId: instance.resourceId,
+          region,
+          lifecycleStatus: instance.status,
+        });
 
         inventory.push(
 
@@ -506,6 +520,37 @@ export class Ec2SecurityAnalysisOrchestrator {
 
       }
 
+    }
+
+    if (this.governanceConvergence) {
+      try {
+        const completionStatus = input.completionStatus ?? 'SUCCEEDED';
+        const discoveryRun = await this.resources.getLatestSuccessfulRun(
+          input.tenantId,
+          input.accountId,
+        );
+        const convergence = await this.governanceConvergence.persistForSecurityAnalysisRun({
+          tenantId: input.tenantId,
+          accountId: input.accountId,
+          analysisRunId: runId,
+          analysis,
+          instanceRegions: instanceRegion,
+          observationTimestamp: analysis.analyzedAt,
+          collectionTimestamp: now,
+          authority: {
+            requestedRegions: input.regions,
+            securityRunStatus: completionStatus,
+            discoveryRunStatus: discoveryRun?.status ?? 'UNKNOWN',
+            discoveryRegionsSucceeded: discoveryRun?.regionsSucceeded ?? [],
+            discoveryRegionsFailed: discoveryRun?.regionsFailed ?? [],
+          },
+          activeInventoryInstances,
+        });
+        warnings.push(...convergence.warnings);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`Governance convergence persistence failed: ${message}`);
+      }
     }
 
 

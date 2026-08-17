@@ -81,3 +81,32 @@ export function findObservationByLogicalId(
     null
   );
 }
+
+export interface LatestObservedControlOrderingFields {
+  latestObservationTimestamp: string;
+  latestLogicalObservationId: string;
+}
+
+/**
+ * Canonical latest-checkpoint ordering: observationTimestamp ascending, then
+ * logicalObservationId lexicographic. A candidate advances the checkpoint only
+ * if it sorts strictly after the incumbent.
+ */
+export function compareLatestObservedControlOrdering(
+  left: LatestObservedControlOrderingFields,
+  right: LatestObservedControlOrderingFields,
+): number {
+  const leftMs = parseObservationTimestamp(left.latestObservationTimestamp).epochMs;
+  const rightMs = parseObservationTimestamp(right.latestObservationTimestamp).epochMs;
+  if (leftMs !== rightMs) {
+    return leftMs - rightMs;
+  }
+  return left.latestLogicalObservationId.localeCompare(right.latestLogicalObservationId);
+}
+
+export function latestObservedControlCandidateShouldAdvance(
+  candidate: LatestObservedControlOrderingFields,
+  existing: LatestObservedControlOrderingFields,
+): boolean {
+  return compareLatestObservedControlOrdering(candidate, existing) > 0;
+}

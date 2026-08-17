@@ -5,6 +5,8 @@ import { createEvidenceObservationRepository } from './evidence-observation-repo
 import { EvidencePersistenceService } from './evidence-persistence-service';
 import { createEvidenceMaturityRepository } from './evidence-maturity-repository-factory';
 import { EvidenceMaturityService } from './evidence-maturity-service';
+import { createGovernanceConvergenceRepository } from './governance-convergence-repository-factory';
+import { GovernanceConvergenceService } from './governance-convergence-service';
 import { createEc2SecurityRepositories } from './ec2-security-repository-factory';
 import { createEc2AsyncJobRepository } from './ec2-async-job-repository-factory';
 import { Ec2DiscoveryApiService } from './ec2-discovery-api-service';
@@ -36,6 +38,11 @@ export function createEc2AsyncJobConsumerServiceFromEnv(): Ec2AsyncJobConsumerSe
     evidenceMaturityRepository,
     evidenceObservations,
   );
+  const governanceConvergenceRepository = createGovernanceConvergenceRepository();
+  const governanceConvergence = new GovernanceConvergenceService(
+    governanceConvergenceRepository,
+    ec2Resources.resources,
+  );
   const ec2Security = createEc2SecurityRepositories();
   const jobs = createEc2AsyncJobRepository();
   const reportingEngine = createReportingEngine();
@@ -64,6 +71,7 @@ export function createEc2AsyncJobConsumerServiceFromEnv(): Ec2AsyncJobConsumerSe
       ec2Security.findings,
       ec2Security.summaries,
       ec2Security.runs,
+      governanceConvergence,
     ),
     stageCompletion: new Ec2AsyncJobStageCompletionService(
       ec2Resources.runs,

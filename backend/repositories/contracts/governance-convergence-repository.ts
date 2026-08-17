@@ -2,14 +2,24 @@ import type { PageResult } from './repository-types';
 import type {
   GovernanceConvergenceResultRecord,
   GovernanceEvidenceObservationRecord,
+  GovernanceLatestObservedControlRecord,
   RecordGovernanceEvidenceObservationInput,
   RecordGovernanceEvidenceObservationResult,
+  UpsertGovernanceLatestObservedControlInput,
 } from '../../governance-convergence/types';
 
 export interface GovernanceConvergenceListQuery {
   tenantId: string;
   accountId: string;
   findingKey: string;
+  limit?: number;
+  nextToken?: string;
+}
+
+export interface ListLatestObservedControlsQuery {
+  tenantId: string;
+  accountId: string;
+  regions: readonly string[];
   limit?: number;
   nextToken?: string;
 }
@@ -83,6 +93,23 @@ export interface GovernanceConvergenceRepository {
   listResultsForFinding(
     query: GovernanceConvergenceListQuery,
   ): Promise<PageResult<GovernanceConvergenceResultRecord>>;
+
+  /**
+   * Upserts the bounded latest-state checkpoint after a successful observation
+   * persist. Never mutates historical observation/result rows. Out-of-order
+   * writes must not replace a newer checkpoint.
+   */
+  upsertLatestObservedControl(
+    input: UpsertGovernanceLatestObservedControlInput,
+  ): Promise<GovernanceLatestObservedControlRecord>;
+
+  /**
+   * Paginated latest-state registry for authoritative region scope only.
+   * No Scan and no historical observation enumeration.
+   */
+  listLatestObservedControls(
+    query: ListLatestObservedControlsQuery,
+  ): Promise<PageResult<GovernanceLatestObservedControlRecord>>;
 
   /** Ownership-only lookup for tenant-isolation audit paths; never exposes the record itself. */
   resolveOwnerTenantId(findingKey: string): Promise<string | undefined>;
