@@ -24,6 +24,7 @@ import type { Ec2CostAnalysisRunRecord } from './ec2-cost-models';
 import { buildPerformanceSummariesByRegion } from './ec2-cost-performance-summary';
 import { assertEc2EvidencePersistenceRequired } from '../../persistence/persistence-config';
 import type { EvidencePersistenceService } from '../../services/evidence-persistence-service';
+import type { EvidenceMaturityService } from '../../services/evidence-maturity-service';
 
 export interface Ec2CostAnalysisOrchestratorInput {
   tenantId: string;
@@ -72,6 +73,7 @@ export class Ec2CostAnalysisOrchestrator {
     private readonly recommendations: Ec2CostRecommendationRepository,
     private readonly runs: Ec2CostAnalysisRunRepository,
     private readonly evidencePersistence?: EvidencePersistenceService,
+    private readonly evidenceMaturity?: EvidenceMaturityService,
   ) {}
 
   async run(input: Ec2CostAnalysisOrchestratorInput): Promise<Ec2CostAnalysisOrchestratorResult> {
@@ -384,22 +386,38 @@ export class Ec2CostAnalysisOrchestrator {
             if (this.evidencePersistence) {
               const collectionTimestamp = new Date().toISOString();
               const observationTimestamp = evidence?.observationEnd ?? endTime.toISOString();
-              await this.evidencePersistence.recordEc2CostRecommendationObservation({
-                recommendation: {
-                  ...recommendationPayload,
-                  version: existingRecommendation?.version ?? 1,
-                  lifecycleStatus: existingRecommendation?.lifecycleStatus ?? 'OPEN',
-                  firstDetectedAt:
-                    existingRecommendation?.firstDetectedAt ?? collectionTimestamp,
-                  lastDetectedAt: existingRecommendation?.lastDetectedAt ?? collectionTimestamp,
-                  createdAt: existingRecommendation?.createdAt ?? collectionTimestamp,
-                  updatedAt: existingRecommendation?.updatedAt ?? collectionTimestamp,
-                },
-                observationTimestamp,
-                collectionTimestamp,
-                correlationId: input.correlationId,
-                jobId: input.jobId,
-              });
+              const observationResult =
+                await this.evidencePersistence.recordEc2CostRecommendationObservation({
+                  recommendation: {
+                    ...recommendationPayload,
+                    version: existingRecommendation?.version ?? 1,
+                    lifecycleStatus: existingRecommendation?.lifecycleStatus ?? 'OPEN',
+                    firstDetectedAt:
+                      existingRecommendation?.firstDetectedAt ?? collectionTimestamp,
+                    lastDetectedAt: existingRecommendation?.lastDetectedAt ?? collectionTimestamp,
+                    createdAt: existingRecommendation?.createdAt ?? collectionTimestamp,
+                    updatedAt: existingRecommendation?.updatedAt ?? collectionTimestamp,
+                  },
+                  observationTimestamp,
+                  collectionTimestamp,
+                  correlationId: input.correlationId,
+                  jobId: input.jobId,
+                });
+
+              if (this.evidenceMaturity) {
+                try {
+                  await this.evidenceMaturity.evaluateAndPersist({
+                    observation: observationResult.observation,
+                    currentPerformanceEvidence: evidence,
+                    evaluatedAt: collectionTimestamp,
+                  });
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  warnings.push(
+                    `Evidence maturity assessment failed for ${findingKey}: ${message}`,
+                  );
+                }
+              }
             }
 
             const saved = await this.recommendations.upsertRecommendation({

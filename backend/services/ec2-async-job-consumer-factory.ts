@@ -3,6 +3,8 @@ import { createEc2CloudResourceRepositories } from './ec2-cloud-resource-reposit
 import { createEc2CostRepositories } from './ec2-cost-repository-factory';
 import { createEvidenceObservationRepository } from './evidence-observation-repository-factory';
 import { EvidencePersistenceService } from './evidence-persistence-service';
+import { createEvidenceMaturityRepository } from './evidence-maturity-repository-factory';
+import { EvidenceMaturityService } from './evidence-maturity-service';
 import { createEc2SecurityRepositories } from './ec2-security-repository-factory';
 import { createEc2AsyncJobRepository } from './ec2-async-job-repository-factory';
 import { Ec2DiscoveryApiService } from './ec2-discovery-api-service';
@@ -29,6 +31,11 @@ export function createEc2AsyncJobConsumerServiceFromEnv(): Ec2AsyncJobConsumerSe
   const ec2Cost = createEc2CostRepositories();
   const evidenceObservations = createEvidenceObservationRepository();
   const evidencePersistence = new EvidencePersistenceService(evidenceObservations);
+  const evidenceMaturityRepository = createEvidenceMaturityRepository();
+  const evidenceMaturity = new EvidenceMaturityService(
+    evidenceMaturityRepository,
+    evidenceObservations,
+  );
   const ec2Security = createEc2SecurityRepositories();
   const jobs = createEc2AsyncJobRepository();
   const reportingEngine = createReportingEngine();
@@ -49,6 +56,7 @@ export function createEc2AsyncJobConsumerServiceFromEnv(): Ec2AsyncJobConsumerSe
       undefined,
       undefined,
       evidencePersistence,
+      evidenceMaturity,
     ),
     security: new Ec2SecurityAnalysisApiService(
       awsAccounts,

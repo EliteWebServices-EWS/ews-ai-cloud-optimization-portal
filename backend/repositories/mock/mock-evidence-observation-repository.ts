@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import { RepositoryConflictError } from '../../database';
+import { RepositoryConflictError, cloudResourceAccountPartitionKey } from '../../database';
+import {
+  evidenceObservationSortKey,
+} from '../../database/cloud-resources/evidence-observation-keys';
 import {
   assessPersistence,
 } from '../../persistence-intelligence/persistence-state-machine';
@@ -66,18 +69,26 @@ export class MockEvidenceObservationRepository implements EvidenceObservationRep
     let startIndex = 0;
     if (startKey?.sk) {
       const marker = String(startKey.sk);
-      const markerIndex = all.findIndex((record) => record.logicalObservationId === marker.split('#LOG#').pop());
+      const markerLogicalId = marker.split('#LOG#').pop();
+      const markerIndex = all.findIndex(
+        (record) => record.logicalObservationId === markerLogicalId,
+      );
       startIndex = markerIndex >= 0 ? markerIndex + 1 : 0;
     }
 
     const limit = normalizePageSize(query.limit);
     const page = all.slice(startIndex, startIndex + limit);
     const hasMore = startIndex + limit < all.length;
+    const lastRecord = page[page.length - 1];
     const nextToken =
-      hasMore && page.length > 0
+      hasMore && lastRecord
         ? encodeEvidenceObservationNextToken(query, {
-            pk: 'mock',
-            sk: page[page.length - 1]!.logicalObservationId,
+            pk: cloudResourceAccountPartitionKey(query.tenantId, query.accountId),
+            sk: evidenceObservationSortKey({
+              findingKey: lastRecord.findingKey,
+              observationTimestampIso: lastRecord.observationTimestamp,
+              logicalObservationId: lastRecord.logicalObservationId,
+            }),
           })
         : undefined;
 
