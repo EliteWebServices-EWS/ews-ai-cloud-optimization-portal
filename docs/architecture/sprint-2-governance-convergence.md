@@ -215,9 +215,47 @@ Historical convergence results are never rewritten.
 
 ### Out-of-order evidence
 
-Late-arriving observations compare against their true chronological
-predecessor (`findRelevantPreviousObservation`). Already-persisted convergence
-results remain immutable snapshots of the evaluation made at that logical event.
+Late-arriving observations compare against the latest **already-persisted**
+total-order predecessor visible at record time (`findRelevantPreviousObservation`).
+Already-persisted convergence results remain immutable snapshots of the
+evaluation made at that logical event. A later-arriving older observation
+does **not** retroactively rewrite prior assessments.
+
+See **Event time vs arrival time** below.
+
+### Event time vs arrival time
+
+Governance convergence v1 uses **arrival-time append-only assessment (Model A)**.
+
+**Observation ordering tuple** (canonical total order):
+
+```text
+(observationTimestamp, analysisRunStartedAt, logicalObservationId)
+```
+
+- `observationTimestamp` — authoritative EC2 security evidence observation time
+  (`analysis.analyzedAt`); never fabricated.
+- `analysisRunStartedAt` — authoritative security run start (`run.startedAt`);
+  stable on retry of the same `analysisRunId`; disambiguates same-millisecond
+  observations without altering evidence time.
+- `logicalObservationId` — deterministic SHA-256 identity; final tie-break when
+  the first two fields are equal.
+
+**Assessment contract:**
+
+- Convergence is evaluated against evidence **already persisted** when
+  `recordObservation` runs.
+- Convergence **results are append-only**; historical rows are never rewritten
+  when an older observation arrives later.
+- **Deterministic** means: identical inputs plus an **identical arrival
+  sequence** produce an identical assessment history.
+- **Arrival-order invariance is NOT guaranteed** in v1. Inserting the same
+  observations in a different order may yield a different append-only history
+  because assessments are frozen at record time.
+
+**Legacy compatibility:** rows persisted before `analysisRunStartedAt` was
+introduced omit the field; repositories fall back to `observationTimestamp` for
+ordering at read/compare time.
 
 ### Provenance
 

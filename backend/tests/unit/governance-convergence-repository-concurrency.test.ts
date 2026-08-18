@@ -33,6 +33,8 @@ function observationInput(
 ): RecordGovernanceEvidenceObservationInput {
   const satisfied = overrides.satisfied ?? true;
   const ruleVersion = '1';
+  const observationTimestamp = overrides.observationTimestamp ?? '2026-08-01T00:00:00.000Z';
+  const analysisRunStartedAt = overrides.analysisRunStartedAt ?? observationTimestamp;
   return {
     tenantId: TENANT_A,
     accountId: ACCOUNT,
@@ -41,7 +43,8 @@ function observationInput(
     check: CHECK,
     findingKey: findingKey(),
     analysisRunId: 'run-1',
-    observationTimestamp: '2026-08-01T00:00:00.000Z',
+    analysisRunStartedAt,
+    observationTimestamp,
     collectionTimestamp: '2026-08-01T00:00:00.000Z',
     evidence: {
       satisfied,

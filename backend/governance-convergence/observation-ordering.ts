@@ -33,32 +33,76 @@ export function buildLogicalObservationId(input: {
     .digest('hex');
 }
 
-export function sortObservationsByObservationTimestamp(
-  observations: GovernanceEvidenceObservationRecord[],
-): GovernanceEvidenceObservationRecord[] {
-  return [...observations].sort((left, right) => {
-    const leftMs = parseObservationTimestamp(left.observationTimestamp).epochMs;
-    const rightMs = parseObservationTimestamp(right.observationTimestamp).epochMs;
-    if (leftMs !== rightMs) {
-      return leftMs - rightMs;
-    }
-    return left.logicalObservationId.localeCompare(right.logicalObservationId);
-  });
+export interface GovernanceObservationOrderingFields {
+  observationTimestamp: string;
+  analysisRunStartedAt: string;
+  logicalObservationId: string;
+}
+
+/** Legacy rows without analysisRunStartedAt use observationTimestamp for ordering. */
+export function resolveAnalysisRunStartedAtForOrdering(input: {
+  observationTimestamp: string;
+  analysisRunStartedAt?: string;
+}): string {
+  return input.analysisRunStartedAt ?? input.observationTimestamp;
+}
+
+function observationOrderingFields(
+  observation: GovernanceEvidenceObservationRecord,
+): GovernanceObservationOrderingFields {
+  return {
+    observationTimestamp: observation.observationTimestamp,
+    analysisRunStartedAt: resolveAnalysisRunStartedAtForOrdering(observation),
+    logicalObservationId: observation.logicalObservationId,
+  };
 }
 
 /**
- * Historical ordering authority: observationTimestamp ascending.
- * Relevant previous observation = latest record strictly before current observationTimestamp.
- * Late/out-of-order inserts are appended without rewriting prior rows and are
- * classified against their chronologically prior observation, never the
- * most-recently-written one.
+ * Canonical governance observation total order:
+ * observationTimestamp, then analysisRunStartedAt, then logicalObservationId.
+ */
+export function compareGovernanceObservationOrdering(
+  left: GovernanceObservationOrderingFields,
+  right: GovernanceObservationOrderingFields,
+): number {
+  const leftMs = parseObservationTimestamp(left.observationTimestamp).epochMs;
+  const rightMs = parseObservationTimestamp(right.observationTimestamp).epochMs;
+  if (leftMs !== rightMs) {
+    return leftMs - rightMs;
+  }
+
+  const leftStartMs = parseObservationTimestamp(left.analysisRunStartedAt).epochMs;
+  const rightStartMs = parseObservationTimestamp(right.analysisRunStartedAt).epochMs;
+  if (leftStartMs !== rightStartMs) {
+    return leftStartMs - rightStartMs;
+  }
+
+  return left.logicalObservationId.localeCompare(right.logicalObservationId);
+}
+
+export function sortObservationsByObservationTimestamp(
+  observations: GovernanceEvidenceObservationRecord[],
+): GovernanceEvidenceObservationRecord[] {
+  return [...observations].sort((left, right) =>
+    compareGovernanceObservationOrdering(
+      observationOrderingFields(left),
+      observationOrderingFields(right),
+    ),
+  );
+}
+
+/**
+ * Historical ordering authority: canonical total order above.
+ * Relevant previous observation = latest persisted record strictly before the
+ * current key among observations already stored at assessment time.
+ * Assessment is append-only: results are not retroactively rewritten when an
+ * older observation arrives later (arrival-time assessment, Model A).
  */
 export function selectRelevantPreviousObservation(
   observations: GovernanceEvidenceObservationRecord[],
-  currentObservationTimestamp: string,
+  current: GovernanceObservationOrderingFields,
   excludeLogicalObservationId?: string,
 ): GovernanceEvidenceObservationRecord | null {
-  const currentMs = parseObservationTimestamp(currentObservationTimestamp).epochMs;
   const candidates = sortObservationsByObservationTimestamp(observations).filter((observation) => {
     if (
       excludeLogicalObservationId &&
@@ -66,8 +110,9 @@ export function selectRelevantPreviousObservation(
     ) {
       return false;
     }
-    const obsMs = parseObservationTimestamp(observation.observationTimestamp).epochMs;
-    return obsMs < currentMs;
+    return (
+      compareGovernanceObservationOrdering(observationOrderingFields(observation), current) < 0
+    );
   });
   return candidates.length > 0 ? candidates[candidates.length - 1]! : null;
 }

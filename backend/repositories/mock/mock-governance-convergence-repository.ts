@@ -17,6 +17,7 @@ import {
 import {
   buildLogicalObservationId,
   latestObservedControlCandidateShouldAdvance,
+  resolveAnalysisRunStartedAtForOrdering,
   selectRelevantPreviousObservation,
   sortObservationsByObservationTimestamp,
 } from '../../governance-convergence/observation-ordering';
@@ -90,7 +91,11 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
     ).filter((observation) => observation.tenantId === input.tenantId);
     return selectRelevantPreviousObservation(
       all,
-      input.beforeObservationTimestamp,
+      {
+        observationTimestamp: input.beforeObservationTimestamp,
+        analysisRunStartedAt: input.beforeAnalysisRunStartedAt,
+        logicalObservationId: input.beforeLogicalObservationId,
+      },
       input.excludeLogicalObservationId,
     );
   }
@@ -145,6 +150,8 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
       accountId: input.accountId,
       findingKey: input.findingKey,
       beforeObservationTimestamp: observation.observationTimestamp,
+      beforeAnalysisRunStartedAt: resolveAnalysisRunStartedAtForOrdering(observation),
+      beforeLogicalObservationId: observation.logicalObservationId,
       excludeLogicalObservationId: observation.logicalObservationId,
     });
 
@@ -178,6 +185,7 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
     input: RecordGovernanceEvidenceObservationInput,
   ): Promise<RecordGovernanceEvidenceObservationResult> {
     const observationTimestampIso = normalizeObservationTimestampIso(input.observationTimestamp);
+    const analysisRunStartedAtIso = normalizeObservationTimestampIso(input.analysisRunStartedAt);
     const collectionTimestamp = normalizeObservationTimestampIso(input.collectionTimestamp);
     const logicalObservationId = buildLogicalObservationId({
       tenantId: input.tenantId,
@@ -198,6 +206,8 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
       accountId: input.accountId,
       findingKey: input.findingKey,
       beforeObservationTimestamp: observationTimestampIso,
+      beforeAnalysisRunStartedAt: analysisRunStartedAtIso,
+      beforeLogicalObservationId: logicalObservationId,
       excludeLogicalObservationId: logicalObservationId,
     });
 
@@ -212,6 +222,7 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
       check: input.check,
       findingKey: input.findingKey,
       analysisRunId: input.analysisRunId,
+      analysisRunStartedAt: analysisRunStartedAtIso,
       observationTimestamp: observationTimestampIso,
       collectionTimestamp,
       persistedAt: new Date().toISOString(),
@@ -262,11 +273,15 @@ export class MockGovernanceConvergenceRepository implements GovernanceConvergenc
   async recordMissingEvidence(
     input: RecordGovernanceMissingEvidenceInput,
   ): Promise<GovernanceConvergenceResultRecord | null> {
+    const evaluatedAtIso = normalizeObservationTimestampIso(input.evaluatedAt);
     const previous = await this.findRelevantPreviousObservation({
       tenantId: input.tenantId,
       accountId: input.accountId,
       findingKey: input.findingKey,
-      beforeObservationTimestamp: input.evaluatedAt,
+      beforeObservationTimestamp: evaluatedAtIso,
+      beforeAnalysisRunStartedAt: evaluatedAtIso,
+      beforeLogicalObservationId:
+        'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
     });
     if (!previous) {
       return null;
