@@ -248,8 +248,11 @@ function buildSavingsSummary(input: ReportGenerationInput): SavingsSummary {
 function buildDecisionSummary(input: ReportGenerationInput): DecisionSummary {
   return {
     recommendationStatus: input.recommendation?.status ?? RECOMMENDATION_STATUS.INSUFFICIENT_DATA,
-    confidenceScore: input.confidence?.score ?? 0,
+    confidenceScore: input.confidence?.score ?? input.confidence?.commercialScore ?? 0,
     confidenceStatus: input.confidence?.status ?? 'LOW',
+    confidenceFormulaVersion: input.confidence?.formulaVersion,
+    confidenceModelVersion: input.confidence?.confidenceModelVersion,
+    confidenceReasonCodes: input.confidence?.reasonCodes,
     governanceDecision: input.governance?.decision ?? 'unknown',
     governanceReason: input.governance?.reason ?? 'Governance evaluation not available',
     summary: input.recommendation?.summary ?? 'No recommendation generated',

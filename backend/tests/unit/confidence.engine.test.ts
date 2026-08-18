@@ -122,13 +122,16 @@ describe('confidence engine evidence boundaries', () => {
     assert.match(result.error?.reason ?? '', /incomplete/i);
   });
 
-  it('returns formula version and threshold status for valid evidence', async () => {
+  it('returns formula version and qualified status for valid evidence without longitudinal context', async () => {
     const engine = createConfidenceEngine();
     const result = await engine.execute(buildRequest());
 
     assert.equal(result.success, true);
     assert.equal(result.data?.score, 100);
-    assert.equal(result.data?.status, 'HIGH');
+    assert.equal(result.data?.commercialScore, 100);
+    assert.equal(result.data?.status, 'MEDIUM');
     assert.equal(result.data?.formulaVersion, 'commercial-weighted-v1');
+    assert.equal(result.data?.confidenceModelVersion, 'confidence-evidence-aware-v2');
+    assert.ok(result.data?.reasonCodes.includes('CONFIDENCE_LEGACY_COMMERCIAL_FALLBACK'));
   });
 });

@@ -101,14 +101,18 @@ describe('Sprint 1 evidence golden path (implemented paths only)', () => {
       config: DEFAULT_CONFIDENCE_CONFIG,
     });
     assert.equal(direct.score, 100);
-    assert.equal(direct.status, 'HIGH');
+    assert.equal(direct.commercialScore, 100);
+    assert.equal(direct.status, 'MEDIUM');
     assert.equal(direct.formulaVersion, CONFIDENCE_FORMULA_VERSION);
+    assert.equal(direct.confidenceModelVersion, 'confidence-evidence-aware-v2');
 
     const engine = createConfidenceEngine();
     const engineResult = await engine.execute(buildConfidenceEngineRequest());
     assert.equal(engineResult.success, true);
     assert.equal(engineResult.data?.score, 100);
+    assert.equal(engineResult.data?.status, 'MEDIUM');
     assert.equal(engineResult.data?.formulaVersion, CONFIDENCE_FORMULA_VERSION);
+    assert.equal(engineResult.data?.confidenceModelVersion, 'confidence-evidence-aware-v2');
   });
 
   it('IMPLEMENTED: EC2 cost analysis → evidence observation → recommendation persistence', async () => {
@@ -170,7 +174,7 @@ describe('Sprint 1 evidence golden path (implemented paths only)', () => {
       config: DEFAULT_CONFIDENCE_CONFIG,
     });
     assert.equal(confidence.score, 88);
-    assert.equal(confidence.status, 'HIGH');
+    assert.equal(confidence.status, 'MEDIUM');
     assert.match(confidence.reason, /recommendation-persistence/i);
   });
 });

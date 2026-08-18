@@ -1,17 +1,22 @@
-import { CONFIDENCE_FORMULA_VERSION } from '../../../engines/confidence';
+import { CONFIDENCE_FORMULA_VERSION, CONFIDENCE_MODEL_VERSION } from '../../../engines/confidence';
 import { CONFIDENCE_STATUS } from '../../../shared/constants';
 import type { ConfidenceFactor, ConfidenceResult } from '../../../shared/types';
 
 export function buildConfidenceResult(
   overrides: Partial<ConfidenceResult> = {},
 ): ConfidenceResult {
+  const score = overrides.score ?? overrides.commercialScore ?? 85;
+  const status = overrides.status ?? CONFIDENCE_STATUS.HIGH;
   const base: ConfidenceResult = {
-    score: 85,
-    status: CONFIDENCE_STATUS.HIGH,
+    score,
+    commercialScore: overrides.commercialScore ?? score,
+    status,
     reason: 'Stable utilization pattern',
     factors: [] as ConfidenceFactor[],
     formulaVersion: CONFIDENCE_FORMULA_VERSION,
-    level: 'high',
+    confidenceModelVersion: CONFIDENCE_MODEL_VERSION,
+    reasonCodes: [],
+    level: status === CONFIDENCE_STATUS.HIGH ? 'high' : status === CONFIDENCE_STATUS.MEDIUM ? 'medium' : 'low',
   };
   return structuredClone({ ...base, ...overrides });
 }

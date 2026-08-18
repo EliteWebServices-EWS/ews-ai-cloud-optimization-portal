@@ -80,8 +80,16 @@ export interface SavingsSummary {
 /** Decision rationale summary for a single recommendation. */
 export interface DecisionSummary {
   recommendationStatus: RecommendationStatus | string;
+  /** Raw frozen commercial weighted score (0–100). */
   confidenceScore: number;
+  /** Evidence-qualified final confidence status. */
   confidenceStatus: ConfidenceStatus | string;
+  /** Frozen commercial formula identifier when available. */
+  confidenceFormulaVersion?: string;
+  /** Evidence-aware qualification model version when available. */
+  confidenceModelVersion?: string;
+  /** Machine-readable confidence qualification codes when available. */
+  confidenceReasonCodes?: string[];
   governanceDecision: string;
   governanceReason: string;
   summary: string;
