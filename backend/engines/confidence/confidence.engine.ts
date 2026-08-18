@@ -53,6 +53,7 @@ export class ConfidenceEngine implements ConfidenceEngineInterface {
         validation: request.validation,
         resourceId: request.candidate.resourceId,
         config: this.config,
+        longitudinalEvidence: request.longitudinalEvidence,
       });
 
       logger.info('Confidence complete', {

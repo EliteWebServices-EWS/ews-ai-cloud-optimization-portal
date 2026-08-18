@@ -16,6 +16,21 @@ Sprint 1 preserves the commercial **0–100** model. It does **not** replace it 
 
 EC2 Cost rule confidence (`backend/cloud-intelligence/ec2-cost/ec2-cost-confidence.ts`) is a separate domain-specific fractional model and is **not** part of this workflow baseline.
 
+Sprint 2 evidence-aware qualification (`confidence-evidence-aware-v2`) is documented separately in `docs/architecture/adr-int-04-confidence-scoring-formulation.md`. Sprint 1 raw commercial arithmetic facts in this document remain frozen historical baseline references.
+
+### Sprint 2 compatibility (confidence-evidence-aware-v2)
+
+| Dimension | Status |
+| --- | --- |
+| Arithmetic compatibility | **PRESERVED** |
+| Schema compatibility | **PRESERVED** |
+| Status/behavior compatibility | **INTENTIONALLY CHANGED** in confidence-evidence-aware-v2 |
+| Audit compatibility | **ENHANCED** |
+
+Do not describe v2 as "fully backward compatible." Legacy callers without longitudinal context preserve raw commercial scores but may receive a lower qualified final status than Sprint 1 threshold status alone.
+
+See also: `docs/architecture/sprint-2-confidence-engineer-handoff.md`.
+
 ## Default configuration
 
 | Setting | Default |

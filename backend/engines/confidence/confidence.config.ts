@@ -20,6 +20,9 @@ export interface ConfidenceConfig {
 /** Identifies the frozen Sprint 1 commercial weighted scoring formula. */
 export const CONFIDENCE_FORMULA_VERSION = 'commercial-weighted-v1';
 
+/** Identifies the Sprint 2 evidence-aware qualification policy layered on the frozen formula. */
+export const CONFIDENCE_MODEL_VERSION = 'confidence-evidence-aware-v2';
+
 /** Default confidence configuration for Demo Mode. */
 export const DEFAULT_CONFIDENCE_CONFIG: ConfidenceConfig = {
   scoreHigh: 80,

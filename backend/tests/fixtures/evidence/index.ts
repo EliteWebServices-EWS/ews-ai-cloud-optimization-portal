@@ -61,6 +61,17 @@ export {
   buildGoldenCompleteConfidenceResult,
 } from './confidence-results';
 
+export {
+  buildChangedPersistenceEvidence,
+  buildCompleteLongitudinalEvidence,
+  buildImmatureMaturityEvidence,
+  buildMissingPreviousPersistenceEvidence,
+  buildMatureMaturityEvidence,
+  buildNewPersistenceEvidence,
+  buildPartialMaturityEvidence,
+  buildStablePersistenceEvidence,
+} from './confidence-longitudinal-evidence';
+
 export { buildGovernanceFailureResult } from './governance-fixtures';
 
 export {

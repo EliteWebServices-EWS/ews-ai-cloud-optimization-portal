@@ -19,6 +19,13 @@ import type {
   WorkflowStage,
   WorkflowState,
 } from '../constants';
+import type { ConfidenceReasonCode } from '../confidence/reason-codes';
+import type { Ec2PerformanceDataCompleteness } from '../../cloud-intelligence/ec2-cost/ec2-cost-models';
+import type { PersistenceState, EvidenceMaturity } from '../../persistence-intelligence/types';
+import type { PersistenceReasonCode } from '../../persistence-intelligence/reason-codes';
+import type { EvidenceMaturityReasonCode } from '../../evidence-maturity/reason-codes';
+import type { GovernanceConvergenceReasonCode } from '../../governance-convergence/reason-codes';
+import type { TelemetryApplicability } from '../../evidence-maturity/types';
 
 /** A cloud resource eligible for optimization evaluation. */
 export interface Candidate {
@@ -87,17 +94,66 @@ export interface ConfidenceFactor {
   detail: string;
 }
 
+/** Authoritative persistence slice consumed by confidence — not recomputed in-engine. */
+export interface ConfidencePersistenceEvidence {
+  state: PersistenceState;
+  persistenceHours: number | null;
+  reasonCodes: PersistenceReasonCode[];
+  logicalObservationId: string;
+  comparedToObservationId?: string;
+  sourceObservationId: string;
+  ruleId: string;
+  ruleVersion: string;
+}
+
+/** Authoritative maturity slice consumed by confidence — not recomputed in-engine. */
+export interface ConfidenceMaturityEvidence {
+  maturity: EvidenceMaturity;
+  modelVersion: string;
+  reasonCodes: EvidenceMaturityReasonCode[];
+  sourcePersistenceState: PersistenceState;
+  stableEpochObservationCount: number;
+  stableEpochHours: number;
+  persistenceHours: number | null;
+  evidenceCompleteness: Ec2PerformanceDataCompleteness | 'NOT_APPLICABLE';
+  telemetryApplicability: TelemetryApplicability;
+  sourceObservationId: string;
+  sourceLogicalObservationId: string;
+  ruleId: string;
+  ruleVersion: string;
+}
+
+/** Governance convergence context provenance — no score mapping in v2. */
+export interface ConfidenceGovernanceConvergenceEvidence {
+  contextAvailable: boolean;
+  reasonCodes?: GovernanceConvergenceReasonCode[];
+  ruleVersion?: string;
+}
+
+/** Optional authoritative longitudinal inputs for evidence-aware confidence v2. */
+export interface ConfidenceLongitudinalEvidence {
+  persistence?: ConfidencePersistenceEvidence;
+  maturity?: ConfidenceMaturityEvidence;
+  governanceConvergence?: ConfidenceGovernanceConvergenceEvidence;
+}
+
 /** Confidence scoring output — should this optimization be trusted? */
 export interface ConfidenceResult {
   /** Frozen commercial weighted score from the existing Sprint 1 formula. */
   score: number;
-  /** Threshold classification derived from the commercial score. */
+  /** Explicit alias of the frozen commercial weighted score under evidence-aware v2. */
+  commercialScore: number;
+  /** Threshold classification after evidence-aware qualification under v2. */
   status: ConfidenceStatus;
   /** Explanation of the resulting confidence assessment. */
   reason: string;
   factors: ConfidenceFactor[];
   /** Identifies the frozen commercial scoring formula/configuration baseline. */
   formulaVersion: string;
+  /** Identifies the Sprint 2 evidence-aware qualification policy version. */
+  confidenceModelVersion: string;
+  /** Deterministic machine-readable qualification and degradation codes. */
+  reasonCodes: ConfidenceReasonCode[];
   /** @deprecated Use status — retained for demo workflow compatibility. */
   level: 'low' | 'medium' | 'high';
 }
@@ -452,6 +508,8 @@ export interface ConfidenceRequest {
   validation: EvidenceValidationResult;
   governance: GovernanceResult;
   financialImpact: FinancialImpact;
+  /** Optional authoritative longitudinal evidence consumed by evidence-aware v2 qualification. */
+  longitudinalEvidence?: ConfidenceLongitudinalEvidence;
 }
 
 /** Recommendation engine input — combines upstream engine outputs into a decision. */

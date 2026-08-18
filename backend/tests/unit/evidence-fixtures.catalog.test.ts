@@ -53,8 +53,10 @@ describe('canonical evidence fixture catalogue', () => {
       config: DEFAULT_CONFIDENCE_CONFIG,
     });
     assert.equal(result.score, 100);
-    assert.equal(result.status, 'HIGH');
+    assert.equal(result.commercialScore, 100);
+    assert.equal(result.status, 'MEDIUM');
     assert.equal(result.formulaVersion, CONFIDENCE_FORMULA_VERSION);
+    assert.equal(result.confidenceModelVersion, 'confidence-evidence-aware-v2');
   });
 
   it('buildIncompleteEvidence and validation remain distinct from engine INCOMPLETE status', () => {
