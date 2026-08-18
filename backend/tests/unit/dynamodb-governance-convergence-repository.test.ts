@@ -35,6 +35,8 @@ function observationInput(
   const tenantId = overrides.tenantId ?? TENANT_A;
   const satisfied = overrides.satisfied ?? true;
   const ruleVersion = '1';
+  const observationTimestamp = overrides.observationTimestamp ?? '2026-08-01T00:00:00.000Z';
+  const analysisRunStartedAt = overrides.analysisRunStartedAt ?? observationTimestamp;
   return {
     tenantId,
     accountId: ACCOUNT,
@@ -43,7 +45,8 @@ function observationInput(
     check: CHECK,
     findingKey: overrides.findingKey ?? findingKey(tenantId),
     analysisRunId: 'run-1',
-    observationTimestamp: '2026-08-01T00:00:00.000Z',
+    analysisRunStartedAt,
+    observationTimestamp,
     collectionTimestamp: '2026-08-01T00:00:00.000Z',
     evidence: {
       satisfied,
