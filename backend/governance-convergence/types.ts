@@ -69,6 +69,12 @@ export interface GovernanceEvidenceObservationRecord {
   check: string;
   findingKey: string;
   analysisRunId: string;
+  /**
+   * Authoritative security-analysis run start. Required on all new writes.
+   * Legacy persisted rows may omit this field; ordering falls back to
+   * `observationTimestamp` at read/compare time.
+   */
+  analysisRunStartedAt?: string;
   observationTimestamp: string;
   collectionTimestamp: string;
   persistedAt: string;
@@ -84,6 +90,8 @@ export interface RecordGovernanceEvidenceObservationInput {
   check: string;
   findingKey: string;
   analysisRunId: string;
+  /** Authoritative security-analysis run start; disambiguates same-millisecond observations. */
+  analysisRunStartedAt: string;
   observationTimestamp: string;
   collectionTimestamp: string;
   evidence: GovernanceEvidenceSnapshot;
@@ -91,7 +99,7 @@ export interface RecordGovernanceEvidenceObservationInput {
 
 export interface RecordGovernanceEvidenceObservationResult {
   observation: GovernanceEvidenceObservationRecord;
-  /** Present only when a comparable prior observation existed to converge against. */
+  /** Present only when a total-order predecessor was already persisted at record time. */
   result?: GovernanceConvergenceResultRecord;
   created: boolean;
 }

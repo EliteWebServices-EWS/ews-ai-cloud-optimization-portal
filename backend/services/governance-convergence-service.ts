@@ -25,6 +25,7 @@ export interface PersistGovernanceConvergenceForSecurityRunInput {
   tenantId: string;
   accountId: string;
   analysisRunId: string;
+  analysisRunStartedAt: string;
   analysis: Ec2SecurityAnalysisResponse;
   instanceRegions: Map<string, string>;
   observationTimestamp: string;
@@ -136,6 +137,7 @@ export class GovernanceConvergenceService {
             check,
             findingKey,
             analysisRunId: input.analysisRunId,
+            analysisRunStartedAt: input.analysisRunStartedAt,
             observationTimestamp: input.observationTimestamp,
             collectionTimestamp: input.collectionTimestamp,
             evidence,

@@ -51,6 +51,7 @@ function priorObservation(
     check: 'unrestricted_ssh',
     findingKey: 'tenant-a#acct-1#us-east-1#i-abc123#unrestricted_ssh',
     analysisRunId: 'run-1',
+    analysisRunStartedAt: '2026-08-01T00:00:00.000Z',
     observationTimestamp: '2026-08-01T00:00:00.000Z',
     collectionTimestamp: '2026-08-01T00:00:00.000Z',
     persistedAt: '2026-08-01T00:00:01.000Z',

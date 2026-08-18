@@ -74,14 +74,17 @@ function persistInput(
   const activeInventoryInstances: GovernanceActiveInventoryInstance[] = [
     { instanceId: INSTANCE, region: REGION, lifecycleStatus: 'ACTIVE' },
   ];
+  const observationTimestamp = overrides.observationTimestamp ?? analysis.analyzedAt;
+  const analysisRunStartedAt = overrides.analysisRunStartedAt ?? observationTimestamp;
   return {
     tenantId: TENANT,
     accountId: ACCOUNT,
     analysisRunId: 'run-current',
+    analysisRunStartedAt,
     analysis,
     instanceRegions,
-    observationTimestamp: analysis.analyzedAt,
-    collectionTimestamp: analysis.analyzedAt,
+    observationTimestamp,
+    collectionTimestamp: overrides.collectionTimestamp ?? analysis.analyzedAt,
     authority: authority(),
     activeInventoryInstances,
     ...overrides,
@@ -134,6 +137,7 @@ describe('governance live MISSING reconciliation', () => {
     await baseline.persistForSecurityAnalysisRun(
       persistInput(compliantAnalysis(), {
         analysisRunId: 'run-prior',
+        analysisRunStartedAt: '2026-08-01T00:00:00.000Z',
         observationTimestamp: '2026-08-01T00:00:00.000Z',
         collectionTimestamp: '2026-08-01T00:00:00.000Z',
       }),
@@ -222,6 +226,7 @@ describe('governance live MISSING reconciliation', () => {
     await baseline.persistForSecurityAnalysisRun(
       persistInput(compliantAnalysis(), {
         analysisRunId: 'run-prior',
+        analysisRunStartedAt: '2026-08-01T00:00:00.000Z',
         observationTimestamp: '2026-08-01T00:00:00.000Z',
         collectionTimestamp: '2026-08-01T00:00:00.000Z',
       }),
@@ -247,6 +252,7 @@ describe('governance live MISSING reconciliation', () => {
     await baseline.persistForSecurityAnalysisRun(
       persistInput(compliantAnalysis(), {
         analysisRunId: 'run-prior',
+        analysisRunStartedAt: '2026-08-01T00:00:00.000Z',
         observationTimestamp: '2026-08-01T00:00:00.000Z',
         collectionTimestamp: '2026-08-01T00:00:00.000Z',
       }),
@@ -273,6 +279,7 @@ describe('governance live MISSING reconciliation', () => {
     await baseline.persistForSecurityAnalysisRun(
       persistInput(compliantAnalysis(), {
         analysisRunId: 'run-prior',
+        analysisRunStartedAt: '2026-08-01T00:00:00.000Z',
         observationTimestamp: '2026-08-01T00:00:00.000Z',
         collectionTimestamp: '2026-08-01T00:00:00.000Z',
       }),

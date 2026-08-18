@@ -37,6 +37,8 @@ export interface FindRelevantPreviousGovernanceObservationInput {
   accountId: string;
   findingKey: string;
   beforeObservationTimestamp: string;
+  beforeAnalysisRunStartedAt: string;
+  beforeLogicalObservationId: string;
   excludeLogicalObservationId?: string;
 }
 
@@ -57,9 +59,10 @@ export interface RecordGovernanceMissingEvidenceInput {
  */
 export interface GovernanceConvergenceRepository {
   /**
-   * Records a new evidence observation and, when a comparable prior
-   * observation exists, classifies and persists the convergence result in
-   * the same call. Idempotent on the logical observation identity
+   * Records a new evidence observation and, when a total-order predecessor
+   * already persisted, classifies and persists the convergence result in the
+   * same call. Results are append-only and are never retroactively rewritten.
+   * Idempotent on the logical observation identity
    * (tenantId, accountId, findingKey, analysisRunId, observationTimestamp).
    */
   recordObservation(

@@ -23,10 +23,14 @@ import {
   buildMissingLogicalResultId,
   buildObservationBackedLogicalResultId,
 } from '../../governance-convergence/governance-convergence-result-identity';
-import { buildLogicalObservationId, latestObservedControlCandidateShouldAdvance } from '../../governance-convergence/observation-ordering';
+import {
+  buildLogicalObservationId,
+  compareGovernanceObservationOrdering,
+  latestObservedControlCandidateShouldAdvance,
+  resolveAnalysisRunStartedAtForOrdering,
+} from '../../governance-convergence/observation-ordering';
 import {
   normalizeObservationTimestampIso,
-  parseObservationTimestamp,
 } from '../../governance-convergence/timestamp-rules';
 import type {
   GovernanceConvergenceAssessment,
@@ -75,7 +79,10 @@ interface LatestObservedControlItem extends GovernanceLatestObservedControlRecor
 
 function toObservationRecord(item: ObservationItem): GovernanceEvidenceObservationRecord {
   const { pk: _pk, sk: _sk, entityType: _entityType, ...rest } = item;
-  return rest;
+  return {
+    ...rest,
+    analysisRunStartedAt: rest.analysisRunStartedAt ?? rest.observationTimestamp,
+  };
 }
 
 function toResultRecord(item: ResultItem): GovernanceConvergenceResultRecord {
@@ -208,6 +215,8 @@ export class DynamoDbGovernanceConvergenceRepository
       accountId: input.accountId,
       findingKey: input.findingKey,
       beforeObservationTimestamp: observation.observationTimestamp,
+      beforeAnalysisRunStartedAt: resolveAnalysisRunStartedAtForOrdering(observation),
+      beforeLogicalObservationId: observation.logicalObservationId,
       excludeLogicalObservationId: observation.logicalObservationId,
     });
 
@@ -257,7 +266,11 @@ export class DynamoDbGovernanceConvergenceRepository
   ): Promise<GovernanceEvidenceObservationRecord | null> {
     const pk = cloudResourceAccountPartitionKey(input.tenantId, input.accountId);
     const skPrefix = governanceConvergenceObservationSortKeyPrefixForFinding(input.findingKey);
-    const currentMs = parseObservationTimestamp(input.beforeObservationTimestamp).epochMs;
+    const currentOrdering = {
+      observationTimestamp: input.beforeObservationTimestamp,
+      analysisRunStartedAt: input.beforeAnalysisRunStartedAt,
+      logicalObservationId: input.beforeLogicalObservationId,
+    };
     let exclusiveStartKey: Record<string, unknown> | undefined;
 
     do {
@@ -291,8 +304,16 @@ export class DynamoDbGovernanceConvergenceRepository
         ) {
           continue;
         }
-        const observationMs = parseObservationTimestamp(observation.observationTimestamp).epochMs;
-        if (observationMs < currentMs) {
+        if (
+          compareGovernanceObservationOrdering(
+            {
+              observationTimestamp: observation.observationTimestamp,
+              analysisRunStartedAt: resolveAnalysisRunStartedAtForOrdering(observation),
+              logicalObservationId: observation.logicalObservationId,
+            },
+            currentOrdering,
+          ) < 0
+        ) {
           return observation;
         }
       }
@@ -339,6 +360,7 @@ export class DynamoDbGovernanceConvergenceRepository
     input: RecordGovernanceEvidenceObservationInput,
   ): Promise<RecordGovernanceEvidenceObservationResult> {
     const observationTimestampIso = normalizeObservationTimestampIso(input.observationTimestamp);
+    const analysisRunStartedAtIso = normalizeObservationTimestampIso(input.analysisRunStartedAt);
     const collectionTimestamp = normalizeObservationTimestampIso(input.collectionTimestamp);
     const { pk, sk, logicalObservationId } = buildObservationKey({
       tenantId: input.tenantId,
@@ -363,6 +385,8 @@ export class DynamoDbGovernanceConvergenceRepository
       accountId: input.accountId,
       findingKey: input.findingKey,
       beforeObservationTimestamp: observationTimestampIso,
+      beforeAnalysisRunStartedAt: analysisRunStartedAtIso,
+      beforeLogicalObservationId: logicalObservationId,
       excludeLogicalObservationId: logicalObservationId,
     });
 
@@ -378,6 +402,7 @@ export class DynamoDbGovernanceConvergenceRepository
       check: input.check,
       findingKey: input.findingKey,
       analysisRunId: input.analysisRunId,
+      analysisRunStartedAt: analysisRunStartedAtIso,
       observationTimestamp: observationTimestampIso,
       collectionTimestamp,
       persistedAt,
@@ -446,11 +471,15 @@ export class DynamoDbGovernanceConvergenceRepository
   async recordMissingEvidence(
     input: RecordGovernanceMissingEvidenceInput,
   ): Promise<GovernanceConvergenceResultRecord | null> {
+    const evaluatedAtIso = normalizeObservationTimestampIso(input.evaluatedAt);
     const previous = await this.findRelevantPreviousObservation({
       tenantId: input.tenantId,
       accountId: input.accountId,
       findingKey: input.findingKey,
-      beforeObservationTimestamp: input.evaluatedAt,
+      beforeObservationTimestamp: evaluatedAtIso,
+      beforeAnalysisRunStartedAt: evaluatedAtIso,
+      beforeLogicalObservationId:
+        'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
     });
     if (!previous) {
       return null;

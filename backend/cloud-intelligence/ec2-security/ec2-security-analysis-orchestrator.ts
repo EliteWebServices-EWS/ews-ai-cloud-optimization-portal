@@ -123,7 +123,6 @@ function resolveFindingStatus(
 
 
 export class Ec2SecurityAnalysisOrchestrator {
-
   constructor(
 
     private readonly resources: Ec2CloudResourceRepository,
@@ -533,6 +532,7 @@ export class Ec2SecurityAnalysisOrchestrator {
           tenantId: input.tenantId,
           accountId: input.accountId,
           analysisRunId: runId,
+          analysisRunStartedAt: run.startedAt,
           analysis,
           instanceRegions: instanceRegion,
           observationTimestamp: analysis.analyzedAt,
