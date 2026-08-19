@@ -75,6 +75,31 @@ export {
 export { buildGovernanceFailureResult } from './governance-fixtures';
 
 export {
+  ALL_SPRINT2_DECISION_READINESS_PERSISTENCE_ALIASES,
+  ALL_SPRINT2_GOVERNANCE_CONTEXT_FIXTURES,
+  DEFAULT_ANALYSIS_RUN_STARTED_AT,
+  buildChangedRecommendationPersistenceScenario,
+  buildGovernanceImprovedContext,
+  buildGovernanceMissingContext,
+  buildGovernancePreservedContext,
+  buildGovernanceReplacedContext,
+  buildGovernanceUnavailableContext,
+  buildHighConfidenceMatureEvidenceInput,
+  buildImmatureNewPersistenceScenario,
+  buildIncompleteEvidenceInput,
+  buildLowConfidenceImmatureEvidenceInput,
+  buildMatureStablePersistenceScenario,
+  buildMediumConfidencePartialEvidenceInput,
+  buildMissingHistoryPersistenceScenario,
+  buildNoDataEvidenceInput,
+  buildOutOfOrderPersistenceScenario,
+  buildPartialStablePersistenceScenario,
+  buildBurstableCreditPressurePersistenceScenario,
+  replayCostEvidencePipeline,
+  type ReplayCostEvidencePipelineResult,
+} from './decision-readiness-scenarios';
+
+export {
   buildMlIneligibleDecision,
   buildMlEligibleSkippedDecision,
 } from './ml-fixtures';

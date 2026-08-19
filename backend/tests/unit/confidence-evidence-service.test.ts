@@ -89,4 +89,49 @@ describe('ConfidenceEvidenceService', () => {
     assert.ok(composed?.persistence);
     assert.equal(composed?.maturity, undefined);
   });
+
+  it('resolves observation by logical identity without scanning full history', async () => {
+    const observations = new MockEvidenceObservationRepository();
+    const maturityRepository = new MockEvidenceMaturityRepository();
+    const scenario = buildNewRecommendationScenario();
+    const observationResult = await observations.recordObservation(scenario.inputs[0]!);
+    const observation = observationResult.observation;
+
+    const service = new ConfidenceEvidenceService(observations, maturityRepository);
+    const composed = await service.compose({
+      tenantId: TENANT_A,
+      accountId: ACCOUNT_A,
+      findingKey: observation.findingKey,
+      sourceAnalysisRunId: observation.analysisRunId,
+      sourceObservationTimestamp: observation.observationTimestamp,
+      governanceContextAvailable: true,
+    });
+
+    assert.equal(composed?.persistence?.sourceObservationId, observation.observationId);
+  });
+
+  it('returns undefined when sourceObservationId does not match latest observation', async () => {
+    const observations = new MockEvidenceObservationRepository();
+    const maturityRepository = new MockEvidenceMaturityRepository();
+    const first = buildNewRecommendationScenario();
+    const secondInput = {
+      ...first.inputs[0]!,
+      analysisRunId: 'run-second',
+      observationTimestamp: '2026-08-11T12:00:00.000Z',
+      collectionTimestamp: '2026-08-11T12:05:00.000Z',
+      recommendationVersion: 2,
+    };
+    const firstResult = await observations.recordObservation(first.inputs[0]!);
+    await observations.recordObservation(secondInput);
+
+    const service = new ConfidenceEvidenceService(observations, maturityRepository);
+    const composed = await service.compose({
+      tenantId: TENANT_A,
+      accountId: ACCOUNT_A,
+      findingKey: firstResult.observation.findingKey,
+      sourceObservationId: firstResult.observation.observationId,
+    });
+
+    assert.equal(composed, undefined);
+  });
 });

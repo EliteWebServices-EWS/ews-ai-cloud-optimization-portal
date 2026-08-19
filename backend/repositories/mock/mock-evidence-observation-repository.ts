@@ -22,6 +22,7 @@ import type {
   EvidenceObservationRepository,
   FindRelevantPreviousObservationInput,
   GetEvidenceObservationByLogicalIdInput,
+  GetLatestEvidenceObservationForFindingInput,
 } from '../contracts/evidence-observation-repository';
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
@@ -56,6 +57,15 @@ export class MockEvidenceObservationRepository implements EvidenceObservationRep
     });
     const record = this.byLogicalId.get(storageKey(input.tenantId, input.accountId, logicalObservationId));
     return record ?? null;
+  }
+
+  async getLatestObservationForFinding(
+    input: GetLatestEvidenceObservationForFindingInput,
+  ): Promise<EvidenceObservationRecord | null> {
+    const all = sortObservationsByObservationTimestamp([
+      ...(this.byFinding.get(findingIndexKey(input.tenantId, input.accountId, input.findingKey)) ?? []),
+    ]).filter((record) => record.tenantId === input.tenantId);
+    return all[all.length - 1] ?? null;
   }
 
   async listObservationsForFinding(
