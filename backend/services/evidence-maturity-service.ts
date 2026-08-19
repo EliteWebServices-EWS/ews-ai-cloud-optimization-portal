@@ -6,6 +6,8 @@ import {
   resolveTelemetryApplicability,
 } from '../evidence-maturity';
 import type { EvidenceMaturityAssessment, RecordEvidenceMaturityAssessmentResult } from '../evidence-maturity/types';
+import type { ActionLogEmitter } from '../action-log/action-log-emitter';
+import type { ActionLogLifecycleContext } from '../action-log/lifecycle-context';
 import type { EvidenceObservationRecord } from '../persistence-intelligence/types';
 import type { EvidenceMaturityRepository } from '../repositories/contracts/evidence-maturity-repository';
 import type { EvidenceObservationRepository } from '../repositories/contracts/evidence-observation-repository';
@@ -22,6 +24,7 @@ export class EvidenceMaturityService {
   constructor(
     private readonly maturityRepository: EvidenceMaturityRepository,
     private readonly observationRepository: EvidenceObservationRepository,
+    private readonly actionLogEmitter?: ActionLogEmitter,
   ) {}
 
   async listAllObservationsForFinding(input: {
@@ -67,7 +70,9 @@ export class EvidenceMaturityService {
   }
 
   async evaluateAndPersist(
-    input: EvaluateAndPersistEvidenceMaturityInput,
+    input: EvaluateAndPersistEvidenceMaturityInput & {
+      actionLogContext?: ActionLogLifecycleContext;
+    },
   ): Promise<RecordEvidenceMaturityAssessmentResult> {
     const observation = input.observation;
     const findingHistory = await this.listAllObservationsForFinding({
@@ -94,6 +99,13 @@ export class EvidenceMaturityService {
       config: DEFAULT_EVIDENCE_MATURITY_CONFIG,
     });
 
-    return this.maturityRepository.recordAssessment(assessment);
+    const persisted = await this.maturityRepository.recordAssessment(assessment);
+    if (this.actionLogEmitter && input.actionLogContext) {
+      await this.actionLogEmitter.emitAfterMaturityAssessment({
+        assessment: persisted.record,
+        context: input.actionLogContext,
+      });
+    }
+    return persisted;
   }
 }

@@ -1,3 +1,5 @@
+import type { ActionLogEmitter } from '../action-log/action-log-emitter';
+import type { ActionLogLifecycleContext } from '../action-log/lifecycle-context';
 import {
   calculateConfidence,
   DEFAULT_CONFIDENCE_CONFIG,
@@ -30,6 +32,7 @@ export interface AssessSprint2DecisionReadinessInput {
   sourceObservationId?: string;
   sourceAnalysisRunId?: string;
   sourceObservationTimestamp?: string;
+  actionLogContext?: ActionLogLifecycleContext;
 }
 
 /**
@@ -42,6 +45,7 @@ export class DecisionReadinessService {
   constructor(
     observations: EvidenceObservationRepository,
     maturityRepository: EvidenceMaturityRepository,
+    private readonly actionLogEmitter?: ActionLogEmitter,
   ) {
     this.confidenceEvidence = new ConfidenceEvidenceService(observations, maturityRepository);
   }
@@ -75,7 +79,7 @@ export class DecisionReadinessService {
     const persistence = longitudinalEvidence?.persistence;
     const maturity = longitudinalEvidence?.maturity;
 
-    return evaluateSprint2DecisionReadiness({
+    const readiness = evaluateSprint2DecisionReadiness({
       tenantId: input.tenantId,
       accountId: input.accountId,
       findingKey: input.findingKey,
@@ -119,5 +123,19 @@ export class DecisionReadinessService {
         confidenceModelVersion: confidenceResult.confidenceModelVersion,
       },
     });
+
+    if (this.actionLogEmitter && input.actionLogContext) {
+      await this.actionLogEmitter.emitAfterDecisionReadinessAssessment({
+        readiness,
+        scope: {
+          tenantId: input.tenantId,
+          accountId: input.accountId,
+          resourceId: input.resourceId,
+        },
+        context: input.actionLogContext,
+      });
+    }
+
+    return readiness;
   }
 }
