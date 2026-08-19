@@ -38,6 +38,8 @@ import { createEc2CloudResourceRepositories } from './services/ec2-cloud-resourc
 import { Ec2DiscoveryApiService } from './services/ec2-discovery-api-service';
 import { createEc2CostRepositories } from './services/ec2-cost-repository-factory';
 import { createEvidenceObservationRepository } from './services/evidence-observation-repository-factory';
+import { createActionLogService } from './services/action-log-repository-factory';
+import { ActionLogEmitter } from './action-log/action-log-emitter';
 import { EvidencePersistenceService } from './services/evidence-persistence-service';
 import { createEvidenceMaturityRepository } from './services/evidence-maturity-repository-factory';
 import { EvidenceMaturityService } from './services/evidence-maturity-service';
@@ -146,11 +148,17 @@ export function createApp(options?: CreateAppOptions): express.Application {
 
   const ec2CostRepositories = createEc2CostRepositories();
   const evidenceObservations = createEvidenceObservationRepository();
-  const evidencePersistence = new EvidencePersistenceService(evidenceObservations);
+  const actionLogService = createActionLogService();
+  const actionLogEmitter = new ActionLogEmitter(actionLogService);
+  const evidencePersistence = new EvidencePersistenceService(
+    evidenceObservations,
+    actionLogEmitter,
+  );
   const evidenceMaturityRepository = createEvidenceMaturityRepository();
   const evidenceMaturity = new EvidenceMaturityService(
     evidenceMaturityRepository,
     evidenceObservations,
+    actionLogEmitter,
   );
   const governanceConvergenceRepository = createGovernanceConvergenceRepository();
   const governanceConvergence = new GovernanceConvergenceService(

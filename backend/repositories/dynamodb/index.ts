@@ -11,3 +11,4 @@ export * from './dynamodb-execution-plan-repository';
 export * from './dynamodb-execution-history-repository';
 export * from './dynamodb-execution-run-repository';
 export * from './dynamodb-aws-account-repository';
+export * from './dynamodb-action-log-repository';

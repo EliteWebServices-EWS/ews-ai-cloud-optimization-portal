@@ -1,4 +1,5 @@
 import type { Ec2CostRecommendationRecord } from '../cloud-intelligence/ec2-cost/ec2-cost-models';
+import type { ActionLogEmitter } from '../action-log/action-log-emitter';
 import { buildRecommendationFingerprintInputFromEc2Cost } from '../persistence-intelligence/recommendation-fingerprint';
 import type {
   RecordEvidenceObservationInput,
@@ -16,7 +17,10 @@ export interface RecordEc2CostRecommendationObservationInput {
 }
 
 export class EvidencePersistenceService {
-  constructor(private readonly observations: EvidenceObservationRepository) {}
+  constructor(
+    private readonly observations: EvidenceObservationRepository,
+    private readonly actionLogEmitter?: ActionLogEmitter,
+  ) {}
 
   buildEc2CostObservationInput(
     input: RecordEc2CostRecommendationObservationInput,
@@ -60,7 +64,20 @@ export class EvidencePersistenceService {
   }
 
   async recordObservation(input: RecordEvidenceObservationInput): Promise<RecordEvidenceObservationResult> {
-    return this.observations.recordObservation(input);
+    const result = await this.observations.recordObservation(input);
+    if (this.actionLogEmitter && input.correlationId?.trim()) {
+      await this.actionLogEmitter.emitAfterEvidenceObservation({
+        result,
+        context: {
+          tenantId: input.tenantId,
+          accountId: input.accountId,
+          correlationId: input.correlationId,
+          recommendationId: input.recommendationId,
+          jobId: input.jobId,
+        },
+      });
+    }
+    return result;
   }
 
   async recordEc2CostRecommendationObservation(
