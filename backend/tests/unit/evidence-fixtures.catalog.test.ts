@@ -8,6 +8,7 @@ import {
 } from '../../engines/confidence';
 import { PersistenceDataQualityError } from '../../persistence-intelligence/errors';
 import { MockEvidenceObservationRepository } from '../../repositories/mock/mock-evidence-observation-repository';
+import { MockEvidenceMaturityRepository } from '../../repositories/mock/mock-evidence-maturity-repository';
 import {
   ALL_NAMED_PERSISTENCE_SCENARIOS,
   buildChangedRecommendationScenario,
@@ -30,6 +31,9 @@ import {
   buildPostActionDegradationVerification,
   buildPostActionSuccessVerification,
   buildRecordEvidenceObservationInput,
+  buildMatureStablePersistenceScenario,
+  buildGovernancePreservedContext,
+  replayCostEvidencePipeline,
   replayPersistenceScenario,
   RESOURCE_ID_CONFIDENCE_GOLDEN,
   TENANT_A,
@@ -175,5 +179,18 @@ describe('canonical evidence fixture catalogue', () => {
         .tenantId,
       TENANT_B,
     );
+  });
+
+  it('Sprint 2 decision-readiness fixture aliases replay through production services', async () => {
+    const observations = new MockEvidenceObservationRepository();
+    const maturityRepo = new MockEvidenceMaturityRepository();
+    const pipeline = await replayCostEvidencePipeline({
+      observations,
+      maturityRepository: maturityRepo,
+      scenario: buildMatureStablePersistenceScenario(),
+    });
+    assert.equal(pipeline.lastPersistenceState, 'STABLE');
+    assert.equal(pipeline.lastMaturity, 'MATURE');
+    assert.equal(buildGovernancePreservedContext().state, 'PRESERVED');
   });
 });

@@ -26,6 +26,7 @@ import type {
   EvidenceObservationRepository,
   FindRelevantPreviousObservationInput,
   GetEvidenceObservationByLogicalIdInput,
+  GetLatestEvidenceObservationForFindingInput,
 } from '../contracts/evidence-observation-repository';
 import type { PageResult } from '../contracts/repository-types';
 import { normalizePageSize } from '../contracts/repository-types';
@@ -110,6 +111,33 @@ export class DynamoDbEvidenceObservationRepository
       new GetCommand({ TableName: this.tableName, Key: { pk, sk } }),
     );
     const item = result.Item as EvidenceObservationItem | undefined;
+    if (!item || item.entityType !== 'EVIDENCE_OBSERVATION') {
+      return null;
+    }
+    if (item.tenantId !== input.tenantId) {
+      return null;
+    }
+    return toEvidenceObservationRecord(item);
+  }
+
+  async getLatestObservationForFinding(
+    input: GetLatestEvidenceObservationForFindingInput,
+  ): Promise<EvidenceObservationRecord | null> {
+    const pk = cloudResourceAccountPartitionKey(input.tenantId, input.accountId);
+    const result = await this.client.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: '#pk = :pk AND begins_with(#sk, :skPrefix)',
+        ExpressionAttributeNames: { '#pk': 'pk', '#sk': 'sk' },
+        ExpressionAttributeValues: {
+          ':pk': pk,
+          ':skPrefix': evidenceObservationSortKeyPrefixForFinding(input.findingKey),
+        },
+        ScanIndexForward: false,
+        Limit: 1,
+      }),
+    );
+    const item = result.Items?.[0] as EvidenceObservationItem | undefined;
     if (!item || item.entityType !== 'EVIDENCE_OBSERVATION') {
       return null;
     }

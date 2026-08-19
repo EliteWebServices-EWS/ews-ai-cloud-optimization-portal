@@ -14,6 +14,8 @@ export interface ComposeConfidenceLongitudinalEvidenceInput {
   accountId: string;
   findingKey: string;
   sourceObservationId?: string;
+  sourceAnalysisRunId?: string;
+  sourceObservationTimestamp?: string;
   governanceContextAvailable?: boolean;
 }
 
@@ -96,29 +98,29 @@ export class ConfidenceEvidenceService {
   private async resolveObservation(
     input: ComposeConfidenceLongitudinalEvidenceInput,
   ): Promise<EvidenceObservationRecord | null> {
-    const observations: EvidenceObservationRecord[] = [];
-    let nextToken: string | undefined;
-
-    do {
-      const page = await this.observations.listObservationsForFinding({
+    if (input.sourceAnalysisRunId && input.sourceObservationTimestamp) {
+      return this.observations.getObservationByLogicalId({
         tenantId: input.tenantId,
         accountId: input.accountId,
         findingKey: input.findingKey,
-        limit: 100,
-        nextToken,
+        analysisRunId: input.sourceAnalysisRunId,
+        observationTimestamp: input.sourceObservationTimestamp,
       });
-      observations.push(...page.items);
-      nextToken = page.nextToken;
-    } while (nextToken);
+    }
 
-    if (observations.length === 0) {
+    const latest = await this.observations.getLatestObservationForFinding({
+      tenantId: input.tenantId,
+      accountId: input.accountId,
+      findingKey: input.findingKey,
+    });
+    if (!latest) {
       return null;
     }
 
-    if (input.sourceObservationId) {
-      return observations.find((item) => item.observationId === input.sourceObservationId) ?? null;
+    if (input.sourceObservationId && latest.observationId !== input.sourceObservationId) {
+      return null;
     }
 
-    return observations[observations.length - 1] ?? null;
+    return latest;
   }
 }

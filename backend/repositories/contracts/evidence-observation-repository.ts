@@ -21,6 +21,12 @@ export interface GetEvidenceObservationByLogicalIdInput {
   observationTimestamp: string;
 }
 
+export interface GetLatestEvidenceObservationForFindingInput {
+  tenantId: string;
+  accountId: string;
+  findingKey: string;
+}
+
 export interface FindRelevantPreviousObservationInput {
   tenantId: string;
   accountId: string;
@@ -33,6 +39,9 @@ export interface EvidenceObservationRepository {
   recordObservation(input: RecordEvidenceObservationInput): Promise<RecordEvidenceObservationResult>;
   getObservationByLogicalId(
     input: GetEvidenceObservationByLogicalIdInput,
+  ): Promise<EvidenceObservationRecord | null>;
+  getLatestObservationForFinding(
+    input: GetLatestEvidenceObservationForFindingInput,
   ): Promise<EvidenceObservationRecord | null>;
   findRelevantPreviousObservation(
     input: FindRelevantPreviousObservationInput,
