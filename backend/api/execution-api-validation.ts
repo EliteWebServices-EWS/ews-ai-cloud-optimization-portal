@@ -6,6 +6,9 @@ import {
   type ExecutionStepRecord,
   type RollbackPlanRecord,
 } from '../repositories/models/execution-persistence-models';
+import { ACTION_MODES, type ActionMode } from '../action-policy/types';
+import { ML_DECISION_FALLBACKS } from '../action-policy/ml-decision-summary';
+import { DECISION_READINESS_STATES } from '../decision-readiness/types';
 import { AppError } from '../shared/utils';
 
 const PLAN_STATUSES: readonly ExecutionPlanStatus[] = [
@@ -137,6 +140,121 @@ function validateRollbackPlan(value: unknown): RollbackPlanRecord {
   };
 }
 
+export interface ActionPolicyContextBody {
+  accountId: string;
+  decisionId?: string;
+  findingKey?: string;
+  resourceId?: string;
+  actionMode: ActionMode;
+  infrastructureChanging: boolean;
+  decisionReadiness: {
+    readiness: (typeof DECISION_READINESS_STATES)[number];
+    reasonCodes: readonly string[];
+    policyVersion: string;
+    recommendedAction: string;
+  };
+  mlDecisionSummary?: {
+    eligibility: 'ML_ELIGIBLE' | 'ML_INELIGIBLE';
+    outcome: 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE';
+    fallback?: (typeof ML_DECISION_FALLBACKS)[number];
+    modelVersion?: string;
+  };
+}
+
+function validatePolicyContext(value: unknown): ActionPolicyContextBody | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const input = assertPlainObject(value, 'policyContext');
+  const accountId = String(input.accountId ?? '').trim();
+  if (!accountId) {
+    throw new ExecutionApiValidationError('policyContext.accountId is required.');
+  }
+
+  const actionMode = String(input.actionMode ?? '') as ActionMode;
+  if (!ACTION_MODES.includes(actionMode)) {
+    throw new ExecutionApiValidationError(`Unsupported policyContext.actionMode: ${actionMode}.`);
+  }
+
+  if (typeof input.infrastructureChanging !== 'boolean') {
+    throw new ExecutionApiValidationError('policyContext.infrastructureChanging must be a boolean.');
+  }
+
+  const readinessInput = assertPlainObject(input.decisionReadiness, 'policyContext.decisionReadiness');
+  const readiness = String(readinessInput.readiness ?? '') as ActionPolicyContextBody['decisionReadiness']['readiness'];
+  if (!DECISION_READINESS_STATES.includes(readiness)) {
+    throw new ExecutionApiValidationError(`Unsupported policyContext.decisionReadiness.readiness: ${readiness}.`);
+  }
+
+  if (!Array.isArray(readinessInput.reasonCodes)) {
+    throw new ExecutionApiValidationError('policyContext.decisionReadiness.reasonCodes must be an array.');
+  }
+
+  const policyVersion = String(readinessInput.policyVersion ?? '').trim();
+  const recommendedAction = String(readinessInput.recommendedAction ?? '').trim();
+  if (!policyVersion || !recommendedAction) {
+    throw new ExecutionApiValidationError(
+      'policyContext.decisionReadiness.policyVersion and recommendedAction are required.',
+    );
+  }
+
+  let mlDecisionSummary: ActionPolicyContextBody['mlDecisionSummary'];
+  if (input.mlDecisionSummary !== undefined) {
+    const ml = assertPlainObject(input.mlDecisionSummary, 'policyContext.mlDecisionSummary');
+    const eligibility = String(ml.eligibility ?? '');
+    const outcome = String(ml.outcome ?? '');
+    if (eligibility !== 'ML_ELIGIBLE' && eligibility !== 'ML_INELIGIBLE') {
+      throw new ExecutionApiValidationError('policyContext.mlDecisionSummary.eligibility is invalid.');
+    }
+    if (outcome !== 'EXECUTED' && outcome !== 'SKIPPED' && outcome !== 'FAILED_SAFE') {
+      throw new ExecutionApiValidationError('policyContext.mlDecisionSummary.outcome is invalid.');
+    }
+    const fallback = ml.fallback === undefined ? undefined : String(ml.fallback);
+    if (fallback !== undefined && !ML_DECISION_FALLBACKS.includes(fallback as never)) {
+      throw new ExecutionApiValidationError('policyContext.mlDecisionSummary.fallback is invalid.');
+    }
+    mlDecisionSummary = {
+      eligibility: eligibility as 'ML_ELIGIBLE' | 'ML_INELIGIBLE',
+      outcome: outcome as 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE',
+      fallback: fallback as ActionPolicyContextBody['mlDecisionSummary'] extends infer T
+        ? T extends { fallback?: infer F }
+          ? F
+          : never
+        : never,
+      modelVersion:
+        typeof ml.modelVersion === 'string' && ml.modelVersion.trim()
+          ? ml.modelVersion.trim()
+          : undefined,
+    };
+  }
+
+  return {
+    accountId,
+    decisionId:
+      typeof input.decisionId === 'string' && input.decisionId.trim()
+        ? input.decisionId.trim()
+        : undefined,
+    findingKey:
+      typeof input.findingKey === 'string' && input.findingKey.trim()
+        ? input.findingKey.trim()
+        : undefined,
+    resourceId:
+      typeof input.resourceId === 'string' && input.resourceId.trim()
+        ? input.resourceId.trim()
+        : undefined,
+    actionMode,
+    infrastructureChanging: input.infrastructureChanging,
+    decisionReadiness: {
+      readiness,
+      reasonCodes: readinessInput.reasonCodes.map((code) => String(code)),
+      policyVersion,
+      recommendedAction,
+    },
+    mlDecisionSummary,
+  };
+}
+
 export interface CreateExecutionPlanBody {
   workflowId: string;
   recommendationId: string;
@@ -146,6 +264,7 @@ export interface CreateExecutionPlanBody {
   approvalRequired: boolean;
   metadata?: Record<string, unknown>;
   region?: string;
+  policyContext?: ActionPolicyContextBody;
 }
 
 export function validateCreateExecutionPlanBody(body: unknown): CreateExecutionPlanBody {
@@ -188,6 +307,7 @@ export function validateCreateExecutionPlanBody(body: unknown): CreateExecutionP
       typeof input.region === 'string' && input.region.trim()
         ? input.region.trim()
         : undefined,
+    policyContext: validatePolicyContext(input.policyContext),
   };
 }
 

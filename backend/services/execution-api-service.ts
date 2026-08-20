@@ -1,6 +1,20 @@
 import type { ExecutionOrchestrator } from '../execution/execution-orchestrator';
 import { EXECUTION_MODES, ExecutionAdapterError } from '../execution/adapters/types';
 import type { AdapterExecutionRequest } from '../execution/adapters/types';
+import type { ActionLogEmitter } from '../action-log/action-log-emitter';
+import type { ActionLogLifecycleContext } from '../action-log/lifecycle-context';
+import {
+  assertPolicyAllowsPlanCreation,
+  assertProductionExecutionEligible,
+  assertSimulationExecutionEligible,
+  buildPolicyMetadata,
+  deriveApprovalRequiredFromPolicy,
+  evaluateActionPolicy,
+  readPolicyProvenance,
+  readPolicySnapshot,
+  EXECUTION_PLAN_METADATA_APPROVAL_ACTOR_ROLE,
+  EXECUTION_PLAN_METADATA_APPROVAL_REASON,
+} from '../action-policy';
 import {
   RepositoryConflictError,
   RepositoryNotFoundError,
@@ -37,6 +51,7 @@ export interface ExecutionApiServiceDeps {
   runs: ExecutionRunRepository;
   history: ExecutionHistoryRepository;
   orchestrator: ExecutionOrchestrator;
+  actionLogEmitter?: ActionLogEmitter;
 }
 
 export interface ExecutionApiActorContext {
@@ -195,6 +210,75 @@ function resolveRegion(plan: ExecutionPlanRecord, override?: string): string {
   return override ?? fromMetadata ?? 'us-east-1';
 }
 
+function buildActionLogContext(
+  plan: ExecutionPlanRecord,
+  ctx: ExecutionApiActorContext,
+): ActionLogLifecycleContext | undefined {
+  const provenance = readPolicyProvenance(plan.metadata);
+  if (!provenance?.accountId || !provenance.correlationId) {
+    return undefined;
+  }
+
+  return {
+    tenantId: ctx.tenantId,
+    accountId: provenance.accountId,
+    correlationId: provenance.correlationId,
+    recommendationId: plan.recommendationId,
+    decisionId: provenance.decisionId,
+    workflowId: plan.workflowId,
+  };
+}
+
+function actionLogScopeFromPlan(
+  plan: ExecutionPlanRecord,
+  ctx: ExecutionApiActorContext,
+) {
+  const provenance = readPolicyProvenance(plan.metadata);
+  const context = buildActionLogContext(plan, ctx);
+  const snapshot = readPolicySnapshot(plan.metadata);
+  if (!provenance?.accountId || !provenance.correlationId || !context) {
+    return undefined;
+  }
+
+  return {
+    tenantId: ctx.tenantId,
+    accountId: provenance.accountId,
+    resourceId: provenance.resourceId,
+    findingKey: provenance.findingKey,
+    correlationId: provenance.correlationId,
+    recommendationId: plan.recommendationId,
+    decisionId: provenance.decisionId,
+    workflowId: plan.workflowId,
+    executionId: plan.executionId,
+    planVersion: plan.version,
+    policyVersion:
+      snapshot?.policyVersion ??
+      provenance.actionPolicyVersion ??
+      'action-policy-v1',
+    context,
+  };
+}
+
+async function emitActionLogSafely(
+  emitter: ActionLogEmitter | undefined,
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  if (!emitter) {
+    return;
+  }
+
+  try {
+    await operation();
+  } catch (error) {
+    throw new AppError(
+      'ACTION_LOG_PERSISTENCE_FAILED',
+      error instanceof Error ? error.message : 'ActionLog persistence failed.',
+      500,
+      'action-log',
+    );
+  }
+}
+
 export function sanitizeExecutionPlan(plan: ExecutionPlanRecord) {
   return {
     planId: plan.executionId,
@@ -287,8 +371,35 @@ export class ExecutionApiService {
     body: CreateExecutionPlanBody,
   ): Promise<ExecutionPlanRecord> {
     const executionId = generateExecutionId();
+    let approvalRequired = body.approvalRequired;
+    let policyMetadata: Record<string, unknown> = {};
+
+    if (body.policyContext) {
+      const evaluatedAt = new Date().toISOString();
+      const policy = evaluateActionPolicy({
+        evaluatedAt,
+        decisionReadiness: body.policyContext.decisionReadiness,
+        mlDecisionSummary: body.policyContext.mlDecisionSummary,
+        actionMode: body.policyContext.actionMode,
+        infrastructureChanging: body.policyContext.infrastructureChanging,
+      });
+      assertPolicyAllowsPlanCreation(policy);
+      approvalRequired = deriveApprovalRequiredFromPolicy(policy);
+      policyMetadata = buildPolicyMetadata({
+        accountId: body.policyContext.accountId,
+        correlationId: ctx.correlationId,
+        decisionId: body.policyContext.decisionId,
+        findingKey: body.policyContext.findingKey,
+        resourceId: body.policyContext.resourceId,
+        actionPolicyVersion: policy.policyVersion,
+        actionPolicySnapshot: policy,
+        actionMode: policy.actionMode,
+      });
+    }
+
     const metadata = {
       ...(body.metadata ?? {}),
+      ...policyMetadata,
       ...(body.region ? { [EXECUTION_PLAN_METADATA_REGION]: body.region } : {}),
     };
 
@@ -302,8 +413,8 @@ export class ExecutionApiService {
       executionSteps: body.executionSteps,
       rollbackPlan: body.rollbackPlan,
       riskLevel: body.riskLevel,
-      approvalRequired: body.approvalRequired,
-      approvalStatus: initialApprovalStatus(body.approvalRequired),
+      approvalRequired,
+      approvalStatus: initialApprovalStatus(approvalRequired),
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
 
@@ -391,6 +502,19 @@ export class ExecutionApiService {
       nextStatus: updated.planStatus,
     });
 
+    if (body.submitForApproval) {
+      const scope = actionLogScopeFromPlan(updated, ctx);
+      await emitActionLogSafely(this.deps.actionLogEmitter, () =>
+        scope
+          ? this.deps.actionLogEmitter!.emitAfterApprovalRequired({
+              ...scope,
+              occurredAt: new Date().toISOString(),
+              reasonCodes: readPolicySnapshot(updated.metadata)?.reasonCodes,
+            })
+          : Promise.resolve(undefined),
+      );
+    }
+
     return updated;
   }
 
@@ -457,18 +581,42 @@ export class ExecutionApiService {
       { expectedVersion },
     );
 
+    const approvedWithProvenance = await this.deps.plans.update(
+      ctx.tenantId,
+      planId,
+      {
+        metadata: {
+          ...(approved.metadata ?? {}),
+          [EXECUTION_PLAN_METADATA_APPROVAL_ACTOR_ROLE]: ctx.actor.roles.join(','),
+        },
+      },
+      { expectedVersion: approved.version },
+    );
+
     await appendHistory(this.deps, {
       tenantId: ctx.tenantId,
       executionId: planId,
-      workflowId: approved.workflowId,
+      workflowId: approvedWithProvenance.workflowId,
       actorId: ctx.actorId,
       eventType: 'APPROVAL_RECORDED',
       previousStatus: plan.planStatus,
-      nextStatus: approved.planStatus,
+      nextStatus: approvedWithProvenance.planStatus,
       details: { decision: 'APPROVED' },
     });
 
-    return approved;
+    const scope = actionLogScopeFromPlan(approvedWithProvenance, ctx);
+    await emitActionLogSafely(this.deps.actionLogEmitter, () =>
+      scope
+        ? this.deps.actionLogEmitter!.emitAfterApprovalGranted({
+            ...scope,
+            occurredAt: approvedWithProvenance.approvedAt ?? new Date().toISOString(),
+            actorId: ctx.actorId,
+            reasonCodes: readPolicySnapshot(approvedWithProvenance.metadata)?.reasonCodes,
+          })
+        : Promise.resolve(undefined),
+    );
+
+    return approvedWithProvenance;
   }
 
   async rejectPlan(
@@ -508,18 +656,45 @@ export class ExecutionApiService {
       { expectedVersion },
     );
 
+    const rejectedWithProvenance = await this.deps.plans.update(
+      ctx.tenantId,
+      planId,
+      {
+        metadata: {
+          ...(rejected.metadata ?? {}),
+          [EXECUTION_PLAN_METADATA_APPROVAL_ACTOR_ROLE]: ctx.actor.roles.join(','),
+          ...(rejectionReason
+            ? { [EXECUTION_PLAN_METADATA_APPROVAL_REASON]: rejectionReason }
+            : {}),
+        },
+      },
+      { expectedVersion: rejected.version },
+    );
+
     await appendHistory(this.deps, {
       tenantId: ctx.tenantId,
       executionId: planId,
-      workflowId: rejected.workflowId,
+      workflowId: rejectedWithProvenance.workflowId,
       actorId: ctx.actorId,
       eventType: 'APPROVAL_RECORDED',
       previousStatus: plan.planStatus,
-      nextStatus: rejected.planStatus,
+      nextStatus: rejectedWithProvenance.planStatus,
       details: { decision: 'REJECTED', rejectionReason },
     });
 
-    return rejected;
+    const scope = actionLogScopeFromPlan(rejectedWithProvenance, ctx);
+    await emitActionLogSafely(this.deps.actionLogEmitter, () =>
+      scope
+        ? this.deps.actionLogEmitter!.emitAfterApprovalRejected({
+            ...scope,
+            occurredAt: rejectedWithProvenance.rejectedAt ?? new Date().toISOString(),
+            actorId: ctx.actorId,
+            reasonCodes: readPolicySnapshot(rejectedWithProvenance.metadata)?.reasonCodes,
+          })
+        : Promise.resolve(undefined),
+    );
+
+    return rejectedWithProvenance;
   }
 
   async executePlan(
@@ -563,6 +738,8 @@ export class ExecutionApiService {
       throw error;
     }
 
+    assertProductionExecutionEligible(working);
+
     if (!isAdapterProductionExecutionEnabled()) {
       throw new AppError(
         'EXECUTION_PRODUCTION_DISABLED',
@@ -577,6 +754,18 @@ export class ExecutionApiService {
       planId,
       'EXECUTING',
       { expectedVersion },
+    );
+
+    const scope = actionLogScopeFromPlan(executing, ctx);
+    await emitActionLogSafely(this.deps.actionLogEmitter, () =>
+      scope
+        ? this.deps.actionLogEmitter!.emitAfterExecutionStarted({
+            ...scope,
+            occurredAt: new Date().toISOString(),
+            actorId: ctx.actorId,
+            reasonCodes: readPolicySnapshot(executing.metadata)?.reasonCodes,
+          })
+        : Promise.resolve(undefined),
     );
 
     const adapterRequest = buildAdapterRequest(executing);
@@ -653,6 +842,50 @@ export class ExecutionApiService {
     return {
       plan: finalized,
       run,
+      result,
+    };
+  }
+
+  async simulatePlan(
+    ctx: ExecutionApiActorContext,
+    planId: string,
+    _expectedVersion: number,
+    regionOverride?: string,
+  ) {
+    const plan = await this.requirePlan(ctx.tenantId, planId);
+    assertSimulationExecutionEligible(plan);
+
+    const adapterRequest = buildAdapterRequest(plan);
+    const region = resolveRegion(plan, regionOverride);
+
+    const result = await this.deps.orchestrator.run(
+      {
+        tenantId: ctx.tenantId,
+        actorId: ctx.actorId,
+        actor: ctx.actor,
+        correlationId: ctx.correlationId,
+        requestId: ctx.requestId,
+        region,
+        mode: EXECUTION_MODES.DRY_RUN,
+        workflowId: plan.workflowId,
+      },
+      adapterRequest,
+    );
+
+    const scope = actionLogScopeFromPlan(plan, ctx);
+    await emitActionLogSafely(this.deps.actionLogEmitter, () =>
+      scope
+        ? this.deps.actionLogEmitter!.emitAfterExecutionSimulated({
+            ...scope,
+            occurredAt: new Date().toISOString(),
+            actorId: ctx.actorId,
+            reasonCodes: readPolicySnapshot(plan.metadata)?.reasonCodes,
+          })
+        : Promise.resolve(undefined),
+    );
+
+    return {
+      plan,
       result,
     };
   }

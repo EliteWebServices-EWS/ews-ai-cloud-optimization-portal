@@ -194,3 +194,182 @@ export function buildDecisionReadinessEvaluatedEventInput(input: {
     reasonCodes: [readiness.readiness, ...readiness.reasonCodes],
   };
 }
+
+function buildApprovalScope(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+}): Pick<
+  RecordActionLogEventInput,
+  | 'tenantId'
+  | 'accountId'
+  | 'resourceId'
+  | 'findingKey'
+  | 'correlationId'
+  | 'decisionId'
+  | 'workflowId'
+  | 'executionId'
+> {
+  return {
+    tenantId: input.tenantId,
+    accountId: input.accountId,
+    resourceId: input.resourceId,
+    findingKey: input.findingKey,
+    correlationId: input.correlationId,
+    decisionId: resolveActionLogDecisionId({
+      correlationId: input.correlationId,
+      findingKey: input.findingKey ?? input.recommendationId,
+      recommendationId: input.recommendationId,
+      decisionId: input.decisionId,
+    }),
+    workflowId: input.workflowId,
+    executionId: input.executionId,
+  };
+}
+
+export function buildApprovalRequiredEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  planVersion: number;
+  policyVersion: string;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildApprovalScope(input),
+    eventType: 'APPROVAL_REQUIRED',
+    sourceStage: 'APPROVAL',
+    sourceRecordId: input.executionId,
+    sourceRecordVersion: String(input.planVersion),
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+  };
+}
+
+export function buildApprovalGrantedEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  planVersion: number;
+  policyVersion: string;
+  occurredAt: string;
+  actorId: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildApprovalScope(input),
+    eventType: 'APPROVAL_GRANTED',
+    sourceStage: 'APPROVAL',
+    sourceRecordId: input.executionId,
+    sourceRecordVersion: String(input.planVersion),
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+    actorType: 'human',
+    actorId: input.actorId,
+  };
+}
+
+export function buildApprovalRejectedEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  planVersion: number;
+  policyVersion: string;
+  occurredAt: string;
+  actorId: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildApprovalScope(input),
+    eventType: 'APPROVAL_REJECTED',
+    sourceStage: 'APPROVAL',
+    sourceRecordId: input.executionId,
+    sourceRecordVersion: String(input.planVersion),
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+    actorType: 'human',
+    actorId: input.actorId,
+  };
+}
+
+export function buildExecutionStartedEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  runId?: string;
+  planVersion: number;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+  actorId: string;
+}): RecordActionLogEventInput {
+  return {
+    ...buildApprovalScope(input),
+    eventType: 'EXECUTION_STARTED',
+    sourceStage: 'EXECUTION',
+    sourceRecordId: input.runId ?? input.executionId,
+    sourceRecordVersion: String(input.planVersion),
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+    actorType: 'human',
+    actorId: input.actorId,
+  };
+}
+
+export function buildExecutionSimulatedEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  planVersion: number;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+  actorId: string;
+}): RecordActionLogEventInput {
+  return {
+    ...buildApprovalScope(input),
+    eventType: 'EXECUTION_SIMULATED',
+    sourceStage: 'EXECUTION',
+    sourceRecordId: input.executionId,
+    sourceRecordVersion: String(input.planVersion),
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+    actorType: 'human',
+    actorId: input.actorId,
+  };
+}

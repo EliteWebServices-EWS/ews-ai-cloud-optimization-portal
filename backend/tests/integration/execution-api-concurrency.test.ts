@@ -7,6 +7,7 @@ import { AppError } from '../../shared/utils';
 import { createInMemoryExecutionStores, TENANT_A } from './execution/fixtures';
 import type { SisumRole } from '../../auth';
 import type { CreateExecutionPlanBody } from '../../api/execution-api-validation';
+import { buildExecutionApiPolicyContext } from '../fixtures/action-policy/policy-fixtures';
 import {
   analystIdentity,
   createExecutionHttpApp,
@@ -51,6 +52,7 @@ function createBody(overrides: Partial<CreateExecutionPlanBody> = {}): CreateExe
       },
     ],
     rollbackPlan: { strategy: 'REVERSE', steps: [], automatic: true },
+    policyContext: buildExecutionApiPolicyContext(),
     ...overrides,
   };
 }

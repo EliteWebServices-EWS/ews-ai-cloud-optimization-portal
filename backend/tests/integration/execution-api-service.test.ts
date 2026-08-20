@@ -9,6 +9,7 @@ import { AppError } from '../../shared/utils';
 import { createInMemoryExecutionStores, TENANT_A, TENANT_B } from './execution/fixtures';
 import type { SisumRole } from '../../auth';
 import type { CreateExecutionPlanBody } from '../../api/execution-api-validation';
+import { buildExecutionApiPolicyContext } from '../fixtures/action-policy/policy-fixtures';
 
 function actor() {
   return {
@@ -42,6 +43,7 @@ function createBody(overrides: Partial<CreateExecutionPlanBody> = {}): CreateExe
       },
     ],
     rollbackPlan: { strategy: 'REVERSE', steps: [], automatic: true },
+    policyContext: buildExecutionApiPolicyContext(),
     ...overrides,
   };
 }
@@ -188,7 +190,10 @@ describe('Execution API service', () => {
     const service = createService(stores);
     const created = await service.createPlan(
       actor(),
-      createBody({ approvalRequired: false }),
+      createBody({
+        approvalRequired: false,
+        policyContext: buildExecutionApiPolicyContext({ infrastructureChanging: false }),
+      }),
     );
     const approved = await stores.plans.transitionStatus(
       TENANT_A,
