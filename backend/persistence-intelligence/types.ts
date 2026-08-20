@@ -22,11 +22,8 @@ export interface PersistenceAssessment {
 /** Semantic contract for evidence maturity sprint 2 — referenced for ordering only in Sprint 1. */
 export type EvidenceMaturity = 'MATURE' | 'PARTIAL' | 'IMMATURE';
 
-/** Semantic contract for ML decision sprint 3 — not implemented in Sprint 1. */
-export interface MLDecision {
-  eligibility: 'ML_ELIGIBLE' | 'ML_INELIGIBLE';
-  outcome: 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE';
-}
+/** Semantic contract for ML decision sprint 3 — authoritative type lives in ml-decision. */
+export type { MLDecision } from '../ml-decision/types';
 
 /** Semantic contract for rollback assessment sprint 4 — not implemented in Sprint 1. */
 export type RollbackAssessmentOutcome = 'MAINTAIN' | 'ROLLBACK' | 'INSUFFICIENT_EVIDENCE';

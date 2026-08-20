@@ -12,8 +12,11 @@ import {
   buildApprovalRejectedEventInput,
   buildExecutionStartedEventInput,
   buildExecutionSimulatedEventInput,
+  buildMlEligibilityEvaluatedEventInput,
+  buildMlOutcomeEventInput,
   type ActionLogResourceScope,
 } from './stage-adapters';
+import type { MLDecision } from '../ml-decision/types';
 import type {
   RecordActionLogEventInput,
   RecordActionLogEventResult,
@@ -219,6 +222,53 @@ export class ActionLogEmitter {
     return this.emit(
       buildExecutionSimulatedEventInput(input),
     );
+  }
+
+  async emitAfterMlDecision(input: {
+    decision: MLDecision;
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult[]> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    const scope = {
+      tenantId: input.tenantId,
+      accountId: input.accountId,
+      resourceId: input.resourceId,
+      findingKey: input.findingKey,
+      correlationId: input.correlationId,
+      recommendationId: input.recommendationId,
+      decisionId: input.decisionId,
+      workflowId: input.workflowId,
+      evaluationId: input.decision.evaluationId,
+    };
+
+    const eligibility = await this.emit(
+      buildMlEligibilityEvaluatedEventInput({
+        ...scope,
+        eligibilityPolicyVersion: input.decision.eligibilityPolicyVersion,
+        occurredAt: input.decision.evaluatedAt,
+        reasonCodes: [input.decision.eligibility, ...input.decision.reasonCodes],
+      }),
+    );
+
+    const outcome = await this.emit(
+      buildMlOutcomeEventInput({
+        ...scope,
+        outcome: input.decision.outcome,
+        modelVersion: input.decision.modelVersion,
+        occurredAt: input.decision.inferredAt ?? input.decision.evaluatedAt,
+        reasonCodes: [input.decision.outcome, input.decision.fallback, ...input.decision.reasonCodes],
+      }),
+    );
+
+    return [eligibility, outcome];
   }
 
   private assertContextMatchesObservation(

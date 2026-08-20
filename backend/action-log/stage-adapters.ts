@@ -373,3 +373,97 @@ export function buildExecutionSimulatedEventInput(input: {
     actorId: input.actorId,
   };
 }
+
+function buildMlScope(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  evaluationId: string;
+}): Pick<
+  RecordActionLogEventInput,
+  | 'tenantId'
+  | 'accountId'
+  | 'resourceId'
+  | 'findingKey'
+  | 'correlationId'
+  | 'decisionId'
+  | 'workflowId'
+  | 'sourceRecordId'
+> {
+  return {
+    tenantId: input.tenantId,
+    accountId: input.accountId,
+    resourceId: input.resourceId,
+    findingKey: input.findingKey,
+    correlationId: input.correlationId,
+    decisionId: resolveActionLogDecisionId({
+      correlationId: input.correlationId,
+      findingKey: input.findingKey ?? input.recommendationId,
+      recommendationId: input.recommendationId,
+      decisionId: input.decisionId,
+    }),
+    workflowId: input.workflowId,
+    sourceRecordId: input.evaluationId,
+  };
+}
+
+export function buildMlEligibilityEvaluatedEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  evaluationId: string;
+  eligibilityPolicyVersion: string;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildMlScope(input),
+    eventType: 'ML_ELIGIBILITY_EVALUATED',
+    sourceStage: 'ML',
+    sourceRecordVersion: input.eligibilityPolicyVersion,
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+  };
+}
+
+export function buildMlOutcomeEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  evaluationId: string;
+  outcome: 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE';
+  modelVersion?: string | null;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  const eventType =
+    input.outcome === 'EXECUTED'
+      ? 'ML_EXECUTED'
+      : input.outcome === 'SKIPPED'
+        ? 'ML_SKIPPED'
+        : 'ML_FAILED_SAFE';
+
+  return {
+    ...buildMlScope(input),
+    eventType,
+    sourceStage: 'ML',
+    sourceRecordVersion: input.modelVersion ?? input.evaluationId,
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+  };
+}
