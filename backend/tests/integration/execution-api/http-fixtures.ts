@@ -17,6 +17,7 @@ import {
 import type { AwsExecutionClientFactory } from '../../../execution/adapters/aws-clients';
 import { InMemoryMembershipRepository } from '../../../membership/membership.store';
 import { ExecutionApiService } from '../../../services/execution-api-service';
+import { buildExecutionApiPolicyContext } from '../../fixtures/action-policy/policy-fixtures';
 import {
   createInMemoryExecutionStores,
   TENANT_A,
@@ -57,6 +58,7 @@ export function identityHeaders(identity: TestIdentity): Record<string, string> 
 }
 
 export function buildPlanBody(overrides: Record<string, unknown> = {}) {
+  const { policyContext, ...rest } = overrides;
   return {
     workflowId: 'wf-http-1',
     recommendationId: 'rec-http-1',
@@ -73,7 +75,13 @@ export function buildPlanBody(overrides: Record<string, unknown> = {}) {
       },
     ],
     rollbackPlan: { strategy: 'REVERSE', steps: [], automatic: true },
-    ...overrides,
+    policyContext:
+      policyContext ??
+      buildExecutionApiPolicyContext({
+        resourceId: 'i-http-1',
+        findingKey: 'finding-http-1',
+      }),
+    ...rest,
   };
 }
 

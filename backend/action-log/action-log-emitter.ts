@@ -7,6 +7,11 @@ import {
   buildMaturityEvaluatedEventInput,
   buildPersistenceEvaluatedEventInput,
   buildRecommendationObservedEventInput,
+  buildApprovalRequiredEventInput,
+  buildApprovalGrantedEventInput,
+  buildApprovalRejectedEventInput,
+  buildExecutionStartedEventInput,
+  buildExecutionSimulatedEventInput,
   type ActionLogResourceScope,
 } from './stage-adapters';
 import type {
@@ -101,6 +106,119 @@ export class ActionLogEmitter {
       buildDecisionReadinessEvaluatedEventInput(input),
     );
     return [confidence, readiness];
+  }
+
+  async emitAfterApprovalRequired(input: {
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    executionId: string;
+    planVersion: number;
+    policyVersion: string;
+    occurredAt: string;
+    reasonCodes?: readonly string[];
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    return this.emit(
+      buildApprovalRequiredEventInput(input),
+    );
+  }
+
+  async emitAfterApprovalGranted(input: {
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    executionId: string;
+    planVersion: number;
+    policyVersion: string;
+    occurredAt: string;
+    actorId: string;
+    reasonCodes?: readonly string[];
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    return this.emit(
+      buildApprovalGrantedEventInput(input),
+    );
+  }
+
+  async emitAfterApprovalRejected(input: {
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    executionId: string;
+    planVersion: number;
+    policyVersion: string;
+    occurredAt: string;
+    actorId: string;
+    reasonCodes?: readonly string[];
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    return this.emit(
+      buildApprovalRejectedEventInput(input),
+    );
+  }
+
+  async emitAfterExecutionStarted(input: {
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    executionId: string;
+    runId?: string;
+    planVersion: number;
+    occurredAt: string;
+    reasonCodes?: readonly string[];
+    actorId: string;
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    return this.emit(
+      buildExecutionStartedEventInput(input),
+    );
+  }
+
+  async emitAfterExecutionSimulated(input: {
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    executionId: string;
+    planVersion: number;
+    occurredAt: string;
+    reasonCodes?: readonly string[];
+    actorId: string;
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    return this.emit(
+      buildExecutionSimulatedEventInput(input),
+    );
   }
 
   private assertContextMatchesObservation(

@@ -9,6 +9,7 @@ import { AppError } from '../../shared/utils';
 import type { SisumRole } from '../../auth';
 import type { CreateExecutionPlanBody } from '../../api/execution-api-validation';
 import { createInMemoryExecutionStores, TENANT_A, TENANT_B } from './execution/fixtures';
+import { buildExecutionApiPolicyContext } from '../fixtures/action-policy/policy-fixtures';
 
 function actor() {
   return {
@@ -42,6 +43,10 @@ function createBody(): CreateExecutionPlanBody {
       },
     ],
     rollbackPlan: { strategy: 'REVERSE', steps: [], automatic: true },
+    policyContext: buildExecutionApiPolicyContext({
+      infrastructureChanging: false,
+      resourceId: 'i-rb',
+    }),
   };
 }
 
