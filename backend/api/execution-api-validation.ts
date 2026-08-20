@@ -156,7 +156,7 @@ export interface ActionPolicyContextBody {
   mlDecisionSummary?: {
     eligibility: 'ML_ELIGIBLE' | 'ML_INELIGIBLE';
     outcome: 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE';
-    fallback?: (typeof ML_DECISION_FALLBACKS)[number];
+    fallback: (typeof ML_DECISION_FALLBACKS)[number];
     modelVersion?: string;
   };
 }
@@ -210,18 +210,14 @@ function validatePolicyContext(value: unknown): ActionPolicyContextBody | undefi
     if (outcome !== 'EXECUTED' && outcome !== 'SKIPPED' && outcome !== 'FAILED_SAFE') {
       throw new ExecutionApiValidationError('policyContext.mlDecisionSummary.outcome is invalid.');
     }
-    const fallback = ml.fallback === undefined ? undefined : String(ml.fallback);
-    if (fallback !== undefined && !ML_DECISION_FALLBACKS.includes(fallback as never)) {
+    const fallback = String(ml.fallback ?? '').trim();
+    if (!fallback || !ML_DECISION_FALLBACKS.includes(fallback as never)) {
       throw new ExecutionApiValidationError('policyContext.mlDecisionSummary.fallback is invalid.');
     }
     mlDecisionSummary = {
       eligibility: eligibility as 'ML_ELIGIBLE' | 'ML_INELIGIBLE',
       outcome: outcome as 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE',
-      fallback: fallback as ActionPolicyContextBody['mlDecisionSummary'] extends infer T
-        ? T extends { fallback?: infer F }
-          ? F
-          : never
-        : never,
+      fallback: fallback as (typeof ML_DECISION_FALLBACKS)[number],
       modelVersion:
         typeof ml.modelVersion === 'string' && ml.modelVersion.trim()
           ? ml.modelVersion.trim()

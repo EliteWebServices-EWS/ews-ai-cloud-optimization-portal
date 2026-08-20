@@ -127,6 +127,7 @@ describe('Action policy golden vectors', () => {
       mlDecisionSummary: {
         eligibility: 'ML_ELIGIBLE',
         outcome: 'FAILED_SAFE',
+        fallback: 'DETERMINISTIC_RULES',
       },
       actionMode: 'PRODUCTION',
       infrastructureChanging: true,
@@ -146,6 +147,7 @@ describe('Action policy golden vectors', () => {
       mlDecisionSummary: {
         eligibility: 'ML_ELIGIBLE',
         outcome: 'EXECUTED',
+        fallback: 'NONE',
       },
       actionMode: 'PRODUCTION',
       infrastructureChanging: true,
