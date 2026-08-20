@@ -436,6 +436,122 @@ export function buildMlEligibilityEvaluatedEventInput(input: {
   };
 }
 
+function buildVerificationScope(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  assessmentId: string;
+}): Pick<
+  RecordActionLogEventInput,
+  | 'tenantId'
+  | 'accountId'
+  | 'resourceId'
+  | 'findingKey'
+  | 'correlationId'
+  | 'decisionId'
+  | 'workflowId'
+  | 'executionId'
+  | 'sourceRecordId'
+> {
+  return {
+    tenantId: input.tenantId,
+    accountId: input.accountId,
+    resourceId: input.resourceId,
+    findingKey: input.findingKey,
+    correlationId: input.correlationId,
+    decisionId: resolveActionLogDecisionId({
+      correlationId: input.correlationId,
+      findingKey: input.findingKey ?? input.recommendationId,
+      recommendationId: input.recommendationId,
+      decisionId: input.decisionId,
+    }),
+    workflowId: input.workflowId,
+    executionId: input.executionId,
+    sourceRecordId: input.assessmentId,
+  };
+}
+
+export function buildVerificationStartedEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  assessmentId: string;
+  verificationPolicyVersion: string;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildVerificationScope(input),
+    eventType: 'VERIFICATION_STARTED',
+    sourceStage: 'VERIFICATION',
+    sourceRecordVersion: input.verificationPolicyVersion,
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+  };
+}
+
+export function buildVerificationCompletedEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  assessmentId: string;
+  verificationPolicyVersion: string;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildVerificationScope(input),
+    eventType: 'VERIFICATION_COMPLETED',
+    sourceStage: 'VERIFICATION',
+    sourceRecordVersion: input.verificationPolicyVersion,
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+  };
+}
+
+export function buildVerificationInsufficientEvidenceEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  assessmentId: string;
+  verificationPolicyVersion: string;
+  occurredAt: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildVerificationScope(input),
+    eventType: 'VERIFICATION_INSUFFICIENT_EVIDENCE',
+    sourceStage: 'VERIFICATION',
+    sourceRecordVersion: input.verificationPolicyVersion,
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+  };
+}
+
 export function buildMlOutcomeEventInput(input: {
   tenantId: string;
   accountId: string;

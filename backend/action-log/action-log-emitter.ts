@@ -14,8 +14,12 @@ import {
   buildExecutionSimulatedEventInput,
   buildMlEligibilityEvaluatedEventInput,
   buildMlOutcomeEventInput,
+  buildVerificationCompletedEventInput,
+  buildVerificationInsufficientEvidenceEventInput,
+  buildVerificationStartedEventInput,
   type ActionLogResourceScope,
 } from './stage-adapters';
+import type { PostActionVerificationAssessment } from '../post-action-verification/types';
 import type { MLDecision } from '../ml-decision/types';
 import type {
   RecordActionLogEventInput,
@@ -269,6 +273,45 @@ export class ActionLogEmitter {
     );
 
     return [eligibility, outcome];
+  }
+
+  async emitAfterPostActionVerification(input: {
+    assessment: PostActionVerificationAssessment;
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    executionId: string;
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult[]> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    const scope = {
+      tenantId: input.tenantId,
+      accountId: input.accountId,
+      resourceId: input.resourceId,
+      findingKey: input.findingKey,
+      correlationId: input.correlationId,
+      recommendationId: input.recommendationId,
+      decisionId: input.decisionId,
+      workflowId: input.workflowId,
+      executionId: input.executionId,
+      assessmentId: input.assessment.assessmentId,
+      verificationPolicyVersion: input.assessment.verificationPolicyVersion,
+      occurredAt: input.assessment.evaluatedAt,
+      reasonCodes: [...input.assessment.reasonCodes],
+    };
+
+    const started = await this.emit(buildVerificationStartedEventInput(scope));
+    const completed =
+      input.assessment.outcome === 'INSUFFICIENT_EVIDENCE'
+        ? await this.emit(buildVerificationInsufficientEvidenceEventInput(scope))
+        : await this.emit(buildVerificationCompletedEventInput(scope));
+
+    return [started, completed];
   }
 
   private assertContextMatchesObservation(
