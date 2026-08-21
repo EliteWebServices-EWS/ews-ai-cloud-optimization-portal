@@ -1,4 +1,4 @@
-import type { GovernanceSafetyQualificationInput } from '../../governance-regression/types';
+import type { GovernanceSafetyQualificationInput } from '../../../governance-regression/types';
 import { ACCOUNT_A, TENANT_A } from '../evidence/identities';
 
 export const GOVERNANCE_REGRESSION_EVALUATED_AT = '2026-08-21T12:00:00.000Z';
@@ -65,8 +65,10 @@ function baseInput(
   };
 }
 
-export function buildSafeFullyConsistentInput(): GovernanceSafetyQualificationInput {
-  return baseInput();
+export function buildSafeFullyConsistentInput(
+  overrides: Partial<GovernanceSafetyQualificationInput> = {},
+): GovernanceSafetyQualificationInput {
+  return baseInput(overrides);
 }
 
 export function buildBlockedImmatureReadyContradictionInput(): GovernanceSafetyQualificationInput {

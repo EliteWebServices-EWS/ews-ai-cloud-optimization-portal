@@ -1,5 +1,5 @@
 import { detectGovernanceContradictions } from './contradiction-detector';
-import { GOVERNANCE_SAFETY_REASON } from './reason-codes';
+import { GOVERNANCE_SAFETY_REASON, type GovernanceSafetyReasonCode } from './reason-codes';
 import {
   isMissingPricingForQualification,
   isMissingTelemetryForQualification,
@@ -11,8 +11,8 @@ import type {
 } from './types';
 
 function uniqueReasons(
-  codes: Array<(typeof GOVERNANCE_SAFETY_REASON)[keyof typeof GOVERNANCE_SAFETY_REASON]>,
-): GovernanceSafetyQualificationResult['reasonCodes'] {
+  codes: readonly GovernanceSafetyReasonCode[],
+): GovernanceSafetyReasonCode[] {
   return [...new Set(codes)];
 }
 

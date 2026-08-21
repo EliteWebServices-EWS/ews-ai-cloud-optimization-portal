@@ -4,7 +4,8 @@ import { describe, it } from 'node:test';
 import { evaluateActionPolicy } from '../../action-policy/evaluate-action-policy';
 import { evaluateSprint2DecisionReadiness } from '../../decision-readiness/readiness-policy';
 import { qualifyGovernanceSafety } from '../../governance-regression/release-qualification';
-import { GOVERNANCE_CONTRADICTION, GOVERNANCE_SAFETY_REASON } from '../../governance-regression/reason-codes';
+import { GOVERNANCE_SAFETY_REASON } from '../../governance-regression/reason-codes';
+import { VERIFICATION_STATUS } from '../../shared/constants';
 import { evaluatePostActionVerification } from '../../post-action-verification/evaluate-post-action-verification';
 import {
   buildReadyReadinessInput,
@@ -138,7 +139,7 @@ describe('Sprint 4 governance regression matrix', () => {
     const assessment = evaluatePostActionVerification({
       ...fixture.assessmentInput,
       comparatorResult: {
-        status: 'insufficient_evidence',
+        status: VERIFICATION_STATUS.PENDING,
         expectedSavings: 10,
         actualSavings: 0,
         verifiedSavings: 0,
