@@ -563,6 +563,7 @@ export function buildMlOutcomeEventInput(input: {
   workflowId?: string;
   evaluationId: string;
   outcome: 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE';
+  modelId?: string | null;
   modelVersion?: string | null;
   occurredAt: string;
   reasonCodes?: readonly string[];
@@ -579,6 +580,7 @@ export function buildMlOutcomeEventInput(input: {
     eventType,
     sourceStage: 'ML',
     sourceRecordVersion: input.modelVersion ?? input.evaluationId,
+    modelId: input.modelId ?? undefined,
     occurredAt: input.occurredAt,
     reasonCodes: input.reasonCodes,
   };

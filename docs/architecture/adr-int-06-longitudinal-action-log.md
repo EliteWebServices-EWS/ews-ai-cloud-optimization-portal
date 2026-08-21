@@ -61,6 +61,10 @@ Authoritative upstream writes succeed independently. ActionLog persistence failu
 - Stage emitters must populate `correlationId` and source references explicitly
 - Retention policy not finalized in Sprint 3
 
+### Sprint 4 extension (Engineer 1)
+
+Sprint 4 adds **decision provenance reconstruction** as a read model over ActionLog + authoritative repositories (`DecisionProvenanceReconstructionService`). ActionLog remains the single longitudinal index; reconstruction dedupes, orders, resolves source availability, and classifies completeness without creating ActionLogV2 or recomputing historical decisions. See `docs/architecture/sprint-4-provenance-reconstruction.md` and ADR-INT-09.
+
 ## Compliance with intelligence programme
 
 - Does **not** rewrite Sprint 1 persistence or Sprint 2 maturity/governance/confidence/readiness engines
