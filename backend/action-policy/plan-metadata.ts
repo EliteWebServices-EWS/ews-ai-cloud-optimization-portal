@@ -1,4 +1,4 @@
-import type { ActionPolicyResult } from './types';
+﻿import type { ActionPolicyResult } from './types';
 
 export const EXECUTION_PLAN_METADATA_ACCOUNT_ID = 'accountId';
 export const EXECUTION_PLAN_METADATA_CORRELATION_ID = 'correlationId';
@@ -10,6 +10,7 @@ export const EXECUTION_PLAN_METADATA_ACTION_POLICY_SNAPSHOT = 'actionPolicySnaps
 export const EXECUTION_PLAN_METADATA_ACTION_MODE = 'actionMode';
 export const EXECUTION_PLAN_METADATA_APPROVAL_ACTOR_ROLE = 'approvalActorRole';
 export const EXECUTION_PLAN_METADATA_APPROVAL_REASON = 'approvalReason';
+export const EXECUTION_PLAN_METADATA_OVERRIDE_HISTORY = 'approvalOverrideHistory';
 
 export interface ExecutionPlanPolicyProvenance {
   accountId: string;
@@ -20,6 +21,28 @@ export interface ExecutionPlanPolicyProvenance {
   actionPolicyVersion: string;
   actionPolicySnapshot: ActionPolicyResult;
   actionMode: ActionPolicyResult['actionMode'];
+}
+
+/**
+ * Durable, attributable record of a single approval override. Appended
+ * (never replaced) into plan metadata so a plan carries its full override
+ * provenance. The canonical, append-only copy of this same event also lives
+ * in ExecutionHistoryRecord and ActionLog (APPROVAL_OVERRIDDEN).
+ */
+export interface ExecutionPlanOverrideEntry {
+  actorId: string;
+  actorRole: string;
+  reason: string;
+  overrideDecision: 'APPROVED' | 'REJECTED';
+  originalDecision: {
+    approvalStatus: string;
+    planStatus: string;
+    actorId?: string;
+    decidedAt?: string;
+  };
+  correlationId: string;
+  policyVersion?: string;
+  decidedAt: string;
 }
 
 export function buildPolicyMetadata(
@@ -89,5 +112,18 @@ export function readPolicyProvenance(
         : snapshot.policyVersion,
     actionPolicySnapshot: snapshot,
     actionMode: snapshot.actionMode,
+  };
+}
+
+export function appendOverrideHistory(
+  metadata: Record<string, unknown> | undefined,
+  entry: ExecutionPlanOverrideEntry,
+): Record<string, unknown> {
+  const existingRaw = metadata?.[EXECUTION_PLAN_METADATA_OVERRIDE_HISTORY];
+  const existing = Array.isArray(existingRaw) ? existingRaw : [];
+
+  return {
+    ...(metadata ?? {}),
+    [EXECUTION_PLAN_METADATA_OVERRIDE_HISTORY]: [...existing, entry],
   };
 }

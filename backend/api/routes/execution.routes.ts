@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+﻿import { Router, type Request, type Response } from 'express';
 
 import {
   AUDIT_EVENTS,
@@ -28,6 +28,7 @@ import {
   validateApprovalBody,
   validateCreateExecutionPlanBody,
   validateExecuteBody,
+  validateOverrideBody,
   validateRejectionBody,
   validateUpdateExecutionPlanBody,
 } from '../execution-api-validation';
@@ -408,6 +409,36 @@ export function createExecutionRoutes(deps: ExecutionRouteDeps): Router {
     },
   );
 
+  router.post(
+    '/execution/plans/:planId/override',
+    ...privileged,
+    requirePrivilegedMfa(PRIVILEGED_OPERATIONS.EXECUTION_APPROVAL_OVERRIDE),
+    async (req: Request, res: Response) => {
+      const requestId = getRequestId(req);
+      try {
+        const { expectedVersion, overrideDecision, reason } = validateOverrideBody(req.body);
+        const overridden = await deps.executionApi.overridePlan(
+          actorContext(req),
+          req.params.planId,
+          expectedVersion,
+          { overrideDecision, reason },
+        );
+        recordExecutionAudit(req, {
+          eventName: AUDIT_EVENTS.EXECUTION_APPROVAL_OVERRIDDEN,
+          outcome: 'success',
+          action: 'execution.plan.override',
+          statusCode: 200,
+          planId: overridden.executionId,
+          workflowId: overridden.workflowId,
+          newStatus: overridden.planStatus,
+          reason,
+        });
+        res.json(buildSuccessResponse(sanitizeExecutionPlan(overridden), requestId));
+      } catch (error) {
+        handleExecutionRouteError(res, error, requestId);
+      }
+    },
+  );
   router.post(
     '/execution/plans/:planId/execute',
     ...privileged,

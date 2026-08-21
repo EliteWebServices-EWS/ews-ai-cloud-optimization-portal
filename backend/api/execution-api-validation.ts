@@ -1,4 +1,4 @@
-import {
+﻿import {
   EXECUTION_RISK_LEVELS,
   ExecutionPlanValidationError,
   type ExecutionPlanStatus,
@@ -369,6 +369,33 @@ export function validateRejectionBody(body: unknown): { rejectionReason?: string
 export function validateApprovalBody(body: unknown): { expectedVersion: number } {
   const input = assertPlainObject(body, 'body');
   return { expectedVersion: validateExpectedVersionQuery(input.expectedVersion) };
+}
+
+const OVERRIDE_REASON_MIN_LENGTH = 10;
+
+export function validateOverrideBody(body: unknown): {
+  expectedVersion: number;
+  overrideDecision: 'APPROVED' | 'REJECTED';
+  reason: string;
+} {
+  const input = assertPlainObject(body, 'body');
+  const expectedVersion = validateExpectedVersionQuery(input.expectedVersion);
+
+  const overrideDecision = input.overrideDecision;
+  if (overrideDecision !== 'APPROVED' && overrideDecision !== 'REJECTED') {
+    throw new ExecutionApiValidationError(
+      "overrideDecision must be 'APPROVED' or 'REJECTED'.",
+    );
+  }
+
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  if (reason.length < OVERRIDE_REASON_MIN_LENGTH) {
+    throw new ExecutionApiValidationError(
+      `reason is required and must be at least ${OVERRIDE_REASON_MIN_LENGTH} characters to override an approval decision.`,
+    );
+  }
+
+  return { expectedVersion, overrideDecision, reason };
 }
 
 export function validateExecuteBody(body: unknown): { expectedVersion: number; region?: string } {

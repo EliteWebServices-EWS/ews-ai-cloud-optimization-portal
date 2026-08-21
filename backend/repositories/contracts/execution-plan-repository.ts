@@ -1,20 +1,17 @@
-import type {
+﻿import type {
   ExecutionApprovalStatus,
   ExecutionPlanStatus,
   ExecutionPlanRecord,
 } from '../models';
-
 import type {
   PageRequest,
   PageResult,
   UpdateOptions,
 } from './repository-types';
-
 export type CreateExecutionPlanInput = Omit<
   ExecutionPlanRecord,
   'version' | 'createdAt' | 'updatedAt'
 >;
-
 export type UpdateExecutionPlanInput = Partial<
   Omit<
     ExecutionPlanRecord,
@@ -28,61 +25,64 @@ export type UpdateExecutionPlanInput = Partial<
     | 'updatedAt'
   >
 >;
-
 export interface ExecutionApprovalDecisionInput {
   decision: 'APPROVED' | 'REJECTED';
   actorId: string;
   decidedAt?: string;
   rejectionReason?: string;
 }
-
+export interface ExecutionApprovalOverrideInput {
+  overrideDecision: 'APPROVED' | 'REJECTED';
+  actorId: string;
+  actorRole: string;
+  reason: string;
+  decidedAt?: string;
+}
 export interface ExecutionPlanRepository {
   create(input: CreateExecutionPlanInput): Promise<ExecutionPlanRecord>;
-
   getById(
     tenantId: string,
     executionId: string,
   ): Promise<ExecutionPlanRecord | undefined>;
-
   update(
     tenantId: string,
     executionId: string,
     changes: UpdateExecutionPlanInput,
     options: UpdateOptions,
   ): Promise<ExecutionPlanRecord>;
-
   transitionStatus(
     tenantId: string,
     executionId: string,
     nextStatus: ExecutionPlanStatus,
     options: UpdateOptions,
   ): Promise<ExecutionPlanRecord>;
-
   recordApprovalDecision(
     tenantId: string,
     executionId: string,
     decision: ExecutionApprovalDecisionInput,
     options: UpdateOptions,
   ): Promise<ExecutionPlanRecord>;
-
+  recordApprovalOverride(
+    tenantId: string,
+    executionId: string,
+    override: ExecutionApprovalOverrideInput,
+    options: UpdateOptions,
+  ): Promise<ExecutionPlanRecord>;
   listByTenant(
     tenantId: string,
     page?: PageRequest,
   ): Promise<PageResult<ExecutionPlanRecord>>;
-
   listByWorkflow(
     tenantId: string,
     workflowId: string,
     page?: PageRequest,
   ): Promise<PageResult<ExecutionPlanRecord>>;
-
   listByStatus(
     tenantId: string,
     status: ExecutionPlanStatus,
     page?: PageRequest,
   ): Promise<PageResult<ExecutionPlanRecord>>;
 }
-
 export function assertApprovalStatusForPlan(
   plan: Pick<
     ExecutionPlanRecord,
@@ -99,7 +99,6 @@ export function assertApprovalStatusForPlan(
     );
   }
 }
-
 export function initialApprovalStatus(
   approvalRequired: boolean,
 ): ExecutionApprovalStatus {
