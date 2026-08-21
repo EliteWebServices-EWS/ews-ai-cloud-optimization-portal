@@ -72,6 +72,13 @@ function assertMlOutcomeActionLogFields(input: {
   );
   assert.ok(outcome?.reasonCodes?.includes(input.decision.outcome));
   assert.ok(outcome?.reasonCodes?.includes(input.decision.fallback));
+  if (input.decision.modelId) {
+    assert.equal(outcome?.modelId, input.decision.modelId);
+    assert.ok(
+      !outcome?.reasonCodes?.some((code) => code.startsWith('ML_MODEL:')),
+      'modelId must not be encoded in reasonCodes',
+    );
+  }
 }
 
 describe('Sprint 3 ML ActionLog integration', () => {

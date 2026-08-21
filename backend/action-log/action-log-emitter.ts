@@ -266,9 +266,14 @@ export class ActionLogEmitter {
       buildMlOutcomeEventInput({
         ...scope,
         outcome: input.decision.outcome,
+        modelId: input.decision.modelId,
         modelVersion: input.decision.modelVersion,
         occurredAt: input.decision.inferredAt ?? input.decision.evaluatedAt,
-        reasonCodes: [input.decision.outcome, input.decision.fallback, ...input.decision.reasonCodes],
+        reasonCodes: [
+          input.decision.outcome,
+          input.decision.fallback,
+          ...input.decision.reasonCodes,
+        ],
       }),
     );
 

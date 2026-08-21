@@ -62,6 +62,7 @@ function toActionLogRecord(item: ActionLogItem): ActionLogRecord {
     sourceStage: item.sourceStage,
     sourceRecordId: item.sourceRecordId,
     sourceRecordVersion: item.sourceRecordVersion,
+    modelId: item.modelId,
     reasonCodes: item.reasonCodes,
     actorType: item.actorType,
     actorId: item.actorId,

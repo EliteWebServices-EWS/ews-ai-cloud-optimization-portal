@@ -70,6 +70,8 @@ export interface ActionLogRecord extends TenantRecordIdentity {
   sourceStage: ActionLogSourceStage;
   sourceRecordId: string;
   sourceRecordVersion?: string;
+  /** Optional ML model identity — provenance metadata, not a reason code. */
+  modelId?: string;
   reasonCodes?: readonly string[];
   actorType?: string;
   actorId?: string;
@@ -96,6 +98,8 @@ export interface RecordActionLogEventInput {
   sourceStage: ActionLogSourceStage;
   sourceRecordId: string;
   sourceRecordVersion?: string;
+  /** Optional ML model identity — provenance metadata, not a reason code. */
+  modelId?: string;
   reasonCodes?: readonly string[];
   actorType?: string;
   actorId?: string;
@@ -171,6 +175,9 @@ export function validateRecordActionLogEventInput(
   if (input.reasonCodes !== undefined) {
     assertJsonSerializable(input.reasonCodes, 'reasonCodes');
   }
+  if (input.modelId !== undefined) {
+    assertNonEmpty(input.modelId, 'modelId');
+  }
 
   return {
     ...input,
@@ -205,6 +212,7 @@ export function toActionLogRecord(input: RecordActionLogEventInput & {
     sourceStage: input.sourceStage,
     sourceRecordId: input.sourceRecordId,
     sourceRecordVersion: input.sourceRecordVersion,
+    modelId: input.modelId,
     reasonCodes: input.reasonCodes,
     actorType: input.actorType,
     actorId: input.actorId,
