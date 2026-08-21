@@ -1,4 +1,4 @@
-import type { Sprint2DecisionReadinessResult } from '../decision-readiness/types';
+﻿import type { Sprint2DecisionReadinessResult } from '../decision-readiness/types';
 import type { EvidenceMaturityAssessmentRecord } from '../evidence-maturity/types';
 import type { GovernanceConvergenceResultRecord } from '../governance-convergence/types';
 import type {
@@ -317,6 +317,34 @@ export function buildApprovalRejectedEventInput(input: {
   };
 }
 
+export function buildApprovalOverriddenEventInput(input: {
+  tenantId: string;
+  accountId: string;
+  resourceId?: string;
+  findingKey?: string;
+  correlationId: string;
+  recommendationId: string;
+  decisionId?: string;
+  workflowId?: string;
+  executionId: string;
+  planVersion: number;
+  policyVersion: string;
+  occurredAt: string;
+  actorId: string;
+  reasonCodes?: readonly string[];
+}): RecordActionLogEventInput {
+  return {
+    ...buildApprovalScope(input),
+    eventType: 'APPROVAL_OVERRIDDEN',
+    sourceStage: 'APPROVAL',
+    sourceRecordId: input.executionId,
+    sourceRecordVersion: String(input.planVersion),
+    occurredAt: input.occurredAt,
+    reasonCodes: input.reasonCodes,
+    actorType: 'human',
+    actorId: input.actorId,
+  };
+}
 export function buildExecutionStartedEventInput(input: {
   tenantId: string;
   accountId: string;

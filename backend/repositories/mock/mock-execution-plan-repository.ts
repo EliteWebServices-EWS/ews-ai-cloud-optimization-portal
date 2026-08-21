@@ -1,4 +1,4 @@
-import {
+﻿import {
   InvalidPaginationTokenError,
   RepositoryAlreadyExistsError,
   RepositoryConflictError,
@@ -13,6 +13,7 @@ import { EXECUTION_PAGINATION_SCOPES } from '../../persistence/execution-paginat
 import type {
   CreateExecutionPlanInput,
   ExecutionApprovalDecisionInput,
+  ExecutionApprovalOverrideInput,
   ExecutionPlanRepository,
   PageRequest,
   PageResult,
@@ -33,6 +34,8 @@ import {
 
 import {
   approvalFieldsForDecision,
+  assertOverrideEligiblePlanStatus,
+  overrideApprovalFields,
   validateExecutionStartAllowed,
   validateExecutionTransition,
 } from '../../services/execution-lifecycle';
@@ -237,6 +240,34 @@ export class MockExecutionPlanRepository implements ExecutionPlanRepository {
     });
 
     return this.update(tenantId, executionId, approvalChanges, options);
+  }
+
+  async recordApprovalOverride(
+    tenantId: string,
+    executionId: string,
+    override: ExecutionApprovalOverrideInput,
+    options: UpdateOptions,
+  ): Promise<ExecutionPlanRecord> {
+    const existing = await this.getById(tenantId, executionId);
+    if (!existing) {
+      throw new RepositoryNotFoundError(`Execution plan ${executionId} was not found.`);
+    }
+
+    assertOverrideEligiblePlanStatus(existing.planStatus, existing.approvalRequired);
+
+    if (existing.approvalStatus === override.overrideDecision) {
+      throw new RepositoryConflictError(`Execution plan ${executionId} already has approval decision ${override.overrideDecision}; override must reverse the existing decision.`);
+    }
+
+    const decidedAt = override.decidedAt ?? new Date().toISOString();
+    const overrideChanges = overrideApprovalFields({
+      overrideDecision: override.overrideDecision,
+      actorId: override.actorId,
+      decidedAt,
+      reason: override.reason,
+    });
+
+    return this.update(tenantId, executionId, overrideChanges, options);
   }
 
   async listByTenant(

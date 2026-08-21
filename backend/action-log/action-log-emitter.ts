@@ -1,4 +1,4 @@
-import { ActionLogPersistenceError } from './errors';
+﻿import { ActionLogPersistenceError } from './errors';
 import type { ActionLogLifecycleContext } from './lifecycle-context';
 import {
   buildConfidenceEvaluatedEventInput,
@@ -10,6 +10,7 @@ import {
   buildApprovalRequiredEventInput,
   buildApprovalGrantedEventInput,
   buildApprovalRejectedEventInput,
+  buildApprovalOverriddenEventInput,
   buildExecutionStartedEventInput,
   buildExecutionSimulatedEventInput,
   type ActionLogResourceScope,
@@ -176,6 +177,28 @@ export class ActionLogEmitter {
     );
   }
 
+  async emitAfterApprovalOverridden(input: {
+    tenantId: string;
+    accountId: string;
+    resourceId?: string;
+    findingKey?: string;
+    correlationId: string;
+    recommendationId: string;
+    decisionId?: string;
+    workflowId?: string;
+    executionId: string;
+    planVersion: number;
+    policyVersion: string;
+    occurredAt: string;
+    actorId: string;
+    reasonCodes?: readonly string[];
+    context: ActionLogLifecycleContext;
+  }): Promise<RecordActionLogEventResult> {
+    this.assertScope(input.tenantId, input.accountId, input.context);
+    return this.emit(
+      buildApprovalOverriddenEventInput(input),
+    );
+  }
   async emitAfterExecutionStarted(input: {
     tenantId: string;
     accountId: string;

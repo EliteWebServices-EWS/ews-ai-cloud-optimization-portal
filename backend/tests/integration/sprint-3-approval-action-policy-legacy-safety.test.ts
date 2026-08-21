@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import { describe, it, before, after } from 'node:test';
 
 import { ActionLogEmitter } from '../../action-log/action-log-emitter';
@@ -262,16 +262,109 @@ describe('Sprint 3 legacy execution plan safety', () => {
     assert.equal(result.mode, EXECUTION_MODES.DRY_RUN);
     assert.notEqual(result.mode, EXECUTION_MODES.PRODUCTION);
   });
+
+  describe('Sprint 4 override governance', () => {
+    it('overrides a REJECTED plan to APPROVED with durable provenance', async () => {
+      const service = createService();
+      const created = await service.createPlan(
+        actor(TENANT_A),
+        legacyBody({ policyContext: buildProductionPolicyContext({ resourceId: 'i-legacy' }) }),
+      );
+      const pending = await service.updatePlan(actor(TENANT_A), created.executionId, {
+        expectedVersion: created.version,
+        submitForApproval: true,
+      });
+      const rejected = await service.rejectPlan(
+        actor(TENANT_A),
+        pending.executionId,
+        pending.version,
+        'insufficient evidence at the time',
+      );
+
+      const overridden = await service.overridePlan(
+        actor(TENANT_A),
+        rejected.executionId,
+        rejected.version,
+        { overrideDecision: 'APPROVED', reason: 'Re-reviewed with additional telemetry' },
+      );
+
+      assert.equal(overridden.planStatus, 'APPROVED');
+      assert.equal(overridden.approvalStatus, 'APPROVED');
+      assert.equal(overridden.approvedBy, 'legacy-actor');
+      assert.ok(Array.isArray(overridden.metadata?.approvalOverrideHistory));
+      const history = overridden.metadata!.approvalOverrideHistory as Array<Record<string, unknown>>;
+      assert.equal(history.length, 1);
+      assert.equal(history[0].overrideDecision, 'APPROVED');
+      assert.equal(history[0].reason, 'Re-reviewed with additional telemetry');
+    });
+
+    it('rejects an override that repeats the current decision', async () => {
+      const service = createService();
+      const created = await service.createPlan(
+        actor(TENANT_A),
+        legacyBody({ policyContext: buildProductionPolicyContext({ resourceId: 'i-legacy' }) }),
+      );
+      const pending = await service.updatePlan(actor(TENANT_A), created.executionId, {
+        expectedVersion: created.version,
+        submitForApproval: true,
+      });
+      const approved = await service.approvePlan(actor(TENANT_A), pending.executionId, pending.version);
+
+      await assert.rejects(() =>
+        service.overridePlan(actor(TENANT_A), approved.executionId, approved.version, {
+          overrideDecision: 'APPROVED',
+          reason: 'Attempting a no-op override',
+        }),
+      );
+    });
+
+    it('rejects an override on a plan that has not been decided yet', async () => {
+      const service = createService();
+      const created = await service.createPlan(
+        actor(TENANT_A),
+        legacyBody({ policyContext: buildProductionPolicyContext({ resourceId: 'i-legacy' }) }),
+      );
+
+      await assert.rejects(() =>
+        service.overridePlan(actor(TENANT_A), created.executionId, created.version, {
+          overrideDecision: 'APPROVED',
+          reason: 'Cannot override a draft plan',
+        }),
+      );
+    });
+
+    it('legacy cross-tenant override is denied', async () => {
+      const service = createService();
+      const created = await service.createPlan(
+        actor(TENANT_A),
+        legacyBody({ policyContext: buildProductionPolicyContext({ resourceId: 'i-legacy' }) }),
+      );
+      const pending = await service.updatePlan(actor(TENANT_A), created.executionId, {
+        expectedVersion: created.version,
+        submitForApproval: true,
+      });
+      const rejected = await service.rejectPlan(
+        actor(TENANT_A),
+        pending.executionId,
+        pending.version,
+        'not ready',
+      );
+
+      await assert.rejects(
+        () =>
+          service.overridePlan(actor(TENANT_B), rejected.executionId, rejected.version, {
+            overrideDecision: 'APPROVED',
+            reason: 'Tenant B should never reach this plan',
+          }),
+        RepositoryNotFoundError,
+      );
+    });
+
+    it('ActionLogEmitter exposes approval override emission distinct from grant/reject', () => {
+      const methodNames = Object.getOwnPropertyNames(ActionLogEmitter.prototype);
+      assert.ok(methodNames.includes('emitAfterApprovalOverridden'));
+    });
+  });
 });
 
-describe('Sprint 3 override governance disposition', () => {
-  it('OVERRIDE_GOVERNANCE_NOT_IMPLEMENTED: no approval override API exists', () => {
-    const methodNames = Object.getOwnPropertyNames(ExecutionApiService.prototype);
-    assert.ok(!methodNames.some((name) => /override/i.test(name)));
-  });
 
-  it('ActionLogEmitter does not expose approval override emission', () => {
-    const methodNames = Object.getOwnPropertyNames(ActionLogEmitter.prototype);
-    assert.ok(!methodNames.some((name) => /override/i.test(name)));
-  });
-});
