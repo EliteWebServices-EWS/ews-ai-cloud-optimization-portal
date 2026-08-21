@@ -29,6 +29,7 @@ export const AUDIT_EVENTS = {
   EXECUTION_PLAN_UPDATED: 'execution.plan.updated',
   EXECUTION_APPROVED: 'execution.approved',
   EXECUTION_REJECTED: 'execution.rejected',
+  EXECUTION_APPROVAL_OVERRIDDEN: 'execution.approval_overridden',
   EXECUTION_EXECUTED: 'execution.executed',
   EXECUTION_EXECUTION_FAILED: 'execution.execution_failed',
   EXECUTION_ROLLBACK_REQUESTED: 'execution.rollback_requested',

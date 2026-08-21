@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Application-level privileged-operation MFA policy.
  *
  * Cognito user-pool access tokens issued after successful TOTP do not reliably
@@ -7,7 +7,7 @@
  *
  * Only MFA_VERIFIED_FOR_CURRENT_SESSION may authorize a privileged operation.
  * That state requires a dedicated trusted access-token claim copied by
- * lambda.ts (see SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM) — not enrollment,
+ * lambda.ts (see SESSION_MFA_VERIFIED_ACCESS_TOKEN_CLAIM) â€” not enrollment,
  * groups, scope, or authentication-method references.
  */
 
@@ -57,6 +57,7 @@ export const PRIVILEGED_OPERATIONS = {
   EXECUTION_REJECT: 'execution.reject',
   EXECUTION_EXECUTE: 'execution.execute',
   EXECUTION_ROLLBACK: 'execution.rollback',
+  EXECUTION_APPROVAL_OVERRIDE: 'execution.approval_override',
   AWS_ACCOUNT_REGISTER: 'aws_account.register',
   AWS_ACCOUNT_REMOVE: 'aws_account.remove',
   TENANT_OWNER_BOOTSTRAP: 'tenant.owner_bootstrap',
@@ -75,6 +76,7 @@ const OPERATIONS_REQUIRING_MFA: ReadonlySet<PrivilegedOperation> = new Set([
   PRIVILEGED_OPERATIONS.EXECUTION_REJECT,
   PRIVILEGED_OPERATIONS.EXECUTION_EXECUTE,
   PRIVILEGED_OPERATIONS.EXECUTION_ROLLBACK,
+  PRIVILEGED_OPERATIONS.EXECUTION_APPROVAL_OVERRIDE,
   PRIVILEGED_OPERATIONS.AWS_ACCOUNT_REGISTER,
   PRIVILEGED_OPERATIONS.AWS_ACCOUNT_REMOVE,
   PRIVILEGED_OPERATIONS.TENANT_OWNER_BOOTSTRAP,
@@ -113,7 +115,7 @@ export function hasTrustedSessionMfaEvidence(
   return identity.sessionMfaVerified === true;
 }
 
-/** @deprecated Use hasTrustedSessionMfaEvidence — amr is not operational MFA proof. */
+/** @deprecated Use hasTrustedSessionMfaEvidence â€” amr is not operational MFA proof. */
 export function hasTrustedMfaEvidence(identity: AuthenticatedIdentity): boolean {
   return hasTrustedSessionMfaEvidence(identity);
 }

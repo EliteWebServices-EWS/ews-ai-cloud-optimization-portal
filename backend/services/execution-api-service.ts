@@ -1,4 +1,4 @@
-import type { ExecutionOrchestrator } from '../execution/execution-orchestrator';
+﻿import type { ExecutionOrchestrator } from '../execution/execution-orchestrator';
 import { EXECUTION_MODES, ExecutionAdapterError } from '../execution/adapters/types';
 import type { AdapterExecutionRequest } from '../execution/adapters/types';
 import type { ActionLogEmitter } from '../action-log/action-log-emitter';
@@ -12,8 +12,11 @@ import {
   evaluateActionPolicy,
   readPolicyProvenance,
   readPolicySnapshot,
+  appendOverrideHistory,
   EXECUTION_PLAN_METADATA_APPROVAL_ACTOR_ROLE,
   EXECUTION_PLAN_METADATA_APPROVAL_REASON,
+  ACTION_POLICY_REASON,
+  type ExecutionPlanOverrideEntry,
 } from '../action-policy';
 import {
   RepositoryConflictError,
@@ -32,6 +35,7 @@ import type {
 import type { ExecutionRunRecord, AdapterExecutionStatus } from '../repositories/models/execution-run-models';
 import {
   InvalidExecutionApprovalError,
+  InvalidExecutionOverrideError,
   InvalidExecutionTransitionError,
   validateExecutionStartAllowed,
 } from '../services/execution-lifecycle';
@@ -697,6 +701,90 @@ export class ExecutionApiService {
     return rejectedWithProvenance;
   }
 
+  async overridePlan(
+    ctx: ExecutionApiActorContext,
+    planId: string,
+    expectedVersion: number,
+    input: { overrideDecision: 'APPROVED' | 'REJECTED'; reason: string },
+  ): Promise<ExecutionPlanRecord> {
+    const plan = await this.requirePlan(ctx.tenantId, planId);
+
+    const originalDecision: ExecutionPlanOverrideEntry['originalDecision'] = {
+      approvalStatus: plan.approvalStatus,
+      planStatus: plan.planStatus,
+      actorId:
+        plan.approvalStatus === 'APPROVED' ? plan.approvedBy : plan.rejectedBy,
+      decidedAt:
+        plan.approvalStatus === 'APPROVED' ? plan.approvedAt : plan.rejectedAt,
+    };
+
+    const overridden = await this.deps.plans.recordApprovalOverride(
+      ctx.tenantId,
+      planId,
+      {
+        overrideDecision: input.overrideDecision,
+        actorId: ctx.actorId,
+        actorRole: ctx.actor.roles.join(','),
+        reason: input.reason,
+      },
+      { expectedVersion },
+    );
+
+    const provenance = readPolicyProvenance(overridden.metadata);
+    const overrideEntry: ExecutionPlanOverrideEntry = {
+      actorId: ctx.actorId,
+      actorRole: ctx.actor.roles.join(','),
+      reason: input.reason,
+      overrideDecision: input.overrideDecision,
+      originalDecision,
+      correlationId: ctx.correlationId,
+      policyVersion: provenance?.actionPolicyVersion,
+      decidedAt:
+        input.overrideDecision === 'APPROVED'
+          ? overridden.approvedAt ?? new Date().toISOString()
+          : overridden.rejectedAt ?? new Date().toISOString(),
+    };
+
+    const overriddenWithProvenance = await this.deps.plans.update(
+      ctx.tenantId,
+      planId,
+      {
+        metadata: appendOverrideHistory(overridden.metadata, overrideEntry),
+      },
+      { expectedVersion: overridden.version },
+    );
+
+    await appendHistory(this.deps, {
+      tenantId: ctx.tenantId,
+      executionId: planId,
+      workflowId: overriddenWithProvenance.workflowId,
+      actorId: ctx.actorId,
+      eventType: 'APPROVAL_RECORDED',
+      previousStatus: plan.planStatus,
+      nextStatus: overriddenWithProvenance.planStatus,
+      details: {
+        decision: 'OVERRIDDEN',
+        overrideDecision: input.overrideDecision,
+        reason: input.reason,
+        originalDecision,
+      },
+    });
+
+    const scope = actionLogScopeFromPlan(overriddenWithProvenance, ctx);
+    await emitActionLogSafely(this.deps.actionLogEmitter, () =>
+      scope
+        ? this.deps.actionLogEmitter!.emitAfterApprovalOverridden({
+            ...scope,
+            occurredAt: overrideEntry.decidedAt,
+            actorId: ctx.actorId,
+            reasonCodes: [ACTION_POLICY_REASON.OVERRIDE_APPLIED],
+          })
+        : Promise.resolve(undefined),
+    );
+
+    return overriddenWithProvenance;
+  }
+
   async executePlan(
     ctx: ExecutionApiActorContext,
     planId: string,
@@ -1055,6 +1143,9 @@ export class ExecutionApiService {
 
 export function mapExecutionServiceError(error: unknown): AppError | unknown {
   if (error instanceof InvalidExecutionTransitionError) {
+    return new AppError('CONFLICT', error.message, 409, 'execution-api');
+  }
+  if (error instanceof InvalidExecutionOverrideError) {
     return new AppError('CONFLICT', error.message, 409, 'execution-api');
   }
   if (error instanceof RepositoryConflictError) {

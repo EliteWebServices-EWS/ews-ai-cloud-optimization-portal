@@ -1,4 +1,4 @@
-export { ACTION_POLICY_VERSION } from './model-version';
+﻿export { ACTION_POLICY_VERSION } from './model-version';
 export { ACTION_POLICY_REASON, type ActionPolicyReasonCode } from './reason-codes';
 export {
   ML_DECISION_FALLBACKS,
@@ -33,10 +33,13 @@ export {
   EXECUTION_PLAN_METADATA_ACTION_MODE,
   EXECUTION_PLAN_METADATA_APPROVAL_ACTOR_ROLE,
   EXECUTION_PLAN_METADATA_APPROVAL_REASON,
+  EXECUTION_PLAN_METADATA_OVERRIDE_HISTORY,
   buildPolicyMetadata,
   readPolicyProvenance,
   readPolicySnapshot,
+  appendOverrideHistory,
   type ExecutionPlanPolicyProvenance,
+  type ExecutionPlanOverrideEntry,
 } from './plan-metadata';
 export {
   assertPolicyAllowsPlanCreation,
