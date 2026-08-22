@@ -14,6 +14,14 @@ export function resolveMlFallback(input: {
     return 'REJECT';
   }
 
+  if (
+    input.reasonCodes.includes(ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_NAN) ||
+    input.reasonCodes.includes(ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_INFINITY) ||
+    input.reasonCodes.includes(ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_MALFORMED)
+  ) {
+    return 'REJECT';
+  }
+
   if (input.reasonCodes.includes(ML_DECISION_REASON.ML_INELIGIBLE_EVIDENCE_IMMATURE)) {
     return 'OBSERVE';
   }

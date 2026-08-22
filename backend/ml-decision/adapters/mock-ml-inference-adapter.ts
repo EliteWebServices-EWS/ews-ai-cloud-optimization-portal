@@ -1,3 +1,4 @@
+import { MlInferenceTimeoutError } from '../errors';
 import { ML_MODEL_CONTRACT_VERSION } from '../model-version';
 import type {
   MlInferenceAdapter,
@@ -19,12 +20,19 @@ export interface MockMlInferenceAdapterOptions {
   unavailable?: boolean;
   throwOnInfer?: boolean;
   corruptOutput?: boolean;
+  timeout?: boolean;
+  /** Untrusted raw override for adversarial / malformed-output tests. */
+  raw?: unknown;
 }
 
 export class MockMlInferenceAdapter implements MlInferenceAdapter {
   constructor(private readonly options: MockMlInferenceAdapterOptions = {}) {}
 
   async infer(request: MlInferenceRequest): Promise<MlInferenceAdapterResult> {
+    if (this.options.timeout) {
+      throw new MlInferenceTimeoutError();
+    }
+
     if (this.options.throwOnInfer) {
       throw new Error('Simulated inference failure.');
     }
@@ -33,6 +41,13 @@ export class MockMlInferenceAdapter implements MlInferenceAdapter {
       return {
         status: 'UNAVAILABLE',
         errorCode: 'MODEL_UNAVAILABLE',
+      };
+    }
+
+    if (this.options.raw !== undefined) {
+      return {
+        status: 'AVAILABLE',
+        raw: this.options.raw,
       };
     }
 

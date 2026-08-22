@@ -593,6 +593,7 @@ export function buildMlOutcomeEventInput(input: {
   outcome: 'EXECUTED' | 'SKIPPED' | 'FAILED_SAFE';
   modelId?: string | null;
   modelVersion?: string | null;
+  featureSchemaVersion?: string | null;
   occurredAt: string;
   reasonCodes?: readonly string[];
 }): RecordActionLogEventInput {
@@ -609,6 +610,7 @@ export function buildMlOutcomeEventInput(input: {
     sourceStage: 'ML',
     sourceRecordVersion: input.modelVersion ?? input.evaluationId,
     modelId: input.modelId ?? undefined,
+    featureSchemaVersion: input.featureSchemaVersion ?? undefined,
     occurredAt: input.occurredAt,
     reasonCodes: input.reasonCodes,
   };

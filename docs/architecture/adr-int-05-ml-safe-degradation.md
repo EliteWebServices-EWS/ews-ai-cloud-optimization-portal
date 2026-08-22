@@ -115,11 +115,26 @@ Preserves tenant/account scope, correlation identity, `evaluationId` as durable 
 
 `evaluationId` + ActionLog logical event identity prevent duplicate lifecycle events on retry. Inference itself is not assumed idempotent; ambiguous inference retries require explicit future policy.
 
+## Sprint 4 Engineer 3 — production qualification (additive)
+
+Sprint 4 qualifies the Sprint 3 boundary against abnormal, incomplete, and adversarial conditions. It does **not** introduce `MlDecisionServiceV2`, `ActionPolicyV2`, a new governance engine, an ML execution/rollback service, or a vendor SDK.
+
+Hardening that remains inside the existing contracts:
+
+1. Eligibility now fails closed on insufficient persistence, NaN/Infinity/malformed/stale features, missing or mismatched `featureSchemaVersion`, and unknown model compatibility (`compatible === null`).
+2. Inference timeouts are distinct (`ML_FAILED_SAFE_INFERENCE_TIMEOUT`) from generic inference exceptions.
+3. Output validation treats adapter payloads as `unknown` and rejects prototype-like keys, oversized strings, non-finite contribution numbers, and unexpected model identity.
+4. Invalid model output no longer overwrites trusted `modelId` / `modelVersion` / `featureSchemaVersion` on `MLDecision`.
+5. `featureSchemaVersion` is durable, structured ActionLog / provenance metadata (optional; non-empty when present). It is **not** encoded in `reasonCodes`. Legacy rows without the field remain reconstructable.
+6. `backend/ml-production-qualification/` is a pure read/qualification model over existing `MLDecision` snapshots. It does not make runtime business decisions and is not a substitute for `MlDecisionService`.
+
+Live external model/provider integration remains **DEFERRED**.
+
 ## Known limitations / deferred work
 
-- No live SageMaker or production model runtime integrated.
+- No live SageMaker or production model runtime integrated (**DEFERRED** — Sprint 4 qualification does not add a vendor SDK).
 - No HTTP orchestration route wires `MlDecisionService` end-to-end yet (contract + tests prove boundaries).
-- Feature manifest assembly from readiness is partial (`buildMlFeatureManifestFromReadiness`); callers must supply explicit unknowns as `null`.
+- Feature manifest assembly from readiness is partial (`buildMlFeatureManifestFromReadiness`); callers must supply explicit unknowns as `null` and optional `featureIntegrity` when numeric/boolean fields cannot represent the condition.
 - Engineer 4 verification ActionLog events remain separate (`ADR-INT-08` scope).
 
 ## Consequences

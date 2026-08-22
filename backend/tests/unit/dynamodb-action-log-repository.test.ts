@@ -179,6 +179,33 @@ test('listByExecution uses execution sort key prefix', async () => {
   );
 });
 
+test('ML featureSchemaVersion survives DynamoDB write and getEvent read', async () => {
+  const { client } = createMockClient();
+  const repository = new DynamoDbActionLogRepository(
+    client,
+    'sisum-execution-plans-test',
+  );
+
+  const recorded = await repository.recordEvent({
+    tenantId: TENANT_A,
+    accountId: ACCOUNT_A,
+    correlationId: 'corr-ml-schema',
+    eventType: 'ML_EXECUTED',
+    sourceStage: 'ML',
+    sourceRecordId: 'eval-ml-schema',
+    sourceRecordVersion: 'mock-v1',
+    modelId: 'mock-model',
+    featureSchemaVersion: 'ml-model-contract-v1',
+    occurredAt: FIXED_OBSERVATION_TS_1,
+    reasonCodes: ['EXECUTED', 'NONE', 'ML_ELIGIBLE'],
+  });
+
+  const loaded = await repository.getEvent(TENANT_A, recorded.event.logicalEventId);
+  assert.equal(loaded?.featureSchemaVersion, 'ml-model-contract-v1');
+  assert.equal(loaded?.modelId, 'mock-model');
+  assert.ok(!loaded?.reasonCodes?.includes('ml-model-contract-v1'));
+});
+
 test('listByResource uses account-scoped sort key prefix', async () => {
   const { client, queries } = createMockClient();
   const repository = new DynamoDbActionLogRepository(

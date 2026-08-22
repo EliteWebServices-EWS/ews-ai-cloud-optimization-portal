@@ -18,7 +18,8 @@ export type MlInferenceAdapterStatus = 'AVAILABLE' | 'UNAVAILABLE';
 
 export interface MlInferenceAdapterResult {
   status: MlInferenceAdapterStatus;
-  raw?: import('../output-validation').RawMlInferenceResult;
+  /** Untrusted vendor/model payload — validated before use. */
+  raw?: unknown;
   errorCode?: string;
 }
 

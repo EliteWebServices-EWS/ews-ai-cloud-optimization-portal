@@ -3,19 +3,24 @@ export {
   ML_MODEL_CONTRACT_VERSION,
   ML_MIN_STABLE_EPOCH_OBSERVATIONS,
   ML_MIN_EXECUTED_CONFIDENCE,
+  ML_MAX_IDENTITY_LENGTH,
+  ML_MAX_CONTRIBUTION_JSON_BYTES,
+  ML_MAX_CONTRIBUTION_DEPTH,
 } from './model-version';
 export { ML_DECISION_REASON, type MlDecisionReasonCode } from './reason-codes';
-export { MlDecisionScopeError } from './errors';
+export { MlDecisionScopeError, MlInferenceTimeoutError } from './errors';
 export {
   ML_ELIGIBILITY_STATES,
   ML_OUTCOMES,
   ML_FALLBACKS,
+  ML_FEATURE_INTEGRITY_STATES,
   type MlEligibilityState,
   type MlOutcome,
   type MlFallback,
   type MlValidatedOutput,
   type MLDecision,
   type MlFeatureManifest,
+  type MlFeatureIntegrity,
   type MlModelAvailability,
   type MlTrustedScope,
   type EvaluateMlEligibilityInput,

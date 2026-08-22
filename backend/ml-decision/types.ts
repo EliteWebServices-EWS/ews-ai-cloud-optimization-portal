@@ -42,14 +42,31 @@ export interface MLDecision {
   evaluationId: string;
 }
 
+export const ML_FEATURE_INTEGRITY_STATES = [
+  'VALID',
+  'MISSING',
+  'NULL',
+  'NAN',
+  'INFINITY',
+  'MALFORMED',
+  'STALE',
+  'SCHEMA_MISMATCH',
+] as const;
+export type MlFeatureIntegrity = (typeof ML_FEATURE_INTEGRITY_STATES)[number];
+
 /**
  * Explicit feature manifest — callers must supply unknowns as null, never omitted-as-success.
+ * Optional integrity/staleness signals represent conditions the numeric/boolean fields cannot.
  */
 export interface MlFeatureManifest {
   featureSchemaVersion: string | null;
   stableEpochObservationCount: number | null;
   featuresComplete: boolean | null;
   telemetryQualityAdequate: boolean | null;
+  /** Explicit integrity assertion. Absence is not treated as VALID. */
+  featureIntegrity?: MlFeatureIntegrity | null;
+  /** Observation time for the feature set; used only when integrity is STALE or asserted. */
+  featureObservedAt?: string | null;
 }
 
 export interface MlModelAvailability {
@@ -69,7 +86,12 @@ export interface EvaluateMlEligibilityInput {
   evaluatedAt: string;
   decisionReadiness: Pick<
     Sprint2DecisionReadinessResult,
-    'readiness' | 'validation' | 'maturity' | 'confidence' | 'governance'
+    | 'readiness'
+    | 'validation'
+    | 'maturity'
+    | 'confidence'
+    | 'governance'
+    | 'persistence'
   >;
   featureManifest: MlFeatureManifest;
   modelAvailability: MlModelAvailability;

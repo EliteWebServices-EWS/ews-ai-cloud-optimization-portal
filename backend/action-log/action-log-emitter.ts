@@ -291,6 +291,7 @@ export class ActionLogEmitter {
         outcome: input.decision.outcome,
         modelId: input.decision.modelId,
         modelVersion: input.decision.modelVersion,
+        featureSchemaVersion: input.decision.featureSchemaVersion,
         occurredAt: input.decision.inferredAt ?? input.decision.evaluatedAt,
         reasonCodes: [
           input.decision.outcome,

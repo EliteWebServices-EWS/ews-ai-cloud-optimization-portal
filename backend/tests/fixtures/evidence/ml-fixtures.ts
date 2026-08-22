@@ -73,6 +73,7 @@ export function buildCompleteMlFeatureManifest(
     stableEpochObservationCount: 3,
     featuresComplete: true,
     telemetryQualityAdequate: true,
+    featureIntegrity: 'VALID',
     ...overrides,
   };
 }
