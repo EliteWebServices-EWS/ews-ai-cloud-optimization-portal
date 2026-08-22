@@ -41,6 +41,7 @@ export interface MlProvenanceSummary {
   evaluationId: string;
   modelId?: string;
   modelVersion?: string;
+  featureSchemaVersion?: string;
   eligibilityPolicyVersion?: string;
   eligibility?: string;
   outcome?: string;

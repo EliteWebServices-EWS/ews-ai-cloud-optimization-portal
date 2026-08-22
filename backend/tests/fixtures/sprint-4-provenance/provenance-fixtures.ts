@@ -298,6 +298,7 @@ export async function seedActionLogEvents(
       sourceRecordId: event.sourceRecordId,
       sourceRecordVersion: event.sourceRecordVersion,
       modelId: event.modelId,
+      featureSchemaVersion: event.featureSchemaVersion,
       reasonCodes: event.reasonCodes,
       actorType: event.actorType,
       actorId: event.actorId,

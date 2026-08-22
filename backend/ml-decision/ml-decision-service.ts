@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { MlDecisionScopeError } from './errors';
+import { MlDecisionScopeError, MlInferenceTimeoutError } from './errors';
 import { evaluateMlEligibility } from './eligibility-policy';
 import { appendFallbackReason, resolveMlFallback } from './fallback-resolver';
 import { ML_ELIGIBILITY_POLICY_VERSION } from './model-version';
@@ -137,24 +137,33 @@ export class MlDecisionService {
     }
 
     let adapterResult;
+    // Timeout is adapter-signaled (MlInferenceTimeoutError). There is no
+    // Promise.race, so there is no losing inference promise to cancel.
+    const inferencePromise = this.inferenceAdapter.infer({
+      tenantId: input.tenantId,
+      accountId: input.accountId,
+      correlationId: input.correlationId,
+      recommendationId: input.recommendationId,
+      findingKey: input.findingKey,
+      resourceId: input.resourceId,
+      evaluationId: input.evaluationId,
+      featureSchemaVersion: input.featureManifest.featureSchemaVersion,
+      featureManifest: input.featureManifest,
+      modelId: input.modelAvailability.modelId,
+      modelVersion: input.modelAvailability.modelVersion,
+    });
     try {
-      adapterResult = await this.inferenceAdapter.infer({
-        tenantId: input.tenantId,
-        accountId: input.accountId,
-        correlationId: input.correlationId,
-        recommendationId: input.recommendationId,
-        findingKey: input.findingKey,
-        resourceId: input.resourceId,
-        evaluationId: input.evaluationId,
-        featureSchemaVersion: input.featureManifest.featureSchemaVersion,
-        featureManifest: input.featureManifest,
-        modelId: input.modelAvailability.modelId,
-        modelVersion: input.modelAvailability.modelVersion,
-      });
-    } catch {
+      adapterResult = await inferencePromise;
+    } catch (error) {
+      void inferencePromise.catch(() => undefined);
+      const timedOut =
+        error instanceof MlInferenceTimeoutError ||
+        (error instanceof Error && /timeout/i.test(error.name + error.message));
       const reasonCodes = uniqueReasons([
         ML_DECISION_REASON.ML_ELIGIBLE,
-        ML_DECISION_REASON.ML_FAILED_SAFE_INFERENCE_ERROR,
+        timedOut
+          ? ML_DECISION_REASON.ML_FAILED_SAFE_INFERENCE_TIMEOUT
+          : ML_DECISION_REASON.ML_FAILED_SAFE_INFERENCE_ERROR,
       ]);
       const fallback = resolveMlFallback({
         eligibility: 'ML_ELIGIBLE',
@@ -203,6 +212,7 @@ export class MlDecisionService {
       raw: adapterResult.raw,
       expectedFeatureSchemaVersion: input.featureManifest.featureSchemaVersion,
       expectedModelVersion: input.modelAvailability.modelVersion,
+      expectedModelId: input.modelAvailability.modelId,
     });
 
     if (!validated.valid || !validated.output) {
@@ -225,9 +235,6 @@ export class MlDecisionService {
           fallback,
           inferredAt: input.evaluatedAt,
           validatedOutput: null,
-          modelId: adapterResult.raw.modelId,
-          modelVersion: adapterResult.raw.modelVersion,
-          featureSchemaVersion: adapterResult.raw.featureSchemaVersion,
         },
       };
     }
@@ -252,9 +259,6 @@ export class MlDecisionService {
           fallback,
           inferredAt: input.evaluatedAt,
           validatedOutput: validated.output,
-          modelId: adapterResult.raw.modelId,
-          modelVersion: adapterResult.raw.modelVersion,
-          featureSchemaVersion: adapterResult.raw.featureSchemaVersion,
         },
       };
     }
@@ -275,9 +279,6 @@ export class MlDecisionService {
         fallback,
         inferredAt: input.evaluatedAt,
         validatedOutput: validated.output,
-        modelId: adapterResult.raw.modelId,
-        modelVersion: adapterResult.raw.modelVersion,
-        featureSchemaVersion: adapterResult.raw.featureSchemaVersion,
       },
     };
   }

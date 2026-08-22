@@ -1,17 +1,42 @@
 import {
   ML_ELIGIBILITY_POLICY_VERSION,
   ML_MIN_STABLE_EPOCH_OBSERVATIONS,
+  ML_MODEL_CONTRACT_VERSION,
 } from './model-version';
 import { ML_DECISION_REASON } from './reason-codes';
 import type {
   EvaluateMlEligibilityInput,
   MlEligibilityResult,
   MlFeatureManifest,
+  MlFeatureIntegrity,
 } from './types';
 import type { Sprint2DecisionReadinessResult } from '../decision-readiness/types';
 
 function uniqueReasons(codes: MlEligibilityResult['reasonCodes']): MlEligibilityResult['reasonCodes'] {
   return [...new Set(codes)];
+}
+
+function integrityReason(
+  integrity: MlFeatureIntegrity,
+): MlEligibilityResult['reasonCodes'][number] | undefined {
+  switch (integrity) {
+    case 'MISSING':
+      return ML_DECISION_REASON.ML_SKIPPED_FEATURE_UNAVAILABLE;
+    case 'NULL':
+      return ML_DECISION_REASON.ML_INELIGIBLE_FEATURES_INCOMPLETE;
+    case 'NAN':
+      return ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_NAN;
+    case 'INFINITY':
+      return ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_INFINITY;
+    case 'MALFORMED':
+      return ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_MALFORMED;
+    case 'STALE':
+      return ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_STALE;
+    case 'SCHEMA_MISMATCH':
+      return ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_SCHEMA_MISMATCH;
+    default:
+      return undefined;
+  }
 }
 
 export function buildMlFeatureManifestFromReadiness(
@@ -28,6 +53,8 @@ export function buildMlFeatureManifestFromReadiness(
       null,
     featuresComplete: overrides.featuresComplete ?? null,
     telemetryQualityAdequate: overrides.telemetryQualityAdequate ?? null,
+    featureIntegrity: overrides.featureIntegrity ?? null,
+    featureObservedAt: overrides.featureObservedAt ?? null,
   };
 }
 
@@ -61,11 +88,69 @@ export function evaluateMlEligibility(
     };
   }
 
-  const observationCount = input.featureManifest.stableEpochObservationCount;
+  if (input.decisionReadiness.persistence.state !== 'STABLE') {
+    return {
+      eligibility: 'ML_INELIGIBLE',
+      reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_INSUFFICIENT_PERSISTENCE],
+    };
+  }
+
+  const declaredIntegrity = input.featureManifest.featureIntegrity;
+  if (declaredIntegrity !== 'VALID') {
+    if (declaredIntegrity === undefined || declaredIntegrity === null) {
+      return {
+        eligibility: 'ML_INELIGIBLE',
+        reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_INTEGRITY_UNASSERTED],
+      };
+    }
+    const reason = integrityReason(declaredIntegrity);
+    if (reason) {
+      return {
+        eligibility: 'ML_INELIGIBLE',
+        reasonCodes: [reason],
+      };
+    }
+    return {
+      eligibility: 'ML_INELIGIBLE',
+      reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_INTEGRITY_UNASSERTED],
+    };
+  }
+
+  const schemaVersion = input.featureManifest.featureSchemaVersion;
   if (
-    observationCount === null ||
-    observationCount < ML_MIN_STABLE_EPOCH_OBSERVATIONS
+    schemaVersion === null ||
+    schemaVersion.trim() === '' ||
+    schemaVersion !== ML_MODEL_CONTRACT_VERSION
   ) {
+    return {
+      eligibility: 'ML_INELIGIBLE',
+      reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_SCHEMA_MISMATCH],
+    };
+  }
+
+  const observationCount = input.featureManifest.stableEpochObservationCount;
+  if (observationCount === null) {
+    return {
+      eligibility: 'ML_INELIGIBLE',
+      reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_INSUFFICIENT_HISTORY],
+    };
+  }
+
+  if (Number.isNaN(observationCount)) {
+    return {
+      eligibility: 'ML_INELIGIBLE',
+      reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_NAN],
+    };
+  }
+
+  if (!Number.isFinite(observationCount)) {
+    return {
+      eligibility: 'ML_INELIGIBLE',
+      reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_FEATURE_INFINITY],
+    };
+  }
+
+  if (observationCount < ML_MIN_STABLE_EPOCH_OBSERVATIONS) {
     return {
       eligibility: 'ML_INELIGIBLE',
       reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_INSUFFICIENT_HISTORY],
@@ -100,7 +185,10 @@ export function evaluateMlEligibility(
     };
   }
 
-  if (input.modelAvailability.compatible === false) {
+  if (
+    input.modelAvailability.compatible === false ||
+    input.modelAvailability.compatible === null
+  ) {
     return {
       eligibility: 'ML_INELIGIBLE',
       reasonCodes: [ML_DECISION_REASON.ML_INELIGIBLE_MODEL_VERSION_INCOMPATIBLE],

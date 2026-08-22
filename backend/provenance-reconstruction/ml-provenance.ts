@@ -28,6 +28,7 @@ export function extractMlProvenance(
     evaluationId,
     modelId: outcome?.modelId,
     modelVersion: outcome?.sourceRecordVersion,
+    featureSchemaVersion: outcome?.featureSchemaVersion,
     eligibilityPolicyVersion: eligibility?.sourceRecordVersion,
     eligibility: eligibilityReasonCodes[0],
     outcome: outcomeReasonCodes[0] ?? outcome?.eventType,
